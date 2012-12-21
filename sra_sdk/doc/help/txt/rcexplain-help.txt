@@ -1,0 +1,5 @@
+
+Usage: rcexplain rc [ rc... ]
+
+    prints out error string to stdout for one or more return codes
+

@@ -1,0 +1,41 @@
+Usage:
+
+illumina-load <help>
+illumina-load [ <options> ] <input-spec> <spot-descriptor> <output-spec> [ <verbosity> ] 
+
+input-spec:
+  ( -r | --run-xml ) path           # path to run.xml describing input files
+
+spot-descriptor:
+  ( -e | --experiment ) path            # path to experiment.xml 
+                                        # with spot descriptor
+
+output-spec:
+  <output-mode> <run-name>           # produce output to run
+
+output-mode:
+  -c | --create                      # create only new run (fail if exists)
+  -o | --output                      # create new or replace existing run
+  -a | --append                      # create new or update existing run
+
+run-name:
+  path                                  # full or working-directory relative
+                                        # file-system path to run
+
+options:
+  ( -n | --spotnumber) spots_to_run    # tells the loader to stop processing after that many spots
+                                       # helpful in testing
+
+  ( -b | --bad-spot-number ) bad_spot_number  # number of spot creation errors to be tolerated
+                                              # default = 50
+
+  ( -p | --bad-spot-percentage ) bad_spot_percentage> # PERCENTAGE of the number of bad spots against
+                                                      # the number of good spots, default = 5
+
+help:
+  ( -h | --help )                       # print usage and option details
+
+verbosity:
+  ( -l | --log-level ) <level>  #logging level: fatal|sys|int|err|warn|info default=info
+debug:
+  ( -+ | --debug ) <module>  #module: APP|KFS|XML|VDB|SRA|REF|LEGREF default=APP

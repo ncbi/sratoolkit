@@ -1,0 +1,1508 @@
+GAS LISTING /tmp/ccet7NcF.s 			page 1
+
+
+   1              		.file	"cipher-vec.c"
+   2              		.text
+   3              		.p2align 4,,15
+   4              		.type	KCipherVecSetEncryptKey, @function
+   5              	KCipherVecSetEncryptKey:
+   6              	.LFB555:
+   7              		.cfi_startproc
+   8 0000 4883EC08 		subq	$8, %rsp
+   9              		.cfi_def_cfa_offset 16
+  10 0004 488B4F48 		movq	72(%rdi), %rcx
+  11 0008 B8088E04 		movl	$-2029744632, %eax
+  11      87
+  12 000d 833901   		cmpl	$1, (%rcx)
+  13 0010 7509     		jne	.L4
+  14 0012 488B7F18 		movq	24(%rdi), %rdi
+  15 0016 FF5120   		call	*32(%rcx)
+  16 0019 31C0     		xorl	%eax, %eax
+  17              	.L4:
+  18 001b 4883C408 		addq	$8, %rsp
+  19 001f C3       		ret
+  20              		.cfi_endproc
+  21              	.LFE555:
+  22              		.size	KCipherVecSetEncryptKey, .-KCipherVecSetEncryptKey
+  23              		.p2align 4,,15
+  24              		.type	KCipherVecSetDecryptKey, @function
+  25              	KCipherVecSetDecryptKey:
+  26              	.LFB556:
+  27              		.cfi_startproc
+  28 0020 4883EC08 		subq	$8, %rsp
+  29              		.cfi_def_cfa_offset 16
+  30 0024 488B4F48 		movq	72(%rdi), %rcx
+  31 0028 B8088E04 		movl	$-2029744632, %eax
+  31      87
+  32 002d 833901   		cmpl	$1, (%rcx)
+  33 0030 7509     		jne	.L10
+  34 0032 488B7F20 		movq	32(%rdi), %rdi
+  35 0036 FF5128   		call	*40(%rcx)
+  36 0039 31C0     		xorl	%eax, %eax
+  37              	.L10:
+  38 003b 4883C408 		addq	$8, %rsp
+  39 003f C3       		ret
+  40              		.cfi_endproc
+  41              	.LFE556:
+  42              		.size	KCipherVecSetDecryptKey, .-KCipherVecSetDecryptKey
+  43              		.p2align 4,,15
+  44              		.type	KCipherVecSetEncryptCounterFunc, @function
+  45              	KCipherVecSetEncryptCounterFunc:
+  46              	.LFB559:
+  47              		.cfi_startproc
+  48 0040 48897738 		movq	%rsi, 56(%rdi)
+  49 0044 31C0     		xorl	%eax, %eax
+  50 0046 C3       		ret
+  51              		.cfi_endproc
+  52              	.LFE559:
+  53              		.size	KCipherVecSetEncryptCounterFunc, .-KCipherVecSetEncryptCounterFunc
+  54 0047 660F1F84 		.p2align 4,,15
+  54      00000000 
+GAS LISTING /tmp/ccet7NcF.s 			page 2
+
+
+  54      00
+  55              		.type	KCipherVecSetDecryptCounterFunc, @function
+  56              	KCipherVecSetDecryptCounterFunc:
+  57              	.LFB560:
+  58              		.cfi_startproc
+  59 0050 48897740 		movq	%rsi, 64(%rdi)
+  60 0054 31C0     		xorl	%eax, %eax
+  61 0056 C3       		ret
+  62              		.cfi_endproc
+  63              	.LFE560:
+  64              		.size	KCipherVecSetDecryptCounterFunc, .-KCipherVecSetDecryptCounterFunc
+  65 0057 660F1F84 		.p2align 4,,15
+  65      00000000 
+  65      00
+  66              		.type	KCipherVecEncryptCtr, @function
+  67              	KCipherVecEncryptCtr:
+  68              	.LFB577:
+  69              		.cfi_startproc
+  70 0060 B8030509 		movl	$-2029452029, %eax
+  70      87
+  71 0065 C3       		ret
+  72              		.cfi_endproc
+  73              	.LFE577:
+  74              		.size	KCipherVecEncryptCtr, .-KCipherVecEncryptCtr
+  75 0066 662E0F1F 		.p2align 4,,15
+  75      84000000 
+  75      0000
+  76              		.type	KCipherVecDecryptCtr, @function
+  77              	KCipherVecDecryptCtr:
+  78              	.LFB578:
+  79              		.cfi_startproc
+  80 0070 B8030509 		movl	$-2029452029, %eax
+  80      87
+  81 0075 C3       		ret
+  82              		.cfi_endproc
+  83              	.LFE578:
+  84              		.size	KCipherVecDecryptCtr, .-KCipherVecDecryptCtr
+  85 0076 662E0F1F 		.p2align 4,,15
+  85      84000000 
+  85      0000
+  86              	.globl KCipherVecMake
+  87              		.type	KCipherVecMake, @function
+  88              	KCipherVecMake:
+  89              	.LFB583:
+  90              		.cfi_startproc
+  91 0080 48895C24 		movq	%rbx, -32(%rsp)
+  91      E0
+  92 0085 48896C24 		movq	%rbp, -24(%rsp)
+  92      E8
+  93 008a BB878F00 		movl	$-2030006393, %ebx
+  93      87
+  94              		.cfi_offset 6, -32
+  95              		.cfi_offset 3, -40
+  96 008f 4C896424 		movq	%r12, -16(%rsp)
+  96      F0
+  97 0094 4C896C24 		movq	%r13, -8(%rsp)
+  97      F8
+GAS LISTING /tmp/ccet7NcF.s 			page 3
+
+
+  98 0099 4883EC38 		subq	$56, %rsp
+  99              		.cfi_def_cfa_offset 64
+ 100 009d 4885FF   		testq	%rdi, %rdi
+ 101 00a0 4889FD   		movq	%rdi, %rbp
+ 102 00a3 4189F4   		movl	%esi, %r12d
+ 103              		.cfi_offset 13, -16
+ 104              		.cfi_offset 12, -24
+ 105 00a6 0F849400 		je	.L22
+ 105      0000
+ 106 00ac 85F6     		testl	%esi, %esi
+ 107 00ae 48C70700 		movq	$0, (%rdi)
+ 107      000000
+ 108 00b5 0F85A500 		jne	.L34
+ 108      0000
+ 109 00bb 488D7C24 		leaq	8(%rsp), %rdi
+ 109      08
+ 110 00c0 E8000000 		call	KNullBlockCipherVecMake@PLT
+ 110      00
+ 111 00c5 89C3     		movl	%eax, %ebx
+ 112              	.L26:
+ 113 00c7 85DB     		testl	%ebx, %ebx
+ 114 00c9 7575     		jne	.L22
+ 115 00cb 4585E4   		testl	%r12d, %r12d
+ 116 00ce 0F85AC00 		jne	.L35
+ 116      0000
+ 117 00d4 BE700000 		movl	$112, %esi
+ 117      00
+ 118 00d9 BF010000 		movl	$1, %edi
+ 118      00
+ 119 00de E8000000 		call	calloc@PLT
+ 119      00
+ 120 00e3 4885C0   		testq	%rax, %rax
+ 121 00e6 4989C4   		movq	%rax, %r12
+ 122 00e9 0F841101 		je	.L29
+ 122      0000
+ 123 00ef 488B0D00 		movq	KCipherVecClassName@GOTPCREL(%rip), %rcx
+ 123      000000
+ 124 00f6 488D1500 		leaq	KCipherVec_vt_v1(%rip), %rdx
+ 124      000000
+ 125 00fd 4C8B6C24 		movq	8(%rsp), %r13
+ 125      08
+ 126 0102 4889C7   		movq	%rax, %rdi
+ 127 0105 BE100000 		movl	$16, %esi
+ 127      00
+ 128 010a E8000000 		call	KCipherInit@PLT
+ 128      00
+ 129 010f 498D5424 		leaq	80(%r12), %rdx
+ 129      50
+ 130 0114 498D4424 		leaq	96(%r12), %rax
+ 130      60
+ 131 0119 4D896C24 		movq	%r13, 72(%r12)
+ 131      48
+ 132 011e 49895424 		movq	%rdx, 24(%r12)
+ 132      18
+ 133 0123 49894424 		movq	%rax, 32(%r12)
+ 133      20
+ 134 0128 49895424 		movq	%rdx, 40(%r12)
+GAS LISTING /tmp/ccet7NcF.s 			page 4
+
+
+ 134      28
+ 135 012d 49894424 		movq	%rax, 48(%r12)
+ 135      30
+ 136 0132 4C896500 		movq	%r12, (%rbp)
+ 137 0136 662E0F1F 		.p2align 4,,10
+ 137      84000000 
+ 137      0000
+ 138              		.p2align 3
+ 139              	.L22:
+ 140 0140 89D8     		movl	%ebx, %eax
+ 141 0142 488B6C24 		movq	32(%rsp), %rbp
+ 141      20
+ 142 0147 488B5C24 		movq	24(%rsp), %rbx
+ 142      18
+ 143 014c 4C8B6424 		movq	40(%rsp), %r12
+ 143      28
+ 144 0151 4C8B6C24 		movq	48(%rsp), %r13
+ 144      30
+ 145 0156 4883C438 		addq	$56, %rsp
+ 146 015a C3       		ret
+ 147 015b 0F1F4400 		.p2align 4,,10
+ 147      00
+ 148              		.p2align 3
+ 149              	.L34:
+ 150 0160 83FE01   		cmpl	$1, %esi
+ 151 0163 BBCA8F00 		movl	$-2030006326, %ebx
+ 151      87
+ 152 0168 75D6     		jne	.L22
+ 153 016a 488D7C24 		leaq	8(%rsp), %rdi
+ 153      08
+ 154 016f E8000000 		call	KAESBlockCipherVecMake@PLT
+ 154      00
+ 155 0174 89C3     		movl	%eax, %ebx
+ 156 0176 E94CFFFF 		jmp	.L26
+ 156      FF
+ 157 017b 0F1F4400 		.p2align 4,,10
+ 157      00
+ 158              		.p2align 3
+ 159              	.L35:
+ 160 0180 4183FC01 		cmpl	$1, %r12d
+ 161 0184 75BA     		jne	.L22
+ 162 0186 BE700200 		movl	$624, %esi
+ 162      00
+ 163 018b BF010000 		movl	$1, %edi
+ 163      00
+ 164 0190 E8000000 		call	calloc@PLT
+ 164      00
+ 165 0195 4885C0   		testq	%rax, %rax
+ 166 0198 4989C4   		movq	%rax, %r12
+ 167 019b 7463     		je	.L29
+ 168 019d 488B0D00 		movq	KCipherVecClassName@GOTPCREL(%rip), %rcx
+ 168      000000
+ 169 01a4 488D1500 		leaq	KCipherVec_vt_v1(%rip), %rdx
+ 169      000000
+ 170 01ab 4889C7   		movq	%rax, %rdi
+ 171 01ae BE100000 		movl	$16, %esi
+ 171      00
+GAS LISTING /tmp/ccet7NcF.s 			page 5
+
+
+ 172 01b3 4C8B6C24 		movq	8(%rsp), %r13
+ 172      08
+ 173 01b8 E8000000 		call	KCipherInit@PLT
+ 173      00
+ 174 01bd 498D4424 		leaq	80(%r12), %rax
+ 174      50
+ 175 01c2 4D896C24 		movq	%r13, 72(%r12)
+ 175      48
+ 176 01c7 49894424 		movq	%rax, 24(%r12)
+ 176      18
+ 177 01cc 498D8424 		leaq	336(%r12), %rax
+ 177      50010000 
+ 178 01d4 49894424 		movq	%rax, 32(%r12)
+ 178      20
+ 179 01d9 498D8424 		leaq	592(%r12), %rax
+ 179      50020000 
+ 180 01e1 49894424 		movq	%rax, 40(%r12)
+ 180      28
+ 181 01e6 498D8424 		leaq	608(%r12), %rax
+ 181      60020000 
+ 182 01ee 49894424 		movq	%rax, 48(%r12)
+ 182      30
+ 183 01f3 4C896500 		movq	%r12, (%rbp)
+ 184 01f7 E944FFFF 		jmp	.L22
+ 184      FF
+ 185 01fc 0F1F4000 		.p2align 4,,10
+ 186              		.p2align 3
+ 187              	.L29:
+ 188 0200 BB539000 		movl	$-2030006189, %ebx
+ 188      87
+ 189 0205 E936FFFF 		jmp	.L22
+ 189      FF
+ 190              		.cfi_endproc
+ 191              	.LFE583:
+ 192              		.size	KCipherVecMake, .-KCipherVecMake
+ 193 020a 660F1F44 		.p2align 4,,15
+ 193      0000
+ 194              		.type	KCipherVecSetDecryptIvec, @function
+ 195              	KCipherVecSetDecryptIvec:
+ 196              	.LFB558:
+ 197              		.cfi_startproc
+ 198 0210 4889F8   		movq	%rdi, %rax
+ 199 0213 4883EC08 		subq	$8, %rsp
+ 200              		.cfi_def_cfa_offset 16
+ 201 0217 488B7F30 		movq	48(%rdi), %rdi
+ 202 021b 8B5004   		mov	4(%rax), %edx
+ 203 021e E8000000 		call	memcpy@PLT
+ 203      00
+ 204 0223 31C0     		xorl	%eax, %eax
+ 205 0225 4883C408 		addq	$8, %rsp
+ 206 0229 C3       		ret
+ 207              		.cfi_endproc
+ 208              	.LFE558:
+ 209              		.size	KCipherVecSetDecryptIvec, .-KCipherVecSetDecryptIvec
+ 210 022a 660F1F44 		.p2align 4,,15
+ 210      0000
+ 211              		.type	KCipherVecSetEncryptIvec, @function
+GAS LISTING /tmp/ccet7NcF.s 			page 6
+
+
+ 212              	KCipherVecSetEncryptIvec:
+ 213              	.LFB557:
+ 214              		.cfi_startproc
+ 215 0230 4889F8   		movq	%rdi, %rax
+ 216 0233 4883EC08 		subq	$8, %rsp
+ 217              		.cfi_def_cfa_offset 16
+ 218 0237 488B7F28 		movq	40(%rdi), %rdi
+ 219 023b 8B5004   		mov	4(%rax), %edx
+ 220 023e E8000000 		call	memcpy@PLT
+ 220      00
+ 221 0243 31C0     		xorl	%eax, %eax
+ 222 0245 4883C408 		addq	$8, %rsp
+ 223 0249 C3       		ret
+ 224              		.cfi_endproc
+ 225              	.LFE557:
+ 226              		.size	KCipherVecSetEncryptIvec, .-KCipherVecSetEncryptIvec
+ 227 024a 660F1F44 		.p2align 4,,15
+ 227      0000
+ 228              		.type	KCipherVecDestroy, @function
+ 229              	KCipherVecDestroy:
+ 230              	.LFB554:
+ 231              		.cfi_startproc
+ 232 0250 48895C24 		movq	%rbx, -16(%rsp)
+ 232      F0
+ 233 0255 48896C24 		movq	%rbp, -8(%rsp)
+ 233      F8
+ 234 025a 4883EC18 		subq	$24, %rsp
+ 235              		.cfi_def_cfa_offset 32
+ 236 025e 31ED     		xorl	%ebp, %ebp
+ 237              		.cfi_offset 6, -16
+ 238              		.cfi_offset 3, -24
+ 239 0260 4885FF   		testq	%rdi, %rdi
+ 240 0263 4889FB   		movq	%rdi, %rbx
+ 241 0266 740F     		je	.L42
+ 242 0268 E8000000 		call	KCipherDestroy@PLT
+ 242      00
+ 243 026d 4889DF   		movq	%rbx, %rdi
+ 244 0270 89C5     		movl	%eax, %ebp
+ 245 0272 E8000000 		call	free@PLT
+ 245      00
+ 246              	.L42:
+ 247 0277 89E8     		movl	%ebp, %eax
+ 248 0279 488B5C24 		movq	8(%rsp), %rbx
+ 248      08
+ 249 027e 488B6C24 		movq	16(%rsp), %rbp
+ 249      10
+ 250 0283 4883C418 		addq	$24, %rsp
+ 251 0287 C3       		ret
+ 252              		.cfi_endproc
+ 253              	.LFE554:
+ 254              		.size	KCipherVecDestroy, .-KCipherVecDestroy
+ 255 0288 0F1F8400 		.p2align 4,,15
+ 255      00000000 
+ 256              		.type	KCipherVecDecryptEcb, @function
+ 257              	KCipherVecDecryptEcb:
+ 258              	.LFB568:
+ 259              		.cfi_startproc
+GAS LISTING /tmp/ccet7NcF.s 			page 7
+
+
+ 260 0290 4157     		pushq	%r15
+ 261              		.cfi_def_cfa_offset 16
+ 262 0292 4156     		pushq	%r14
+ 263              		.cfi_def_cfa_offset 24
+ 264 0294 4155     		pushq	%r13
+ 265              		.cfi_def_cfa_offset 32
+ 266 0296 4154     		pushq	%r12
+ 267              		.cfi_def_cfa_offset 40
+ 268 0298 55       		pushq	%rbp
+ 269              		.cfi_def_cfa_offset 48
+ 270 0299 89CD     		movl	%ecx, %ebp
+ 271              		.cfi_offset 6, -48
+ 272              		.cfi_offset 12, -40
+ 273              		.cfi_offset 13, -32
+ 274              		.cfi_offset 14, -24
+ 275              		.cfi_offset 15, -16
+ 276 029b 53       		pushq	%rbx
+ 277              		.cfi_def_cfa_offset 56
+ 278 029c 4889FB   		movq	%rdi, %rbx
+ 279              		.cfi_offset 3, -56
+ 280 029f 4883EC28 		subq	$40, %rsp
+ 281              		.cfi_def_cfa_offset 96
+ 282 02a3 85C9     		testl	%ecx, %ecx
+ 283 02a5 7455     		je	.L45
+ 284 02a7 4C8D7C24 		leaq	16(%rsp), %r15
+ 284      10
+ 285 02ac 4989F5   		movq	%rsi, %r13
+ 286 02af 4989D4   		movq	%rdx, %r12
+ 287              		.p2align 4,,10
+ 288 02b2 660F1F44 		.p2align 3
+ 288      0000
+ 289              	.L46:
+ 290 02b8 4C89EE   		movq	%r13, %rsi
+ 291 02bb BA100000 		movl	$16, %edx
+ 291      00
+ 292 02c0 4C89FF   		movq	%r15, %rdi
+ 293 02c3 E8000000 		call	memmove@PLT
+ 293      00
+ 294 02c8 488B4348 		movq	72(%rbx), %rax
+ 295 02cc 488B7B20 		movq	32(%rbx), %rdi
+ 296 02d0 F30F6F44 		movdqu	16(%rsp), %xmm0
+ 296      2410
+ 297 02d6 FF5038   		call	*56(%rax)
+ 298 02d9 4C89E7   		movq	%r12, %rdi
+ 299 02dc BA100000 		movl	$16, %edx
+ 299      00
+ 300 02e1 4889E6   		movq	%rsp, %rsi
+ 301 02e4 F30F7F04 		movdqu	%xmm0, (%rsp)
+ 301      24
+ 302 02e9 E8000000 		call	memmove@PLT
+ 302      00
+ 303 02ee 8B4304   		mov	4(%rbx), %eax
+ 304 02f1 4901C5   		addq	%rax, %r13
+ 305 02f4 4901C4   		addq	%rax, %r12
+ 306 02f7 83ED01   		subl	$1, %ebp
+ 307 02fa 75BC     		jne	.L46
+ 308              	.L45:
+GAS LISTING /tmp/ccet7NcF.s 			page 8
+
+
+ 309 02fc 4883C428 		addq	$40, %rsp
+ 310 0300 31C0     		xorl	%eax, %eax
+ 311 0302 5B       		popq	%rbx
+ 312 0303 5D       		popq	%rbp
+ 313 0304 415C     		popq	%r12
+ 314 0306 415D     		popq	%r13
+ 315 0308 415E     		popq	%r14
+ 316 030a 415F     		popq	%r15
+ 317 030c C3       		ret
+ 318              		.cfi_endproc
+ 319              	.LFE568:
+ 320              		.size	KCipherVecDecryptEcb, .-KCipherVecDecryptEcb
+ 321 030d 0F1F00   		.p2align 4,,15
+ 322              		.type	KCipherVecEncryptOfb, @function
+ 323              	KCipherVecEncryptOfb:
+ 324              	.LFB575:
+ 325              		.cfi_startproc
+ 326 0310 4157     		pushq	%r15
+ 327              		.cfi_def_cfa_offset 16
+ 328 0312 4156     		pushq	%r14
+ 329              		.cfi_def_cfa_offset 24
+ 330 0314 4155     		pushq	%r13
+ 331              		.cfi_def_cfa_offset 32
+ 332 0316 4154     		pushq	%r12
+ 333              		.cfi_def_cfa_offset 40
+ 334 0318 55       		pushq	%rbp
+ 335              		.cfi_def_cfa_offset 48
+ 336 0319 89CD     		movl	%ecx, %ebp
+ 337              		.cfi_offset 6, -48
+ 338              		.cfi_offset 12, -40
+ 339              		.cfi_offset 13, -32
+ 340              		.cfi_offset 14, -24
+ 341              		.cfi_offset 15, -16
+ 342 031b 53       		pushq	%rbx
+ 343              		.cfi_def_cfa_offset 56
+ 344 031c 4889FB   		movq	%rdi, %rbx
+ 345              		.cfi_offset 3, -56
+ 346 031f 4883EC38 		subq	$56, %rsp
+ 347              		.cfi_def_cfa_offset 112
+ 348 0323 488B4728 		movq	40(%rdi), %rax
+ 349 0327 85C9     		testl	%ecx, %ecx
+ 350 0329 660F6F00 		movdqa	(%rax), %xmm0
+ 351 032d 660F7F04 		movdqa	%xmm0, (%rsp)
+ 351      24
+ 352 0332 7471     		je	.L50
+ 353 0334 4C8D7C24 		leaq	32(%rsp), %r15
+ 353      20
+ 354 0339 4C8D7424 		leaq	16(%rsp), %r14
+ 354      10
+ 355 033e 4989F5   		movq	%rsi, %r13
+ 356 0341 4989D4   		movq	%rdx, %r12
+ 357              		.p2align 4,,10
+ 358 0344 0F1F4000 		.p2align 3
+ 359              	.L51:
+ 360 0348 488B4348 		movq	72(%rbx), %rax
+ 361 034c 488B7B18 		movq	24(%rbx), %rdi
+ 362 0350 660F6F04 		movdqa	(%rsp), %xmm0
+GAS LISTING /tmp/ccet7NcF.s 			page 9
+
+
+ 362      24
+ 363 0355 FF5030   		call	*48(%rax)
+ 364 0358 4C89EE   		movq	%r13, %rsi
+ 365 035b BA100000 		movl	$16, %edx
+ 365      00
+ 366 0360 4C89FF   		movq	%r15, %rdi
+ 367 0363 660F7F04 		movdqa	%xmm0, (%rsp)
+ 367      24
+ 368 0368 E8000000 		call	memmove@PLT
+ 368      00
+ 369 036d 4C89E7   		movq	%r12, %rdi
+ 370 0370 BA100000 		movl	$16, %edx
+ 370      00
+ 371 0375 4C89F6   		movq	%r14, %rsi
+ 372 0378 F30F6F4C 		movdqu	32(%rsp), %xmm1
+ 372      2420
+ 373 037e 660FEF0C 		pxor	(%rsp), %xmm1
+ 373      24
+ 374 0383 F30F7F4C 		movdqu	%xmm1, 16(%rsp)
+ 374      2410
+ 375 0389 E8000000 		call	memmove@PLT
+ 375      00
+ 376 038e 8B4304   		mov	4(%rbx), %eax
+ 377 0391 4901C5   		addq	%rax, %r13
+ 378 0394 4901C4   		addq	%rax, %r12
+ 379 0397 83ED01   		subl	$1, %ebp
+ 380 039a 75AC     		jne	.L51
+ 381 039c 488B4328 		movq	40(%rbx), %rax
+ 382 03a0 660F6F04 		movdqa	(%rsp), %xmm0
+ 382      24
+ 383              	.L50:
+ 384 03a5 660F7F00 		movdqa	%xmm0, (%rax)
+ 385 03a9 4883C438 		addq	$56, %rsp
+ 386 03ad 31C0     		xorl	%eax, %eax
+ 387 03af 5B       		popq	%rbx
+ 388 03b0 5D       		popq	%rbp
+ 389 03b1 415C     		popq	%r12
+ 390 03b3 415D     		popq	%r13
+ 391 03b5 415E     		popq	%r14
+ 392 03b7 415F     		popq	%r15
+ 393 03b9 C3       		ret
+ 394              		.cfi_endproc
+ 395              	.LFE575:
+ 396              		.size	KCipherVecEncryptOfb, .-KCipherVecEncryptOfb
+ 397 03ba 660F1F44 		.p2align 4,,15
+ 397      0000
+ 398              		.type	KCipherVecDecryptCfb, @function
+ 399              	KCipherVecDecryptCfb:
+ 400              	.LFB574:
+ 401              		.cfi_startproc
+ 402 03c0 4157     		pushq	%r15
+ 403              		.cfi_def_cfa_offset 16
+ 404 03c2 4156     		pushq	%r14
+ 405              		.cfi_def_cfa_offset 24
+ 406 03c4 4155     		pushq	%r13
+ 407              		.cfi_def_cfa_offset 32
+ 408 03c6 4154     		pushq	%r12
+GAS LISTING /tmp/ccet7NcF.s 			page 10
+
+
+ 409              		.cfi_def_cfa_offset 40
+ 410 03c8 55       		pushq	%rbp
+ 411              		.cfi_def_cfa_offset 48
+ 412 03c9 89CD     		movl	%ecx, %ebp
+ 413              		.cfi_offset 6, -48
+ 414              		.cfi_offset 12, -40
+ 415              		.cfi_offset 13, -32
+ 416              		.cfi_offset 14, -24
+ 417              		.cfi_offset 15, -16
+ 418 03cb 53       		pushq	%rbx
+ 419              		.cfi_def_cfa_offset 56
+ 420 03cc 4889FB   		movq	%rdi, %rbx
+ 421              		.cfi_offset 3, -56
+ 422 03cf 4883EC38 		subq	$56, %rsp
+ 423              		.cfi_def_cfa_offset 112
+ 424 03d3 488B4728 		movq	40(%rdi), %rax
+ 425 03d7 85C9     		testl	%ecx, %ecx
+ 426 03d9 660F6F00 		movdqa	(%rax), %xmm0
+ 427 03dd 7472     		je	.L55
+ 428 03df 4C8D7C24 		leaq	32(%rsp), %r15
+ 428      20
+ 429 03e4 4C8D7424 		leaq	16(%rsp), %r14
+ 429      10
+ 430 03e9 4989F5   		movq	%rsi, %r13
+ 431 03ec 4989D4   		movq	%rdx, %r12
+ 432 03ef 90       		.p2align 4,,10
+ 433              		.p2align 3
+ 434              	.L56:
+ 435 03f0 488B4348 		movq	72(%rbx), %rax
+ 436 03f4 488B7B18 		movq	24(%rbx), %rdi
+ 437 03f8 FF5030   		call	*48(%rax)
+ 438 03fb 4C89EE   		movq	%r13, %rsi
+ 439 03fe BA100000 		movl	$16, %edx
+ 439      00
+ 440 0403 4C89FF   		movq	%r15, %rdi
+ 441 0406 660F7F04 		movdqa	%xmm0, (%rsp)
+ 441      24
+ 442 040b E8000000 		call	memmove@PLT
+ 442      00
+ 443 0410 4C89E7   		movq	%r12, %rdi
+ 444 0413 BA100000 		movl	$16, %edx
+ 444      00
+ 445 0418 4C89F6   		movq	%r14, %rsi
+ 446 041b F30F6F44 		movdqu	32(%rsp), %xmm0
+ 446      2420
+ 447 0421 660F6F0C 		movdqa	(%rsp), %xmm1
+ 447      24
+ 448 0426 660FEFC8 		pxor	%xmm0, %xmm1
+ 449 042a 660F7F04 		movdqa	%xmm0, (%rsp)
+ 449      24
+ 450 042f F30F7F4C 		movdqu	%xmm1, 16(%rsp)
+ 450      2410
+ 451 0435 E8000000 		call	memmove@PLT
+ 451      00
+ 452 043a 8B4304   		mov	4(%rbx), %eax
+ 453 043d 660F6F04 		movdqa	(%rsp), %xmm0
+ 453      24
+GAS LISTING /tmp/ccet7NcF.s 			page 11
+
+
+ 454 0442 4901C5   		addq	%rax, %r13
+ 455 0445 4901C4   		addq	%rax, %r12
+ 456 0448 83ED01   		subl	$1, %ebp
+ 457 044b 75A3     		jne	.L56
+ 458 044d 488B4328 		movq	40(%rbx), %rax
+ 459              	.L55:
+ 460 0451 660F7F00 		movdqa	%xmm0, (%rax)
+ 461 0455 4883C438 		addq	$56, %rsp
+ 462 0459 31C0     		xorl	%eax, %eax
+ 463 045b 5B       		popq	%rbx
+ 464 045c 5D       		popq	%rbp
+ 465 045d 415C     		popq	%r12
+ 466 045f 415D     		popq	%r13
+ 467 0461 415E     		popq	%r14
+ 468 0463 415F     		popq	%r15
+ 469 0465 C3       		ret
+ 470              		.cfi_endproc
+ 471              	.LFE574:
+ 472              		.size	KCipherVecDecryptCfb, .-KCipherVecDecryptCfb
+ 473 0466 662E0F1F 		.p2align 4,,15
+ 473      84000000 
+ 473      0000
+ 474              		.type	KCipherVecEncryptCfb, @function
+ 475              	KCipherVecEncryptCfb:
+ 476              	.LFB573:
+ 477              		.cfi_startproc
+ 478 0470 4157     		pushq	%r15
+ 479              		.cfi_def_cfa_offset 16
+ 480 0472 4156     		pushq	%r14
+ 481              		.cfi_def_cfa_offset 24
+ 482 0474 4155     		pushq	%r13
+ 483              		.cfi_def_cfa_offset 32
+ 484 0476 4154     		pushq	%r12
+ 485              		.cfi_def_cfa_offset 40
+ 486 0478 55       		pushq	%rbp
+ 487              		.cfi_def_cfa_offset 48
+ 488 0479 89CD     		movl	%ecx, %ebp
+ 489              		.cfi_offset 6, -48
+ 490              		.cfi_offset 12, -40
+ 491              		.cfi_offset 13, -32
+ 492              		.cfi_offset 14, -24
+ 493              		.cfi_offset 15, -16
+ 494 047b 53       		pushq	%rbx
+ 495              		.cfi_def_cfa_offset 56
+ 496 047c 4889FB   		movq	%rdi, %rbx
+ 497              		.cfi_offset 3, -56
+ 498 047f 4883EC38 		subq	$56, %rsp
+ 499              		.cfi_def_cfa_offset 112
+ 500 0483 488B4728 		movq	40(%rdi), %rax
+ 501 0487 85C9     		testl	%ecx, %ecx
+ 502 0489 660F6F00 		movdqa	(%rax), %xmm0
+ 503 048d 746E     		je	.L60
+ 504 048f 4C8D7C24 		leaq	32(%rsp), %r15
+ 504      20
+ 505 0494 4C8D7424 		leaq	16(%rsp), %r14
+ 505      10
+ 506 0499 4989F5   		movq	%rsi, %r13
+GAS LISTING /tmp/ccet7NcF.s 			page 12
+
+
+ 507 049c 4989D4   		movq	%rdx, %r12
+ 508 049f 90       		.p2align 4,,10
+ 509              		.p2align 3
+ 510              	.L61:
+ 511 04a0 488B4348 		movq	72(%rbx), %rax
+ 512 04a4 488B7B18 		movq	24(%rbx), %rdi
+ 513 04a8 FF5030   		call	*48(%rax)
+ 514 04ab 4C89EE   		movq	%r13, %rsi
+ 515 04ae BA100000 		movl	$16, %edx
+ 515      00
+ 516 04b3 4C89FF   		movq	%r15, %rdi
+ 517 04b6 660F7F04 		movdqa	%xmm0, (%rsp)
+ 517      24
+ 518 04bb E8000000 		call	memmove@PLT
+ 518      00
+ 519 04c0 4C89E7   		movq	%r12, %rdi
+ 520 04c3 BA100000 		movl	$16, %edx
+ 520      00
+ 521 04c8 4C89F6   		movq	%r14, %rsi
+ 522 04cb 660F6F04 		movdqa	(%rsp), %xmm0
+ 522      24
+ 523 04d0 660FEF44 		pxor	32(%rsp), %xmm0
+ 523      2420
+ 524 04d6 F30F7F44 		movdqu	%xmm0, 16(%rsp)
+ 524      2410
+ 525 04dc 660F7F04 		movdqa	%xmm0, (%rsp)
+ 525      24
+ 526 04e1 E8000000 		call	memmove@PLT
+ 526      00
+ 527 04e6 8B4304   		mov	4(%rbx), %eax
+ 528 04e9 660F6F04 		movdqa	(%rsp), %xmm0
+ 528      24
+ 529 04ee 4901C5   		addq	%rax, %r13
+ 530 04f1 4901C4   		addq	%rax, %r12
+ 531 04f4 83ED01   		subl	$1, %ebp
+ 532 04f7 75A7     		jne	.L61
+ 533 04f9 488B4328 		movq	40(%rbx), %rax
+ 534              	.L60:
+ 535 04fd 660F7F00 		movdqa	%xmm0, (%rax)
+ 536 0501 4883C438 		addq	$56, %rsp
+ 537 0505 31C0     		xorl	%eax, %eax
+ 538 0507 5B       		popq	%rbx
+ 539 0508 5D       		popq	%rbp
+ 540 0509 415C     		popq	%r12
+ 541 050b 415D     		popq	%r13
+ 542 050d 415E     		popq	%r14
+ 543 050f 415F     		popq	%r15
+ 544 0511 C3       		ret
+ 545              		.cfi_endproc
+ 546              	.LFE573:
+ 547              		.size	KCipherVecEncryptCfb, .-KCipherVecEncryptCfb
+ 548 0512 66666666 		.p2align 4,,15
+ 548      662E0F1F 
+ 548      84000000 
+ 548      0000
+ 549              		.type	KCipherVecDecryptPcbc, @function
+ 550              	KCipherVecDecryptPcbc:
+GAS LISTING /tmp/ccet7NcF.s 			page 13
+
+
+ 551              	.LFB572:
+ 552              		.cfi_startproc
+ 553 0520 4157     		pushq	%r15
+ 554              		.cfi_def_cfa_offset 16
+ 555 0522 4156     		pushq	%r14
+ 556              		.cfi_def_cfa_offset 24
+ 557 0524 4155     		pushq	%r13
+ 558              		.cfi_def_cfa_offset 32
+ 559 0526 4154     		pushq	%r12
+ 560              		.cfi_def_cfa_offset 40
+ 561 0528 55       		pushq	%rbp
+ 562              		.cfi_def_cfa_offset 48
+ 563 0529 89CD     		movl	%ecx, %ebp
+ 564              		.cfi_offset 6, -48
+ 565              		.cfi_offset 12, -40
+ 566              		.cfi_offset 13, -32
+ 567              		.cfi_offset 14, -24
+ 568              		.cfi_offset 15, -16
+ 569 052b 53       		pushq	%rbx
+ 570              		.cfi_def_cfa_offset 56
+ 571 052c 4889FB   		movq	%rdi, %rbx
+ 572              		.cfi_offset 3, -56
+ 573 052f 4883EC38 		subq	$56, %rsp
+ 574              		.cfi_def_cfa_offset 112
+ 575 0533 488B4728 		movq	40(%rdi), %rax
+ 576 0537 85C9     		testl	%ecx, %ecx
+ 577 0539 660F6F00 		movdqa	(%rax), %xmm0
+ 578 053d 660F7F04 		movdqa	%xmm0, (%rsp)
+ 578      24
+ 579 0542 7470     		je	.L65
+ 580 0544 4C8D7C24 		leaq	32(%rsp), %r15
+ 580      20
+ 581 0549 4C8D7424 		leaq	16(%rsp), %r14
+ 581      10
+ 582 054e 4989F5   		movq	%rsi, %r13
+ 583 0551 4989D4   		movq	%rdx, %r12
+ 584              		.p2align 4,,10
+ 585 0554 0F1F4000 		.p2align 3
+ 586              	.L66:
+ 587 0558 4C89EE   		movq	%r13, %rsi
+ 588 055b BA100000 		movl	$16, %edx
+ 588      00
+ 589 0560 4C89FF   		movq	%r15, %rdi
+ 590 0563 E8000000 		call	memmove@PLT
+ 590      00
+ 591 0568 488B4348 		movq	72(%rbx), %rax
+ 592 056c 488B7B20 		movq	32(%rbx), %rdi
+ 593 0570 F30F6F44 		movdqu	32(%rsp), %xmm0
+ 593      2420
+ 594 0576 FF5038   		call	*56(%rax)
+ 595 0579 660F6F0C 		movdqa	(%rsp), %xmm1
+ 595      24
+ 596 057e 4C89E7   		movq	%r12, %rdi
+ 597 0581 BA100000 		movl	$16, %edx
+ 597      00
+ 598 0586 4C89F6   		movq	%r14, %rsi
+ 599 0589 660FEFC8 		pxor	%xmm0, %xmm1
+GAS LISTING /tmp/ccet7NcF.s 			page 14
+
+
+ 600 058d F30F7F44 		movdqu	%xmm0, 16(%rsp)
+ 600      2410
+ 601 0593 660F7F0C 		movdqa	%xmm1, (%rsp)
+ 601      24
+ 602 0598 E8000000 		call	memmove@PLT
+ 602      00
+ 603 059d 8B4304   		mov	4(%rbx), %eax
+ 604 05a0 4901C5   		addq	%rax, %r13
+ 605 05a3 4901C4   		addq	%rax, %r12
+ 606 05a6 83ED01   		subl	$1, %ebp
+ 607 05a9 75AD     		jne	.L66
+ 608 05ab 488B4328 		movq	40(%rbx), %rax
+ 609 05af 660F6F04 		movdqa	(%rsp), %xmm0
+ 609      24
+ 610              	.L65:
+ 611 05b4 660F7F00 		movdqa	%xmm0, (%rax)
+ 612 05b8 4883C438 		addq	$56, %rsp
+ 613 05bc 31C0     		xorl	%eax, %eax
+ 614 05be 5B       		popq	%rbx
+ 615 05bf 5D       		popq	%rbp
+ 616 05c0 415C     		popq	%r12
+ 617 05c2 415D     		popq	%r13
+ 618 05c4 415E     		popq	%r14
+ 619 05c6 415F     		popq	%r15
+ 620 05c8 C3       		ret
+ 621              		.cfi_endproc
+ 622              	.LFE572:
+ 623              		.size	KCipherVecDecryptPcbc, .-KCipherVecDecryptPcbc
+ 624 05c9 0F1F8000 		.p2align 4,,15
+ 624      000000
+ 625              		.type	KCipherVecEncryptPcbc, @function
+ 626              	KCipherVecEncryptPcbc:
+ 627              	.LFB571:
+ 628              		.cfi_startproc
+ 629 05d0 4157     		pushq	%r15
+ 630              		.cfi_def_cfa_offset 16
+ 631 05d2 4156     		pushq	%r14
+ 632              		.cfi_def_cfa_offset 24
+ 633 05d4 4155     		pushq	%r13
+ 634              		.cfi_def_cfa_offset 32
+ 635 05d6 4154     		pushq	%r12
+ 636              		.cfi_def_cfa_offset 40
+ 637 05d8 55       		pushq	%rbp
+ 638              		.cfi_def_cfa_offset 48
+ 639 05d9 89CD     		movl	%ecx, %ebp
+ 640              		.cfi_offset 6, -48
+ 641              		.cfi_offset 12, -40
+ 642              		.cfi_offset 13, -32
+ 643              		.cfi_offset 14, -24
+ 644              		.cfi_offset 15, -16
+ 645 05db 53       		pushq	%rbx
+ 646              		.cfi_def_cfa_offset 56
+ 647 05dc 4889FB   		movq	%rdi, %rbx
+ 648              		.cfi_offset 3, -56
+ 649 05df 4883EC48 		subq	$72, %rsp
+ 650              		.cfi_def_cfa_offset 128
+ 651 05e3 488B4728 		movq	40(%rdi), %rax
+GAS LISTING /tmp/ccet7NcF.s 			page 15
+
+
+ 652 05e7 85C9     		testl	%ecx, %ecx
+ 653 05e9 660F6F00 		movdqa	(%rax), %xmm0
+ 654 05ed 660F7F44 		movdqa	%xmm0, 16(%rsp)
+ 654      2410
+ 655 05f3 0F848400 		je	.L70
+ 655      0000
+ 656 05f9 4C8D7C24 		leaq	48(%rsp), %r15
+ 656      30
+ 657 05fe 4C8D7424 		leaq	32(%rsp), %r14
+ 657      20
+ 658 0603 4989F5   		movq	%rsi, %r13
+ 659 0606 4989D4   		movq	%rdx, %r12
+ 660 0609 0F1F8000 		.p2align 4,,10
+ 660      000000
+ 661              		.p2align 3
+ 662              	.L71:
+ 663 0610 4C89EE   		movq	%r13, %rsi
+ 664 0613 BA100000 		movl	$16, %edx
+ 664      00
+ 665 0618 4C89FF   		movq	%r15, %rdi
+ 666 061b E8000000 		call	memmove@PLT
+ 666      00
+ 667 0620 488B4348 		movq	72(%rbx), %rax
+ 668 0624 488B7B18 		movq	24(%rbx), %rdi
+ 669 0628 F30F6F4C 		movdqu	48(%rsp), %xmm1
+ 669      2430
+ 670 062e 660F6F44 		movdqa	16(%rsp), %xmm0
+ 670      2410
+ 671 0634 660F7F0C 		movdqa	%xmm1, (%rsp)
+ 671      24
+ 672 0639 660FEFC1 		pxor	%xmm1, %xmm0
+ 673 063d FF5030   		call	*48(%rax)
+ 674 0640 4C89E7   		movq	%r12, %rdi
+ 675 0643 BA100000 		movl	$16, %edx
+ 675      00
+ 676 0648 4C89F6   		movq	%r14, %rsi
+ 677 064b 660F6F0C 		movdqa	(%rsp), %xmm1
+ 677      24
+ 678 0650 660FEFC8 		pxor	%xmm0, %xmm1
+ 679 0654 F30F7F44 		movdqu	%xmm0, 32(%rsp)
+ 679      2420
+ 680 065a 660F7F4C 		movdqa	%xmm1, 16(%rsp)
+ 680      2410
+ 681 0660 E8000000 		call	memmove@PLT
+ 681      00
+ 682 0665 8B4304   		mov	4(%rbx), %eax
+ 683 0668 4901C5   		addq	%rax, %r13
+ 684 066b 4901C4   		addq	%rax, %r12
+ 685 066e 83ED01   		subl	$1, %ebp
+ 686 0671 759D     		jne	.L71
+ 687 0673 488B4328 		movq	40(%rbx), %rax
+ 688 0677 660F6F44 		movdqa	16(%rsp), %xmm0
+ 688      2410
+ 689              	.L70:
+ 690 067d 660F7F00 		movdqa	%xmm0, (%rax)
+ 691 0681 4883C448 		addq	$72, %rsp
+ 692 0685 31C0     		xorl	%eax, %eax
+GAS LISTING /tmp/ccet7NcF.s 			page 16
+
+
+ 693 0687 5B       		popq	%rbx
+ 694 0688 5D       		popq	%rbp
+ 695 0689 415C     		popq	%r12
+ 696 068b 415D     		popq	%r13
+ 697 068d 415E     		popq	%r14
+ 698 068f 415F     		popq	%r15
+ 699 0691 C3       		ret
+ 700              		.cfi_endproc
+ 701              	.LFE571:
+ 702              		.size	KCipherVecEncryptPcbc, .-KCipherVecEncryptPcbc
+ 703 0692 66666666 		.p2align 4,,15
+ 703      662E0F1F 
+ 703      84000000 
+ 703      0000
+ 704              		.type	KCipherVecEncryptEcb, @function
+ 705              	KCipherVecEncryptEcb:
+ 706              	.LFB567:
+ 707              		.cfi_startproc
+ 708 06a0 4157     		pushq	%r15
+ 709              		.cfi_def_cfa_offset 16
+ 710 06a2 4156     		pushq	%r14
+ 711              		.cfi_def_cfa_offset 24
+ 712 06a4 4155     		pushq	%r13
+ 713              		.cfi_def_cfa_offset 32
+ 714 06a6 4154     		pushq	%r12
+ 715              		.cfi_def_cfa_offset 40
+ 716 06a8 55       		pushq	%rbp
+ 717              		.cfi_def_cfa_offset 48
+ 718 06a9 89CD     		movl	%ecx, %ebp
+ 719              		.cfi_offset 6, -48
+ 720              		.cfi_offset 12, -40
+ 721              		.cfi_offset 13, -32
+ 722              		.cfi_offset 14, -24
+ 723              		.cfi_offset 15, -16
+ 724 06ab 53       		pushq	%rbx
+ 725              		.cfi_def_cfa_offset 56
+ 726 06ac 4889FB   		movq	%rdi, %rbx
+ 727              		.cfi_offset 3, -56
+ 728 06af 4883EC28 		subq	$40, %rsp
+ 729              		.cfi_def_cfa_offset 96
+ 730 06b3 85C9     		testl	%ecx, %ecx
+ 731 06b5 7455     		je	.L75
+ 732 06b7 4C8D7C24 		leaq	16(%rsp), %r15
+ 732      10
+ 733 06bc 4989F5   		movq	%rsi, %r13
+ 734 06bf 4989D4   		movq	%rdx, %r12
+ 735              		.p2align 4,,10
+ 736 06c2 660F1F44 		.p2align 3
+ 736      0000
+ 737              	.L76:
+ 738 06c8 4C89EE   		movq	%r13, %rsi
+ 739 06cb BA100000 		movl	$16, %edx
+ 739      00
+ 740 06d0 4C89FF   		movq	%r15, %rdi
+ 741 06d3 E8000000 		call	memmove@PLT
+ 741      00
+ 742 06d8 488B4348 		movq	72(%rbx), %rax
+GAS LISTING /tmp/ccet7NcF.s 			page 17
+
+
+ 743 06dc 488B7B18 		movq	24(%rbx), %rdi
+ 744 06e0 F30F6F44 		movdqu	16(%rsp), %xmm0
+ 744      2410
+ 745 06e6 FF5030   		call	*48(%rax)
+ 746 06e9 4C89E7   		movq	%r12, %rdi
+ 747 06ec BA100000 		movl	$16, %edx
+ 747      00
+ 748 06f1 4889E6   		movq	%rsp, %rsi
+ 749 06f4 F30F7F04 		movdqu	%xmm0, (%rsp)
+ 749      24
+ 750 06f9 E8000000 		call	memmove@PLT
+ 750      00
+ 751 06fe 8B4304   		mov	4(%rbx), %eax
+ 752 0701 4901C5   		addq	%rax, %r13
+ 753 0704 4901C4   		addq	%rax, %r12
+ 754 0707 83ED01   		subl	$1, %ebp
+ 755 070a 75BC     		jne	.L76
+ 756              	.L75:
+ 757 070c 4883C428 		addq	$40, %rsp
+ 758 0710 31C0     		xorl	%eax, %eax
+ 759 0712 5B       		popq	%rbx
+ 760 0713 5D       		popq	%rbp
+ 761 0714 415C     		popq	%r12
+ 762 0716 415D     		popq	%r13
+ 763 0718 415E     		popq	%r14
+ 764 071a 415F     		popq	%r15
+ 765 071c C3       		ret
+ 766              		.cfi_endproc
+ 767              	.LFE567:
+ 768              		.size	KCipherVecEncryptEcb, .-KCipherVecEncryptEcb
+ 769 071d 0F1F00   		.p2align 4,,15
+ 770              		.type	KCipherVecEncryptCbc, @function
+ 771              	KCipherVecEncryptCbc:
+ 772              	.LFB569:
+ 773              		.cfi_startproc
+ 774 0720 4157     		pushq	%r15
+ 775              		.cfi_def_cfa_offset 16
+ 776 0722 4156     		pushq	%r14
+ 777              		.cfi_def_cfa_offset 24
+ 778 0724 4155     		pushq	%r13
+ 779              		.cfi_def_cfa_offset 32
+ 780 0726 4189CD   		movl	%ecx, %r13d
+ 781              		.cfi_offset 13, -32
+ 782              		.cfi_offset 14, -24
+ 783              		.cfi_offset 15, -16
+ 784 0729 4154     		pushq	%r12
+ 785              		.cfi_def_cfa_offset 40
+ 786 072b 4989F4   		movq	%rsi, %r12
+ 787              		.cfi_offset 12, -40
+ 788 072e 55       		pushq	%rbp
+ 789              		.cfi_def_cfa_offset 48
+ 790 072f 4889D5   		movq	%rdx, %rbp
+ 791              		.cfi_offset 6, -48
+ 792 0732 BA100000 		movl	$16, %edx
+ 792      00
+ 793 0737 53       		pushq	%rbx
+ 794              		.cfi_def_cfa_offset 56
+GAS LISTING /tmp/ccet7NcF.s 			page 18
+
+
+ 795 0738 4889FB   		movq	%rdi, %rbx
+ 796              		.cfi_offset 3, -56
+ 797 073b 4883EC48 		subq	$72, %rsp
+ 798              		.cfi_def_cfa_offset 128
+ 799 073f 488B7728 		movq	40(%rdi), %rsi
+ 800 0743 488D7C24 		leaq	48(%rsp), %rdi
+ 800      30
+ 801 0748 4C8D7424 		leaq	16(%rsp), %r14
+ 801      10
+ 802 074d E8000000 		call	memmove@PLT
+ 802      00
+ 803 0752 F30F6F44 		movdqu	48(%rsp), %xmm0
+ 803      2430
+ 804 0758 4585ED   		testl	%r13d, %r13d
+ 805 075b 660F7F04 		movdqa	%xmm0, (%rsp)
+ 805      24
+ 806 0760 745E     		je	.L80
+ 807 0762 4C8D7C24 		leaq	32(%rsp), %r15
+ 807      20
+ 808 0767 660F1F84 		.p2align 4,,10
+ 808      00000000 
+ 808      00
+ 809              		.p2align 3
+ 810              	.L81:
+ 811 0770 4C89E6   		movq	%r12, %rsi
+ 812 0773 BA100000 		movl	$16, %edx
+ 812      00
+ 813 0778 4C89FF   		movq	%r15, %rdi
+ 814 077b E8000000 		call	memmove@PLT
+ 814      00
+ 815 0780 F30F6F44 		movdqu	32(%rsp), %xmm0
+ 815      2420
+ 816 0786 488B4348 		movq	72(%rbx), %rax
+ 817 078a 488B7B18 		movq	24(%rbx), %rdi
+ 818 078e 660FEF04 		pxor	(%rsp), %xmm0
+ 818      24
+ 819 0793 FF5030   		call	*48(%rax)
+ 820 0796 4889EF   		movq	%rbp, %rdi
+ 821 0799 BA100000 		movl	$16, %edx
+ 821      00
+ 822 079e 4C89F6   		movq	%r14, %rsi
+ 823 07a1 660F7F04 		movdqa	%xmm0, (%rsp)
+ 823      24
+ 824 07a6 F30F7F44 		movdqu	%xmm0, 16(%rsp)
+ 824      2410
+ 825 07ac E8000000 		call	memmove@PLT
+ 825      00
+ 826 07b1 8B4304   		mov	4(%rbx), %eax
+ 827 07b4 4901C4   		addq	%rax, %r12
+ 828 07b7 4801C5   		addq	%rax, %rbp
+ 829 07ba 4183ED01 		subl	$1, %r13d
+ 830 07be 75B0     		jne	.L81
+ 831              	.L80:
+ 832 07c0 488B7B28 		movq	40(%rbx), %rdi
+ 833 07c4 4C89F6   		movq	%r14, %rsi
+ 834 07c7 BA100000 		movl	$16, %edx
+ 834      00
+GAS LISTING /tmp/ccet7NcF.s 			page 19
+
+
+ 835 07cc 660F6F04 		movdqa	(%rsp), %xmm0
+ 835      24
+ 836 07d1 F30F7F44 		movdqu	%xmm0, 16(%rsp)
+ 836      2410
+ 837 07d7 E8000000 		call	memmove@PLT
+ 837      00
+ 838 07dc 4883C448 		addq	$72, %rsp
+ 839 07e0 31C0     		xorl	%eax, %eax
+ 840 07e2 5B       		popq	%rbx
+ 841 07e3 5D       		popq	%rbp
+ 842 07e4 415C     		popq	%r12
+ 843 07e6 415D     		popq	%r13
+ 844 07e8 415E     		popq	%r14
+ 845 07ea 415F     		popq	%r15
+ 846 07ec C3       		ret
+ 847              		.cfi_endproc
+ 848              	.LFE569:
+ 849              		.size	KCipherVecEncryptCbc, .-KCipherVecEncryptCbc
+ 850 07ed 0F1F00   		.p2align 4,,15
+ 851              		.type	KCipherVecDecryptCbc, @function
+ 852              	KCipherVecDecryptCbc:
+ 853              	.LFB570:
+ 854              		.cfi_startproc
+ 855 07f0 4157     		pushq	%r15
+ 856              		.cfi_def_cfa_offset 16
+ 857 07f2 4156     		pushq	%r14
+ 858              		.cfi_def_cfa_offset 24
+ 859 07f4 4155     		pushq	%r13
+ 860              		.cfi_def_cfa_offset 32
+ 861 07f6 4189CD   		movl	%ecx, %r13d
+ 862              		.cfi_offset 13, -32
+ 863              		.cfi_offset 14, -24
+ 864              		.cfi_offset 15, -16
+ 865 07f9 4154     		pushq	%r12
+ 866              		.cfi_def_cfa_offset 40
+ 867 07fb 4989F4   		movq	%rsi, %r12
+ 868              		.cfi_offset 12, -40
+ 869 07fe 55       		pushq	%rbp
+ 870              		.cfi_def_cfa_offset 48
+ 871 07ff 4889D5   		movq	%rdx, %rbp
+ 872              		.cfi_offset 6, -48
+ 873 0802 BA100000 		movl	$16, %edx
+ 873      00
+ 874 0807 53       		pushq	%rbx
+ 875              		.cfi_def_cfa_offset 56
+ 876 0808 4889FB   		movq	%rdi, %rbx
+ 877              		.cfi_offset 3, -56
+ 878 080b 4883EC58 		subq	$88, %rsp
+ 879              		.cfi_def_cfa_offset 144
+ 880 080f 488B7730 		movq	48(%rdi), %rsi
+ 881 0813 488D7C24 		leaq	64(%rsp), %rdi
+ 881      40
+ 882 0818 E8000000 		call	memmove@PLT
+ 882      00
+ 883 081d 4585ED   		testl	%r13d, %r13d
+ 884 0820 F30F6F54 		movdqu	64(%rsp), %xmm2
+ 884      2440
+GAS LISTING /tmp/ccet7NcF.s 			page 20
+
+
+ 885 0826 7478     		je	.L86
+ 886 0828 4C8D7C24 		leaq	48(%rsp), %r15
+ 886      30
+ 887 082d 4C8D7424 		leaq	32(%rsp), %r14
+ 887      20
+ 888              		.p2align 4,,10
+ 889 0832 660F1F44 		.p2align 3
+ 889      0000
+ 890              	.L87:
+ 891 0838 4C89E6   		movq	%r12, %rsi
+ 892 083b BA100000 		movl	$16, %edx
+ 892      00
+ 893 0840 4C89FF   		movq	%r15, %rdi
+ 894 0843 660F7F54 		movdqa	%xmm2, 16(%rsp)
+ 894      2410
+ 895 0849 E8000000 		call	memmove@PLT
+ 895      00
+ 896 084e 488B4348 		movq	72(%rbx), %rax
+ 897 0852 488B7B20 		movq	32(%rbx), %rdi
+ 898 0856 F30F6F4C 		movdqu	48(%rsp), %xmm1
+ 898      2430
+ 899 085c 660F6FC1 		movdqa	%xmm1, %xmm0
+ 900 0860 660F7F0C 		movdqa	%xmm1, (%rsp)
+ 900      24
+ 901 0865 FF5038   		call	*56(%rax)
+ 902 0868 4889EF   		movq	%rbp, %rdi
+ 903 086b BA100000 		movl	$16, %edx
+ 903      00
+ 904 0870 4C89F6   		movq	%r14, %rsi
+ 905 0873 660F6F54 		movdqa	16(%rsp), %xmm2
+ 905      2410
+ 906 0879 660FEFC2 		pxor	%xmm2, %xmm0
+ 907 087d F30F7F44 		movdqu	%xmm0, 32(%rsp)
+ 907      2420
+ 908 0883 E8000000 		call	memmove@PLT
+ 908      00
+ 909 0888 8B4304   		mov	4(%rbx), %eax
+ 910 088b 660F6F0C 		movdqa	(%rsp), %xmm1
+ 910      24
+ 911 0890 660F6FD1 		movdqa	%xmm1, %xmm2
+ 912 0894 4901C4   		addq	%rax, %r12
+ 913 0897 4801C5   		addq	%rax, %rbp
+ 914 089a 4183ED01 		subl	$1, %r13d
+ 915 089e 7598     		jne	.L87
+ 916              	.L86:
+ 917 08a0 488B4330 		movq	48(%rbx), %rax
+ 918 08a4 660F7F10 		movdqa	%xmm2, (%rax)
+ 919 08a8 4883C458 		addq	$88, %rsp
+ 920 08ac 31C0     		xorl	%eax, %eax
+ 921 08ae 5B       		popq	%rbx
+ 922 08af 5D       		popq	%rbp
+ 923 08b0 415C     		popq	%r12
+ 924 08b2 415D     		popq	%r13
+ 925 08b4 415E     		popq	%r14
+ 926 08b6 415F     		popq	%r15
+ 927 08b8 C3       		ret
+ 928              		.cfi_endproc
+GAS LISTING /tmp/ccet7NcF.s 			page 21
+
+
+ 929              	.LFE570:
+ 930              		.size	KCipherVecDecryptCbc, .-KCipherVecDecryptCbc
+ 931 08b9 0F1F8000 		.p2align 4,,15
+ 931      000000
+ 932              		.type	KCipherVecDecrypt, @function
+ 933              	KCipherVecDecrypt:
+ 934              	.LFB566:
+ 935              		.cfi_startproc
+ 936 08c0 48895C24 		movq	%rbx, -16(%rsp)
+ 936      F0
+ 937 08c5 48896C24 		movq	%rbp, -8(%rsp)
+ 937      F8
+ 938 08ca 4883EC38 		subq	$56, %rsp
+ 939              		.cfi_def_cfa_offset 64
+ 940 08ce 4889D5   		movq	%rdx, %rbp
+ 941              		.cfi_offset 6, -16
+ 942              		.cfi_offset 3, -24
+ 943 08d1 488B5748 		movq	72(%rdi), %rdx
+ 944 08d5 4889FB   		movq	%rdi, %rbx
+ 945 08d8 B8080E09 		movl	$-2029449720, %eax
+ 945      87
+ 946 08dd 833A01   		cmpl	$1, (%rdx)
+ 947 08e0 7537     		jne	.L93
+ 948 08e2 488D7C24 		leaq	16(%rsp), %rdi
+ 948      10
+ 949 08e7 BA100000 		movl	$16, %edx
+ 949      00
+ 950 08ec E8000000 		call	memmove@PLT
+ 950      00
+ 951 08f1 488B4348 		movq	72(%rbx), %rax
+ 952 08f5 488B7B20 		movq	32(%rbx), %rdi
+ 953 08f9 F30F6F44 		movdqu	16(%rsp), %xmm0
+ 953      2410
+ 954 08ff FF5038   		call	*56(%rax)
+ 955 0902 4889E6   		movq	%rsp, %rsi
+ 956 0905 BA100000 		movl	$16, %edx
+ 956      00
+ 957 090a 4889EF   		movq	%rbp, %rdi
+ 958 090d F30F7F04 		movdqu	%xmm0, (%rsp)
+ 958      24
+ 959 0912 E8000000 		call	memmove@PLT
+ 959      00
+ 960 0917 31C0     		xorl	%eax, %eax
+ 961              	.L93:
+ 962 0919 488B5C24 		movq	40(%rsp), %rbx
+ 962      28
+ 963 091e 488B6C24 		movq	48(%rsp), %rbp
+ 963      30
+ 964 0923 4883C438 		addq	$56, %rsp
+ 965 0927 C3       		ret
+ 966              		.cfi_endproc
+ 967              	.LFE566:
+ 968              		.size	KCipherVecDecrypt, .-KCipherVecDecrypt
+ 969 0928 0F1F8400 		.p2align 4,,15
+ 969      00000000 
+ 970              		.type	KCipherVecEncrypt, @function
+ 971              	KCipherVecEncrypt:
+GAS LISTING /tmp/ccet7NcF.s 			page 22
+
+
+ 972              	.LFB565:
+ 973              		.cfi_startproc
+ 974 0930 48895C24 		movq	%rbx, -16(%rsp)
+ 974      F0
+ 975 0935 48896C24 		movq	%rbp, -8(%rsp)
+ 975      F8
+ 976 093a 4883EC38 		subq	$56, %rsp
+ 977              		.cfi_def_cfa_offset 64
+ 978 093e 4889D5   		movq	%rdx, %rbp
+ 979              		.cfi_offset 6, -16
+ 980              		.cfi_offset 3, -24
+ 981 0941 488B5748 		movq	72(%rdi), %rdx
+ 982 0945 4889FB   		movq	%rdi, %rbx
+ 983 0948 B8080E09 		movl	$-2029449720, %eax
+ 983      87
+ 984 094d 833A01   		cmpl	$1, (%rdx)
+ 985 0950 7537     		jne	.L98
+ 986 0952 488D7C24 		leaq	16(%rsp), %rdi
+ 986      10
+ 987 0957 BA100000 		movl	$16, %edx
+ 987      00
+ 988 095c E8000000 		call	memmove@PLT
+ 988      00
+ 989 0961 488B4348 		movq	72(%rbx), %rax
+ 990 0965 488B7B18 		movq	24(%rbx), %rdi
+ 991 0969 F30F6F44 		movdqu	16(%rsp), %xmm0
+ 991      2410
+ 992 096f FF5030   		call	*48(%rax)
+ 993 0972 4889E6   		movq	%rsp, %rsi
+ 994 0975 BA100000 		movl	$16, %edx
+ 994      00
+ 995 097a 4889EF   		movq	%rbp, %rdi
+ 996 097d F30F7F04 		movdqu	%xmm0, (%rsp)
+ 996      24
+ 997 0982 E8000000 		call	memmove@PLT
+ 997      00
+ 998 0987 31C0     		xorl	%eax, %eax
+ 999              	.L98:
+ 1000 0989 488B5C24 		movq	40(%rsp), %rbx
+ 1000      28
+ 1001 098e 488B6C24 		movq	48(%rsp), %rbp
+ 1001      30
+ 1002 0993 4883C438 		addq	$56, %rsp
+ 1003 0997 C3       		ret
+ 1004              		.cfi_endproc
+ 1005              	.LFE565:
+ 1006              		.size	KCipherVecEncrypt, .-KCipherVecEncrypt
+ 1007 0998 0F1F8400 		.p2align 4,,15
+ 1007      00000000 
+ 1008              		.type	KCipherVecDecryptOfb, @function
+ 1009              	KCipherVecDecryptOfb:
+ 1010              	.LFB576:
+ 1011              		.cfi_startproc
+ 1012 09a0 4157     		pushq	%r15
+ 1013              		.cfi_def_cfa_offset 16
+ 1014 09a2 4156     		pushq	%r14
+ 1015              		.cfi_def_cfa_offset 24
+GAS LISTING /tmp/ccet7NcF.s 			page 23
+
+
+ 1016 09a4 4155     		pushq	%r13
+ 1017              		.cfi_def_cfa_offset 32
+ 1018 09a6 4154     		pushq	%r12
+ 1019              		.cfi_def_cfa_offset 40
+ 1020 09a8 55       		pushq	%rbp
+ 1021              		.cfi_def_cfa_offset 48
+ 1022 09a9 89CD     		movl	%ecx, %ebp
+ 1023              		.cfi_offset 6, -48
+ 1024              		.cfi_offset 12, -40
+ 1025              		.cfi_offset 13, -32
+ 1026              		.cfi_offset 14, -24
+ 1027              		.cfi_offset 15, -16
+ 1028 09ab 53       		pushq	%rbx
+ 1029              		.cfi_def_cfa_offset 56
+ 1030 09ac 4889FB   		movq	%rdi, %rbx
+ 1031              		.cfi_offset 3, -56
+ 1032 09af 4883EC38 		subq	$56, %rsp
+ 1033              		.cfi_def_cfa_offset 112
+ 1034 09b3 488B4728 		movq	40(%rdi), %rax
+ 1035 09b7 85C9     		testl	%ecx, %ecx
+ 1036 09b9 660F6F00 		movdqa	(%rax), %xmm0
+ 1037 09bd 660F7F04 		movdqa	%xmm0, (%rsp)
+ 1037      24
+ 1038 09c2 7471     		je	.L101
+ 1039 09c4 4C8D7C24 		leaq	32(%rsp), %r15
+ 1039      20
+ 1040 09c9 4C8D7424 		leaq	16(%rsp), %r14
+ 1040      10
+ 1041 09ce 4989F5   		movq	%rsi, %r13
+ 1042 09d1 4989D4   		movq	%rdx, %r12
+ 1043              		.p2align 4,,10
+ 1044 09d4 0F1F4000 		.p2align 3
+ 1045              	.L102:
+ 1046 09d8 488B4348 		movq	72(%rbx), %rax
+ 1047 09dc 488B7B18 		movq	24(%rbx), %rdi
+ 1048 09e0 660F6F04 		movdqa	(%rsp), %xmm0
+ 1048      24
+ 1049 09e5 FF5030   		call	*48(%rax)
+ 1050 09e8 4C89EE   		movq	%r13, %rsi
+ 1051 09eb BA100000 		movl	$16, %edx
+ 1051      00
+ 1052 09f0 4C89FF   		movq	%r15, %rdi
+ 1053 09f3 660F7F04 		movdqa	%xmm0, (%rsp)
+ 1053      24
+ 1054 09f8 E8000000 		call	memmove@PLT
+ 1054      00
+ 1055 09fd 4C89E7   		movq	%r12, %rdi
+ 1056 0a00 BA100000 		movl	$16, %edx
+ 1056      00
+ 1057 0a05 4C89F6   		movq	%r14, %rsi
+ 1058 0a08 F30F6F4C 		movdqu	32(%rsp), %xmm1
+ 1058      2420
+ 1059 0a0e 660FEF0C 		pxor	(%rsp), %xmm1
+ 1059      24
+ 1060 0a13 F30F7F4C 		movdqu	%xmm1, 16(%rsp)
+ 1060      2410
+ 1061 0a19 E8000000 		call	memmove@PLT
+GAS LISTING /tmp/ccet7NcF.s 			page 24
+
+
+ 1061      00
+ 1062 0a1e 8B4304   		mov	4(%rbx), %eax
+ 1063 0a21 4901C5   		addq	%rax, %r13
+ 1064 0a24 4901C4   		addq	%rax, %r12
+ 1065 0a27 83ED01   		subl	$1, %ebp
+ 1066 0a2a 75AC     		jne	.L102
+ 1067 0a2c 488B4328 		movq	40(%rbx), %rax
+ 1068 0a30 660F6F04 		movdqa	(%rsp), %xmm0
+ 1068      24
+ 1069              	.L101:
+ 1070 0a35 660F7F00 		movdqa	%xmm0, (%rax)
+ 1071 0a39 4883C438 		addq	$56, %rsp
+ 1072 0a3d 31C0     		xorl	%eax, %eax
+ 1073 0a3f 5B       		popq	%rbx
+ 1074 0a40 5D       		popq	%rbp
+ 1075 0a41 415C     		popq	%r12
+ 1076 0a43 415D     		popq	%r13
+ 1077 0a45 415E     		popq	%r14
+ 1078 0a47 415F     		popq	%r15
+ 1079 0a49 C3       		ret
+ 1080              		.cfi_endproc
+ 1081              	.LFE576:
+ 1082              		.size	KCipherVecDecryptOfb, .-KCipherVecDecryptOfb
+ 1083              	.globl KCipherVecClassName
+ 1084              		.section	.rodata
+ 1085              		.type	KCipherVecClassName, @object
+ 1086              		.size	KCipherVecClassName, 12
+ 1087              	KCipherVecClassName:
+ 1088 0000 43495048 		.string	"CIPHER_IMPL"
+ 1088      45525F49 
+ 1088      4D504C00 
+ 1089              		.section	.data.rel.local,"aw",@progbits
+ 1090              		.align 32
+ 1091              		.type	KCipherVec_vt_v1, @object
+ 1092              		.size	KCipherVec_vt_v1, 176
+ 1093              	KCipherVec_vt_v1:
+ 1094 0000 01000000 		.long	1
+ 1095 0004 00000000 		.long	0
+ 1096 0008 00000000 		.quad	KCipherVecDestroy
+ 1096      00000000 
+ 1097 0010 00000000 		.quad	KCipherVecSetEncryptKey
+ 1097      00000000 
+ 1098 0018 00000000 		.quad	KCipherVecSetDecryptKey
+ 1098      00000000 
+ 1099 0020 00000000 		.quad	KCipherVecSetEncryptIvec
+ 1099      00000000 
+ 1100 0028 00000000 		.quad	KCipherVecSetDecryptIvec
+ 1100      00000000 
+ 1101 0030 00000000 		.quad	KCipherVecSetEncryptCounterFunc
+ 1101      00000000 
+ 1102 0038 00000000 		.quad	KCipherVecSetDecryptCounterFunc
+ 1102      00000000 
+ 1103 0040 00000000 		.quad	KCipherVecEncrypt
+ 1103      00000000 
+ 1104 0048 00000000 		.quad	KCipherVecDecrypt
+ 1104      00000000 
+ 1105 0050 00000000 		.quad	KCipherVecEncryptEcb
+GAS LISTING /tmp/ccet7NcF.s 			page 25
+
+
+ 1105      00000000 
+ 1106 0058 00000000 		.quad	KCipherVecDecryptEcb
+ 1106      00000000 
+ 1107 0060 00000000 		.quad	KCipherVecEncryptCbc
+ 1107      00000000 
+ 1108 0068 00000000 		.quad	KCipherVecDecryptCbc
+ 1108      00000000 
+ 1109 0070 00000000 		.quad	KCipherVecEncryptPcbc
+ 1109      00000000 
+ 1110 0078 00000000 		.quad	KCipherVecDecryptPcbc
+ 1110      00000000 
+ 1111 0080 00000000 		.quad	KCipherVecEncryptCfb
+ 1111      00000000 
+ 1112 0088 00000000 		.quad	KCipherVecDecryptCfb
+ 1112      00000000 
+ 1113 0090 00000000 		.quad	KCipherVecEncryptOfb
+ 1113      00000000 
+ 1114 0098 00000000 		.quad	KCipherVecDecryptOfb
+ 1114      00000000 
+ 1115 00a0 00000000 		.quad	KCipherVecEncryptCtr
+ 1115      00000000 
+ 1116 00a8 00000000 		.quad	KCipherVecDecryptCtr
+ 1116      00000000 
+ 1117              		.ident	"GCC: (GNU) 4.4.2"
+ 1118              		.section	.note.GNU-stack,"",@progbits
+GAS LISTING /tmp/ccet7NcF.s 			page 26
+
+
+DEFINED SYMBOLS
+                            *ABS*:0000000000000000 cipher-vec.c
+     /tmp/ccet7NcF.s:5      .text:0000000000000000 KCipherVecSetEncryptKey
+     /tmp/ccet7NcF.s:25     .text:0000000000000020 KCipherVecSetDecryptKey
+     /tmp/ccet7NcF.s:45     .text:0000000000000040 KCipherVecSetEncryptCounterFunc
+     /tmp/ccet7NcF.s:56     .text:0000000000000050 KCipherVecSetDecryptCounterFunc
+     /tmp/ccet7NcF.s:67     .text:0000000000000060 KCipherVecEncryptCtr
+     /tmp/ccet7NcF.s:77     .text:0000000000000070 KCipherVecDecryptCtr
+     /tmp/ccet7NcF.s:88     .text:0000000000000080 KCipherVecMake
+     /tmp/ccet7NcF.s:1087   .rodata:0000000000000000 KCipherVecClassName
+     /tmp/ccet7NcF.s:1093   .data.rel.local:0000000000000000 KCipherVec_vt_v1
+     /tmp/ccet7NcF.s:195    .text:0000000000000210 KCipherVecSetDecryptIvec
+     /tmp/ccet7NcF.s:212    .text:0000000000000230 KCipherVecSetEncryptIvec
+     /tmp/ccet7NcF.s:229    .text:0000000000000250 KCipherVecDestroy
+     /tmp/ccet7NcF.s:257    .text:0000000000000290 KCipherVecDecryptEcb
+     /tmp/ccet7NcF.s:323    .text:0000000000000310 KCipherVecEncryptOfb
+     /tmp/ccet7NcF.s:399    .text:00000000000003c0 KCipherVecDecryptCfb
+     /tmp/ccet7NcF.s:475    .text:0000000000000470 KCipherVecEncryptCfb
+     /tmp/ccet7NcF.s:550    .text:0000000000000520 KCipherVecDecryptPcbc
+     /tmp/ccet7NcF.s:626    .text:00000000000005d0 KCipherVecEncryptPcbc
+     /tmp/ccet7NcF.s:705    .text:00000000000006a0 KCipherVecEncryptEcb
+     /tmp/ccet7NcF.s:771    .text:0000000000000720 KCipherVecEncryptCbc
+     /tmp/ccet7NcF.s:852    .text:00000000000007f0 KCipherVecDecryptCbc
+     /tmp/ccet7NcF.s:933    .text:00000000000008c0 KCipherVecDecrypt
+     /tmp/ccet7NcF.s:971    .text:0000000000000930 KCipherVecEncrypt
+     /tmp/ccet7NcF.s:1009   .text:00000000000009a0 KCipherVecDecryptOfb
+
+UNDEFINED SYMBOLS
+_GLOBAL_OFFSET_TABLE_
+KNullBlockCipherVecMake
+calloc
+KCipherInit
+KAESBlockCipherVecMake
+memcpy
+KCipherDestroy
+free
+memmove

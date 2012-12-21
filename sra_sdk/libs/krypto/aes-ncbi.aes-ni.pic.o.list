@@ -1,0 +1,4329 @@
+GAS LISTING /tmp/ccVFFGPf.s 			page 1
+
+
+   1              		.file	"aes-ncbi.c"
+   2              		.text
+   3              		.p2align 4,,15
+   4              		.type	KAESBlockCipherVecAesNiDestroy, @function
+   5              	KAESBlockCipherVecAesNiDestroy:
+   6              	.LFB736:
+   7              		.cfi_startproc
+   8 0000 F3       		rep
+   9 0001 C3       		ret
+  10              		.cfi_endproc
+  11              	.LFE736:
+  12              		.size	KAESBlockCipherVecAesNiDestroy, .-KAESBlockCipherVecAesNiDestroy
+  13 0002 66666666 		.p2align 4,,15
+  13      662E0F1F 
+  13      84000000 
+  13      0000
+  14              		.type	KAESBlockCipherVecAesNiBlockSize, @function
+  15              	KAESBlockCipherVecAesNiBlockSize:
+  16              	.LFB737:
+  17              		.cfi_startproc
+  18 0010 B8100000 		movl	$16, %eax
+  18      00
+  19 0015 C3       		ret
+  20              		.cfi_endproc
+  21              	.LFE737:
+  22              		.size	KAESBlockCipherVecAesNiBlockSize, .-KAESBlockCipherVecAesNiBlockSize
+  23 0016 662E0F1F 		.p2align 4,,15
+  23      84000000 
+  23      0000
+  24              		.type	KAESBlockCipherVecAesNiKeySize, @function
+  25              	KAESBlockCipherVecAesNiKeySize:
+  26              	.LFB738:
+  27              		.cfi_startproc
+  28 0020 B8000100 		movl	$256, %eax
+  28      00
+  29 0025 C3       		ret
+  30              		.cfi_endproc
+  31              	.LFE738:
+  32              		.size	KAESBlockCipherVecAesNiKeySize, .-KAESBlockCipherVecAesNiKeySize
+  33 0026 662E0F1F 		.p2align 4,,15
+  33      84000000 
+  33      0000
+  34              	.globl KAESBlockCipherVecAesNiMake
+  35              		.type	KAESBlockCipherVecAesNiMake, @function
+  36              	KAESBlockCipherVecAesNiMake:
+  37              	.LFB744:
+  38              		.cfi_startproc
+  39 0030 4885FF   		testq	%rdi, %rdi
+  40 0033 53       		pushq	%rbx
+  41              		.cfi_def_cfa_offset 16
+  42 0034 B8878F00 		movl	$-2030006393, %eax
+  42      87
+  43 0039 7445     		je	.L9
+  44              		.cfi_offset 3, -16
+  45 003b B8010000 		movl	$1, %eax
+  45      00
+  46 0040 48C70700 		movq	$0, (%rdi)
+GAS LISTING /tmp/ccVFFGPf.s 			page 2
+
+
+  46      000000
+  47              	#APP
+  48              	# 2513 "/home/rodarmer/sra_sdk-2.2.2a/libs/krypto/aes-ncbi.c" 1
+   1              	/*===========================================================================
+   2              	 *
+   3              	 *                            PUBLIC DOMAIN NOTICE
+   4              	 *               National Center for Biotechnology Information
+   5              	 *
+   6              	 *  This software/database is a "United States Government Work" under the
+   7              	 *  terms of the United States Copyright Act.  It was written as part of
+   8              	 *  the author's official duties as a United States Government employee and
+   9              	 *  thus cannot be copyrighted.  This software/database is freely available
+  10              	 *  to the public for use. The National Library of Medicine and the U.S.
+  11              	 *  Government have not placed any restriction on its use or reproduction.
+  12              	 *
+  13              	 *  Although all reasonable efforts have been taken to ensure the accuracy
+  14              	 *  and reliability of the software and data, the NLM and the U.S.
+  15              	 *  Government do not and cannot warrant the performance or results that
+  16              	 *  may be obtained by using this software or data. The NLM and the U.S.
+  17              	 *  Government disclaim all warranties, express or implied, including
+  18              	 *  warranties of performance, merchantability or fitness for any particular
+  19              	 *  purpose.
+  20              	 *
+  21              	 *  Please cite the author in any work or product based on this material.
+  22              	 *
+  23              	 * ===========================================================================
+  24              	 */
+  25              	
+  26              	
+  27              	#include <krypto/extern.h>
+  28              	
+  29              	#include "ncbi-priv.h"
+  30              	#include "aes-ncbi-priv.h"
+  31              	#include "cipher-priv.h"
+  32              	#include "blockcipher-priv.h"
+  33              	
+  34              	#include <klib/debug.h>
+  35              	#include <klib/out.h>
+  36              	#include <klib/rc.h>
+  37              	
+  38              	
+  39              	#include <byteswap.h>
+  40              	#include <string.h>
+  41              	#include <stdint.h>
+  42              	#include <stdlib.h>
+  43              	#include <assert.h>
+  44              	#include <sysalloc.h>
+  45              	
+  46              	#if USE_VEC
+  47              	#include <cpuid.h>
+  48              	#endif
+  49              	
+  50              	#if USE_VECREG
+  51              	#include <v128.h>
+  52              	#endif
+  53              	
+  54              	/*
+GAS LISTING /tmp/ccVFFGPf.s 			page 3
+
+
+  55              	 * This implements the AES cipher as defined by FIPS-197 from NIST
+  56              	 *  
+  57              	 * Notes on implmentation:
+  58              	 *
+  59              	 * NOTE:
+  60              	 * Byte ordering in AES is not critical but unllike the original implmentation
+  61              	 * bytes are not re-ordered to a big endian order upon reading them in and this
+  62              	 * code will expect to run on an Intel/AMD type processor and might have issues
+  63              	 * on some big endian processors.
+  64              	 *
+  65              	 * NOTE:
+  66              	 * Many functions are written as static inline functions to
+  67              	 * facilitate GCC type assembly language optimization on various processors
+  68              	 *
+  69              	 * NOTE:
+  70              	 * This implements the Equivalent Inverse Cipher not the Inverse Cipher.  In
+  71              	 * general functions will match those defined in the FIPS-197 document where they
+  72              	 * do not get optimized away for Intel/AMD XMM registers and AES-NI instructions.
+  73              	 *
+  74              	 * NOTE:
+  75              	 * C-99 types are used for specific sized types.  An unaddornded unsigned type
+  76              	 * is used for many index type variables to allow the compiler choice in
+  77              	 * size where size does not matter very much.  As these index variables do
+  78              	 * not go above 16 any size would do but the compiler can choose the size most
+  79              	 * suited for array subscripting.
+  80              	 */
+  81              	
+  82              	static const
+  83              	CipherVec vec_00 =  { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+  84              	                      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
+  85              	
+  86              	static const
+  87              	CipherVec vec_01 =  { 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01,
+  88              	                      0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01 };
+  89              	
+  90              	static const
+  91              	CipherVec vec_0F =  { 0x0F, 0x0F, 0x0F, 0x0F, 0x0F, 0x0F, 0x0F, 0x0F,
+  92              	                      0x0F, 0x0F, 0x0F, 0x0F, 0x0F, 0x0F, 0x0F, 0x0F };
+  93              	
+  94              	static const
+  95              	CipherVec vec_10 =  { 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10,
+  96              	                      0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10 };
+  97              	
+  98              	
+  99              	
+ 100              	/* ======================================================================
+ 101              	 * These functions implment the Advanced Encryption Standard AES as defined
+ 102              	 * in the FIPS (Federal Information Processing Standars Publication 197
+ 103              	 * Of Nevember 26, 2001.
+ 104              	 */
+ 105              	
+ 106              	/* ======================================================================
+ 107              	 * FIPS-197 5.1
+ 108              	 */
+ 109              	
+ 110              	/*
+ 111              	 * Read a blocks worth of bytes into an CipherVec
+GAS LISTING /tmp/ccVFFGPf.s 			page 4
+
+
+ 112              	 *
+ 113              	 * With vector registers it is a single instruction, without them it
+ 114              	 * is a memmove call
+ 115              	 */
+ 116              	static __inline__ 
+ 117              	CipherVec AESBCMEMBER(StateIn) (const void * ain)
+ 118              	    __attribute__ ((always_inline));
+ 119              	
+ 120              	static __inline__ 
+ 121              	CipherVec AESBCMEMBER(StateIn) (const void * ain)
+ 122              	{
+ 123              	#if USE_VEC_REG
+ 124              	
+ 125              	    register CipherVec vec;
+ 126              	    __asm__ (
+ 127              	        "movdqu (%[a]),%[s]" : [s] "=x" (vec) : [a] "D" (ain)
+ 128              	        );
+ 129              	    return vec;
+ 130              	
+ 131              	#else
+ 132              	
+ 133              	    CipherVec_AES_u u;
+ 134              	    memmove (&u.bytes, ain, sizeof (u));
+ 135              	    return u.state;
+ 136              	
+ 137              	#endif
+ 138              	}
+ 139              	
+ 140              	
+ 141              	/*
+ 142              	 * Write a block's worth of bytes out from an CipherVec
+ 143              	 *
+ 144              	 * With vector registers it is a single instruction, without them it
+ 145              	 * is a memmove call
+ 146              	 */
+ 147              	static __inline__
+ 148              	void AESBCMEMBER(StateOut) (const CipherVec vec, void * rout)
+ 149              	    __attribute__ ((always_inline));
+ 150              	
+ 151              	static __inline__
+ 152              	void AESBCMEMBER(StateOut) (const CipherVec vec, void * rout)
+ 153              	{
+ 154              	#if USE_VEC_REG
+ 155              	
+ 156              	    register CipherVec rvec = vec;
+ 157              	    __asm__ (
+ 158              	        "movdqu %[s],(%[a])" : : [s] "x" (rvec), [a] "D" (rout)
+ 159              	        );
+ 160              	
+ 161              	#else
+ 162              	
+ 163              	    memmove (rout, &vec, sizeof (vec));
+ 164              	
+ 165              	#endif
+ 166              	}
+ 167              	
+ 168              	
+GAS LISTING /tmp/ccVFFGPf.s 			page 5
+
+
+ 169              	static __inline__ 
+ 170              	CipherVec AESBCMEMBER(VecXor) (CipherVec v1, CipherVec v2)
+ 171              	    __attribute__ ((always_inline));
+ 172              	
+ 173              	static __inline__ 
+ 174              	CipherVec AESBCMEMBER(VecXor) (CipherVec v1, CipherVec v2)
+ 175              	{
+ 176              	#if USE_VEC
+ 177              	
+ 178              	    return v1 ^ v2;
+ 179              	
+ 180              	#else
+ 181              	
+ 182              	    CipherVec_AES_u u1, u2; /* state and key not countries :) */
+ 183              	    unsigned ix;
+ 184              	
+ 185              	    u1.state = v1;
+ 186              	    u2.state = v2;
+ 187              	
+ 188              	    for (ix = 0; ix < AES_Nb; ++ix)
+ 189              	        u1.columns[ix] ^= u2.columns[ix];
+ 190              	
+ 191              	    return u1.state;
+ 192              	
+ 193              	#endif
+ 194              	}
+ 195              	
+ 196              	
+ 197              	static __inline__ 
+ 198              	CipherVec AESBCMEMBER(VecAnd) (CipherVec v1, CipherVec v2)
+ 199              	    __attribute__ ((always_inline));
+ 200              	
+ 201              	static __inline__ 
+ 202              	CipherVec AESBCMEMBER(VecAnd) (CipherVec v1, CipherVec v2)
+ 203              	{
+ 204              	#if USE_VEC
+ 205              	
+ 206              	    return v1 & v2;
+ 207              	
+ 208              	#else
+ 209              	
+ 210              	    CipherVec_AES_u u1, u2; /* state and key not countries :) */
+ 211              	    unsigned ix;
+ 212              	
+ 213              	    u1.state = v1;
+ 214              	    u2.state = v2;
+ 215              	
+ 216              	    for (ix = 0; ix < AES_Nb; ++ix)
+ 217              	        u1.columns[ix] &= u2.columns[ix];
+ 218              	
+ 219              	    return u1.state;
+ 220              	
+ 221              	#endif
+ 222              	}
+ 223              	
+ 224              	
+ 225              	static __inline__ 
+GAS LISTING /tmp/ccVFFGPf.s 			page 6
+
+
+ 226              	CipherVec AESBCMEMBER(VecOr) (CipherVec v1, CipherVec v2)
+ 227              	    __attribute__ ((always_inline));
+ 228              	
+ 229              	static __inline__ 
+ 230              	CipherVec AESBCMEMBER(VecOr) (CipherVec v1, CipherVec v2)
+ 231              	{
+ 232              	#if USE_VEC
+ 233              	
+ 234              	    return v1 | v2;
+ 235              	
+ 236              	#else
+ 237              	
+ 238              	    CipherVec_AES_u u1, u2; /* state and key not countries :) */
+ 239              	    unsigned ix;
+ 240              	
+ 241              	    u1.state = v1;
+ 242              	    u2.state = v2;
+ 243              	
+ 244              	    for (ix = 0; ix < AES_Nb; ++ix)
+ 245              	        u1.columns[ix] |= u2.columns[ix];
+ 246              	
+ 247              	    return u1.state;
+ 248              	
+ 249              	#endif
+ 250              	}
+ 251              	
+ 252              	
+ 253              	static __inline__ 
+ 254              	CipherVec AESBCMEMBER(VecAdd) (CipherVec v1, CipherVec v2)
+ 255              	    __attribute__ ((always_inline));
+ 256              	
+ 257              	static __inline__ 
+ 258              	CipherVec AESBCMEMBER(VecAdd) (CipherVec v1, CipherVec v2)
+ 259              	{
+ 260              	#if USE_VEC
+ 261              	
+ 262              	    return v1 + v2;
+ 263              	
+ 264              	#else
+ 265              	
+ 266              	    CipherVec_AES_u u1, u2; /* state and key not countries :) */
+ 267              	    unsigned ix;
+ 268              	
+ 269              	    u1.state = v1;
+ 270              	    u2.state = v2;
+ 271              	
+ 272              	    for (ix = 0; ix < AES_Nb; ++ix)
+ 273              	        u1.columns[ix] += u2.columns[ix];
+ 274              	
+ 275              	    return u1.state;
+ 276              	
+ 277              	#endif
+ 278              	}
+ 279              	
+ 280              	
+ 281              	static __inline__ 
+ 282              	CipherVec AESBCMEMBER(VecSub) (CipherVec v1, CipherVec v2)
+GAS LISTING /tmp/ccVFFGPf.s 			page 7
+
+
+ 283              	    __attribute__ ((always_inline));
+ 284              	
+ 285              	static __inline__ 
+ 286              	CipherVec AESBCMEMBER(VecSub) (CipherVec v1, CipherVec v2)
+ 287              	{
+ 288              	#if USE_VEC
+ 289              	
+ 290              	    return v1 - v2;
+ 291              	
+ 292              	#else
+ 293              	
+ 294              	    CipherVec_AES_u u1, u2; /* state and key not countries :) */
+ 295              	    unsigned ix;
+ 296              	
+ 297              	    u1.state = v1;
+ 298              	    u2.state = v2;
+ 299              	
+ 300              	    for (ix = 0; ix < AES_Nb; ++ix)
+ 301              	        u1.columns[ix] -= u2.columns[ix];
+ 302              	
+ 303              	    return u1.state;
+ 304              	
+ 305              	#endif
+ 306              	}
+ 307              	
+ 308              	
+ 309              	static __inline__ 
+ 310              	CipherVec AESBCMEMBER(VecMul) (CipherVec v1, CipherVec v2)
+ 311              	    __attribute__ ((always_inline));
+ 312              	
+ 313              	static __inline__ 
+ 314              	CipherVec AESBCMEMBER(VecMul) (CipherVec v1, CipherVec v2)
+ 315              	{
+ 316              	#if USE_VEC
+ 317              	
+ 318              	    return v1 * v2;
+ 319              	
+ 320              	#else
+ 321              	
+ 322              	    CipherVec_AES_u u1, u2; /* state and key not countries :) */
+ 323              	    unsigned ix;
+ 324              	
+ 325              	    u1.state = v1;
+ 326              	    u2.state = v2;
+ 327              	
+ 328              	    for (ix = 0; ix < AES_Nb; ++ix)
+ 329              	        u1.columns[ix] *= u2.columns[ix];
+ 330              	
+ 331              	    return u1.state;
+ 332              	
+ 333              	#endif
+ 334              	}
+ 335              	
+ 336              	
+ 337              	static __inline__ 
+ 338              	CipherVec AESBCMEMBER(VecDiv) (CipherVec v1, CipherVec v2)
+ 339              	    __attribute__ ((always_inline));
+GAS LISTING /tmp/ccVFFGPf.s 			page 8
+
+
+ 340              	
+ 341              	static __inline__ 
+ 342              	CipherVec AESBCMEMBER(VecDiv) (CipherVec v1, CipherVec v2)
+ 343              	{
+ 344              	#if USE_VEC
+ 345              	
+ 346              	    return v1 / v2;
+ 347              	
+ 348              	#else
+ 349              	
+ 350              	    CipherVec_AES_u u1, u2; /* state and key not countries :) */
+ 351              	    unsigned ix;
+ 352              	
+ 353              	    u1.state = v1;
+ 354              	    u2.state = v2;
+ 355              	
+ 356              	    for (ix = 0; ix < AES_Nb; ++ix)
+ 357              	        u1.columns[ix] /= u2.columns[ix];
+ 358              	
+ 359              	    return u1.state;
+ 360              	
+ 361              	#endif
+ 362              	}
+ 363              	
+ 364              	static __inline__ 
+ 365              	CipherVec AESBCMEMBER(PackShuffleBytes) (CipherVec dest, CipherVec mask)
+ 366              	    __attribute__ ((always_inline));
+ 367              	
+ 368              	static __inline__ 
+ 369              	CipherVec AESBCMEMBER(PackShuffleBytes) (CipherVec dest, CipherVec mask)
+ 370              	{
+ 371              	#if USE_VEC_REG
+ 372              	
+ 373              	    return op_PSHUFB128 (dest, mask);
+ 374              	
+ 375              	#else
+ 376              	
+ 377              	    CipherVec_AES_u out, in, gate;
+ 378              	    unsigned ix;
+ 379              	
+ 380              	    in.state = dest;
+ 381              	    gate.state = mask;
+ 382              	
+ 383              	    for (ix = 0; ix < sizeof dest; ++ix)
+ 384              	    {
+ 385              	        if (gate.bytes[ix] & 0x80)
+ 386              	            out.bytes[ix] = 0;
+ 387              	        else
+ 388              	            out.bytes[ix] = in.bytes[gate.bytes[ix] & 0x0F];
+ 389              	    }
+ 390              	
+ 391              	    return out.state;
+ 392              	
+ 393              	#endif
+ 394              	}
+ 395              	
+ 396              	
+GAS LISTING /tmp/ccVFFGPf.s 			page 9
+
+
+ 397              	static __inline__ 
+ 398              	CipherVec AESBCMEMBER(VecSLLBI) (CipherVec v, const int k)
+ 399              	    __attribute__ ((always_inline));
+ 400              	
+ 401              	static __inline__ 
+ 402              	CipherVec AESBCMEMBER(VecSLLBI) (CipherVec v, const int k)
+ 403              	{
+ 404              	#if USE_VEC_REG
+ 405              	    static const CipherVec sl_mask [9] = 
+ 406              	        {
+ 407              	            { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+ 408              	              0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF },
+ 409              	            { 0xFE, 0xFE, 0xFE, 0xFE, 0xFE, 0xFE, 0xFE, 0xFE,
+ 410              	              0xFE, 0xFE, 0xFE, 0xFE, 0xFE, 0xFE, 0xFE, 0xFE },
+ 411              	            { 0xFC, 0xFC, 0xFC, 0xFC, 0xFC, 0xFC, 0xFC, 0xFC,
+ 412              	              0xFC, 0xFC, 0xFC, 0xFC, 0xFC, 0xFC, 0xFC, 0xFC },
+ 413              	            { 0xF8, 0xF8, 0xF8, 0xF8, 0xF8, 0xF8, 0xF8, 0xF8,
+ 414              	              0xF8, 0xF8, 0xF8, 0xF8, 0xF8, 0xF8, 0xF8, 0xF8 },
+ 415              	            { 0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0,
+ 416              	              0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0 },
+ 417              	            { 0xE0, 0xE0, 0xE0, 0xE0, 0xE0, 0xE0, 0xE0, 0xE0,
+ 418              	              0xE0, 0xE0, 0xE0, 0xE0, 0xE0, 0xE0, 0xE0, 0xE0 },
+ 419              	            { 0xC0, 0xC0, 0xC0, 0xC0, 0xC0, 0xC0, 0xC0, 0xC0,
+ 420              	              0xC0, 0xC0, 0xC0, 0xC0, 0xC0, 0xC0, 0xC0, 0xC0 },
+ 421              	            { 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80,
+ 422              	              0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80 },
+ 423              	            { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+ 424              	              0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 }
+ 425              	        };
+ 426              	    CipherVec vv = v;
+ 427              	
+ 428              	    assert (k <= 8);
+ 429              	    
+ 430              	
+ 431              	/*     DEBUG_CIPHER_VECTOR ("mask", sl_mask[k]); */
+ 432              	/*     DEBUG_CIPHER_VECTOR ("v 1", vv); */
+ 433              	    vv = op_PSLLDI128 (vv, k);
+ 434              	/*     DEBUG_CIPHER_VECTOR ("v 2", vv); */
+ 435              	    vv = AESBCMEMBER(VecAnd) (vv, sl_mask[k]);
+ 436              	/*     DEBUG_CIPHER_VECTOR ("v 3", vv); */
+ 437              	    return vv;
+ 438              	
+ 439              	#else
+ 440              	
+ 441              	    CipherVec_AES_u vv; /* state and key not countries :) */
+ 442              	    unsigned ix;
+ 443              	
+ 444              	    vv.state = v;
+ 445              	
+ 446              	    for (ix = 0; ix < sizeof (v); ++ix)
+ 447              	    {
+ 448              	        KOutMsg ("SLLBI %d %x ", k, vv.bytes[ix]);
+ 449              	        vv.bytes[ix] <<= k;
+ 450              	        KOutMsg ("%x\n", vv.bytes[ix]);
+ 451              	    }
+ 452              	    return vv.state;
+ 453              	
+GAS LISTING /tmp/ccVFFGPf.s 			page 10
+
+
+ 454              	#endif
+ 455              	}
+ 456              	
+ 457              	
+ 458              	static __inline__ 
+ 459              	CipherVec AESBCMEMBER(VecSRLBI) (CipherVec v, const int k)
+ 460              	    __attribute__ ((always_inline));
+ 461              	
+ 462              	static __inline__ 
+ 463              	CipherVec AESBCMEMBER(VecSRLBI) (CipherVec v, const int k)
+ 464              	{
+ 465              	#if USE_VEC_REG
+ 466              	    static const CipherVec sr_mask [9] = 
+ 467              	        {
+ 468              	            { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+ 469              	              0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF },
+ 470              	            { 0x7F, 0x7F, 0x7F, 0x7F, 0x7F, 0x7F, 0x7F, 0x7F,
+ 471              	              0x7F, 0x7F, 0x7F, 0x7F, 0x7F, 0x7F, 0x7F, 0x7F },
+ 472              	            { 0x3F, 0x3F, 0x3F, 0x3F, 0x3F, 0x3F, 0x3F, 0x3F,
+ 473              	              0x3F, 0x3F, 0x3F, 0x3F, 0x3F, 0x3F, 0x3F, 0x3F },
+ 474              	            { 0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F,
+ 475              	              0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F },
+ 476              	            { 0x0F, 0x0F, 0x0F, 0x0F, 0x0F, 0x0F, 0x0F, 0x0F,
+ 477              	              0x0F, 0x0F, 0x0F, 0x0F, 0x0F, 0x0F, 0x0F, 0x0F },
+ 478              	            { 0x07, 0x07, 0x07, 0x07, 0x07, 0x07, 0x07, 0x07,
+ 479              	              0x07, 0x07, 0x07, 0x07, 0x07, 0x07, 0x07, 0x07 },
+ 480              	            { 0x03, 0x03, 0x03, 0x03, 0x03, 0x03, 0x03, 0x03,
+ 481              	              0x03, 0x03, 0x03, 0x03, 0x03, 0x03, 0x03, 0x03 },
+ 482              	            { 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01,
+ 483              	              0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01 },
+ 484              	            { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+ 485              	              0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 }
+ 486              	        };
+ 487              	
+ 488              	    v = op_PSRLDI128 (v, k);
+ 489              	    v = AESBCMEMBER(VecAnd) (v, sr_mask[(k<8)?k:8]);
+ 490              	    return v;
+ 491              	
+ 492              	#else
+ 493              	
+ 494              	    CipherVec_AES_u vv; /* state and key not countries :) */
+ 495              	    unsigned ix;
+ 496              	
+ 497              	    vv.state = v;
+ 498              	
+ 499              	    for (ix = 0; ix < sizeof (v); ++ix)
+ 500              	    {
+ 501              	        KOutMsg ("SRLBI %d %x ", k, vv.bytes[ix]);
+ 502              	        vv.bytes[ix] >>= k;
+ 503              	        KOutMsg ("%x\n", vv.bytes[ix]);
+ 504              	    }
+ 505              	    return vv.state;
+ 506              	
+ 507              	#endif
+ 508              	}
+ 509              	
+ 510              	
+GAS LISTING /tmp/ccVFFGPf.s 			page 11
+
+
+ 511              	static __inline__
+ 512              	CipherVec AESBCMEMBER(SetColumn) (CipherVec state, AESWord column, const int which)
+ 513              	    __attribute__ ((always_inline));
+ 514              	
+ 515              	static __inline__
+ 516              	CipherVec AESBCMEMBER(SetColumn) (CipherVec state, AESWord column, const int which)
+ 517              	{
+ 518              	#if USE_VEC_REG
+ 519              	    state = op_PINSRUD (state, column, which);
+ 520              	#else
+ 521              	    CipherVec_AES_u u;
+ 522              	    u.state = state;
+ 523              	    u.columns [which] = column;
+ 524              	    state = u.state;
+ 525              	#endif
+ 526              	    return state;
+ 527              	}
+ 528              	
+ 529              	
+ 530              	/* ======================================================================
+ 531              	 * FIPS-197 5.1.4
+ 532              	 *
+ 533              	 * The AddRoundKey transformation is a sinple exclusive or of all 128 bits
+ 534              	 * in the current block against a round key.  This operation is used in all
+ 535              	 * Cipher and EqInvCipher rounds
+ 536              	 *
+ 537              	 * With vector types it is a single operation that with vector registers is
+ 538              	 * a single op-code.
+ 539              	 */
+ 540              	static __inline__ 
+ 541              	CipherVec AESBCMEMBER(AddRoundKey) (CipherVec state, CipherVec round_key)
+ 542              	    __attribute__ ((always_inline));
+ 543              	
+ 544              	static __inline__ 
+ 545              	CipherVec AESBCMEMBER(AddRoundKey) (CipherVec state, CipherVec round_key)
+ 546              	{
+ 547              	    return AESBCMEMBER(VecXor) (state, round_key);
+ 548              	}
+ 549              	
+ 550              	
+ 551              	/* ======================================================================
+ 552              	 * FIPS-197 5.1.2
+ 553              	 *
+ 554              	 * FIPS 197 describes the state in column major format
+ 555              	 * while C and assembly programmers tend to think in row major
+ 556              	 * The byte order is 0,1,2,3,,...F as shown in the first diagram.
+ 557              	 *
+ 558              	 *  ShiftRows() is defined as leaving this state
+ 559              	 * +---+---+---+---+     +---+---+---+---+
+ 560              	 * | 0 | 4 | 8 | C |     | 0 | 4 | 8 | C |
+ 561              	 * +---+---+---+---+     +---+---+---+---+
+ 562              	 * | 1 | 5 | 9 | D |     | 5 | 9 | D | 1 |
+ 563              	 * +---+---+---+---+     +---+---+---+---+
+ 564              	 * | 2 | 6 | A | E |     | A | E | 2 | 6 |
+ 565              	 * +---+---+---+---+     +---+---+---+---+
+ 566              	 * | 3 | 7 | B | F |     | F | 3 | 7 | B |
+ 567              	 * +---+---+---+---+     +---+---+---+---+
+GAS LISTING /tmp/ccVFFGPf.s 			page 12
+
+
+ 568              	 */
+ 569              	static __inline__
+ 570              	CipherVec AESBCMEMBER(ShiftRows) (CipherVec state)
+ 571              	    __attribute__ ((always_inline));
+ 572              	
+ 573              	static __inline__
+ 574              	CipherVec AESBCMEMBER(ShiftRows) (CipherVec state)
+ 575              	{
+ 576              	static const
+ 577              	    CipherVec ShiftRowTable
+ 578              	    /*   0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15 */
+ 579              	    = {  0,  5, 10, 15,  4,  9, 14,  3,  8, 13,  2,  7, 12,  1,  6, 11 };
+ 580              	
+ 581              	    state = AESBCMEMBER(PackShuffleBytes) (state, ShiftRowTable);
+ 582              	    return state;
+ 583              	}
+ 584              	
+ 585              	
+ 586              	/* ======================================================================
+ 587              	 * FIPS-197 5.3.1
+ 588              	 *
+ 589              	 * InvShiftRows() is defined as leaving this state
+ 590              	 * +---+---+---+---+     +---+---+---+---+
+ 591              	 * | 0 | 4 | 8 | C |     | 0 | 4 | 8 | C |
+ 592              	 * +---+---+---+---+     +---+---+---+---+
+ 593              	 * | 1 | 5 | 9 | D |     | D | 1 | 5 | 9 |
+ 594              	 * +---+---+---+---+     +---+---+---+---+
+ 595              	 * | 2 | 6 | A | E |     | A | E | 2 | 6 |
+ 596              	 * +---+---+---+---+     +---+---+---+---+
+ 597              	 * | 3 | 7 | B | F |     | 7 | B | F | 3 |
+ 598              	 * +---+---+---+---+     +---+---+---+---+
+ 599              	 */
+ 600              	static __inline__
+ 601              	CipherVec AESBCMEMBER(InvShiftRows) (CipherVec state)
+ 602              	    __attribute__ ((always_inline));
+ 603              	
+ 604              	
+ 605              	static __inline__
+ 606              	CipherVec AESBCMEMBER(InvShiftRows) (CipherVec state)
+ 607              	{
+ 608              	    static const CipherVecByte InvShiftRowTable
+ 609              	        /*   0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15 */
+ 610              	        = {  0, 13, 10,  7,  4,  1, 14, 11,  8,  5,  2, 15, 12,  9,  6,  3 };
+ 611              	
+ 612              	    state = AESBCMEMBER(PackShuffleBytes) (state, InvShiftRowTable);
+ 613              	    return state;
+ 614              	}
+ 615              	
+ 616              	
+ 617              	/* ======================================================================
+ 618              	 * +---+---+---+---+     +---+---+---+---+
+ 619              	 * | 0 | 4 | 8 | C |     | 3 | 7 | B | F |
+ 620              	 * +---+---+---+---+     +---+---+---+---+
+ 621              	 * | 1 | 5 | 9 | D |     | 0 | 4 | 8 | C |
+ 622              	 * +---+---+---+---+     +---+---+---+---+
+ 623              	 * | 2 | 6 | A | E |     | 1 | 5 | 9 | D |
+ 624              	 * +---+---+---+---+     +---+---+---+---+
+GAS LISTING /tmp/ccVFFGPf.s 			page 13
+
+
+ 625              	 * | 3 | 7 | B | F |     | 2 | 6 | A | E |
+ 626              	 * +---+---+---+---+     +---+---+---+---+
+ 627              	 */
+ 628              	static __inline__
+ 629              	CipherVec AESBCMEMBER(RotBytesRight) (CipherVec state)
+ 630              	    __attribute__ ((always_inline));
+ 631              	
+ 632              	static __inline__
+ 633              	CipherVec AESBCMEMBER(RotBytesRight) (CipherVec state)
+ 634              	{
+ 635              	static const
+ 636              	    CipherVec ShiftRowTable
+ 637              	    /*   0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15 */
+ 638              	    = {  3,  0,  1,  2,  7,  4,  5,  6, 11,  8,  9, 10, 15, 12, 13, 14 };
+ 639              	
+ 640              	    state = AESBCMEMBER(PackShuffleBytes) (state, ShiftRowTable);
+ 641              	    return state;
+ 642              	}
+ 643              	
+ 644              	
+ 645              	/* ======================================================================
+ 646              	 * +---+---+---+---+     +---+---+---+---+
+ 647              	 * | 0 | 4 | 8 | C |     | 1 | 5 | B | D |
+ 648              	 * +---+---+---+---+     +---+---+---+---+
+ 649              	 * | 1 | 5 | 9 | D |     | 2 | 6 | 8 | E |
+ 650              	 * +---+---+---+---+     +---+---+---+---+
+ 651              	 * | 2 | 6 | A | E |     | 3 | 7 | 9 | F |
+ 652              	 * +---+---+---+---+     +---+---+---+---+
+ 653              	 * | 3 | 7 | B | F |     | 0 | 4 | 8 | C |
+ 654              	 * +---+---+---+---+     +---+---+---+---+
+ 655              	 */
+ 656              	static __inline__
+ 657              	CipherVec AESBCMEMBER(RotBytesLeft) (CipherVec state)
+ 658              	    __attribute__ ((always_inline));
+ 659              	
+ 660              	static __inline__
+ 661              	CipherVec AESBCMEMBER(RotBytesLeft) (CipherVec state)
+ 662              	{
+ 663              	    static const CipherVec ShiftRowTable
+ 664              	        /*   0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15 */
+ 665              	        = {  1,  2,  3,  0,  5,  6,  7,  4,  9, 10, 11,  8, 13, 14, 15, 12 };
+ 666              	
+ 667              	    state = AESBCMEMBER(PackShuffleBytes) (state, ShiftRowTable);
+ 668              	    return state;
+ 669              	}
+ 670              	
+ 671              	
+ 672              	/* ======================================================================
+ 673              	 * FIPS-197 5.1.1
+ 674              	 */
+ 675              	
+ 676              	
+ 677              	/*
+ 678              	 * SubBytes replaces each byte in a state with a specific byte value from
+ 679              	 * A Rijndael Substitution box
+ 680              	 */
+ 681              	static const 
+GAS LISTING /tmp/ccVFFGPf.s 			page 14
+
+
+ 682              	AESByte AESBCMEMBER(RijndaelSBox)[256] = 
+ 683              	{
+ 684              	/*        -0    -1    -2    -3    -4    -5    -6    -7    -8    -9    -A    -B    -C    -D    -E   
+ 685              	/* 0- */ 0x63, 0x7C, 0x77, 0x7B, 0xF2, 0x6B, 0x6F, 0xC5, 0x30, 0x01, 0x67, 0x2B, 0xFE, 0xD7, 0xAB, 
+ 686              	/* 1- */ 0xCA, 0x82, 0xC9, 0x7D, 0xFA, 0x59, 0x47, 0xF0, 0xAD, 0xD4, 0xA2, 0xAF, 0x9C, 0xA4, 0x72, 
+ 687              	/* 2- */ 0xB7, 0xFD, 0x93, 0x26, 0x36, 0x3F, 0xF7, 0xCC, 0x34, 0xA5, 0xE5, 0xF1, 0x71, 0xD8, 0x31, 
+ 688              	/* 3- */ 0x04, 0xC7, 0x23, 0xC3, 0x18, 0x96, 0x05, 0x9A, 0x07, 0x12, 0x80, 0xE2, 0xEB, 0x27, 0xB2, 
+ 689              	/* 4- */ 0x09, 0x83, 0x2C, 0x1A, 0x1B, 0x6E, 0x5A, 0xA0, 0x52, 0x3B, 0xD6, 0xB3, 0x29, 0xE3, 0x2F, 
+ 690              	/* 5- */ 0x53, 0xD1, 0x00, 0xED, 0x20, 0xFC, 0xB1, 0x5B, 0x6A, 0xCB, 0xBE, 0x39, 0x4A, 0x4C, 0x58, 
+ 691              	/* 6- */ 0xD0, 0xEF, 0xAA, 0xFB, 0x43, 0x4D, 0x33, 0x85, 0x45, 0xF9, 0x02, 0x7F, 0x50, 0x3C, 0x9F, 
+ 692              	/* 7- */ 0x51, 0xA3, 0x40, 0x8F, 0x92, 0x9D, 0x38, 0xF5, 0xBC, 0xB6, 0xDA, 0x21, 0x10, 0xFF, 0xF3, 
+ 693              	/* 8- */ 0xCD, 0x0C, 0x13, 0xEC, 0x5F, 0x97, 0x44, 0x17, 0xC4, 0xA7, 0x7E, 0x3D, 0x64, 0x5D, 0x19, 
+ 694              	/* 9- */ 0x60, 0x81, 0x4F, 0xDC, 0x22, 0x2A, 0x90, 0x88, 0x46, 0xEE, 0xB8, 0x14, 0xDE, 0x5E, 0x0B, 
+ 695              	/* A- */ 0xE0, 0x32, 0x3A, 0x0A, 0x49, 0x06, 0x24, 0x5C, 0xC2, 0xD3, 0xAC, 0x62, 0x91, 0x95, 0xE4, 
+ 696              	/* B- */ 0xE7, 0xC8, 0x37, 0x6D, 0x8D, 0xD5, 0x4E, 0xA9, 0x6C, 0x56, 0xF4, 0xEA, 0x65, 0x7A, 0xAE, 
+ 697              	/* C- */ 0xBA, 0x78, 0x25, 0x2E, 0x1C, 0xA6, 0xB4, 0xC6, 0xE8, 0xDD, 0x74, 0x1F, 0x4B, 0xBD, 0x8B, 
+ 698              	/* D- */ 0x70, 0x3E, 0xB5, 0x66, 0x48, 0x03, 0xF6, 0x0E, 0x61, 0x35, 0x57, 0xB9, 0x86, 0xC1, 0x1D, 
+ 699              	/* E- */ 0xE1, 0xF8, 0x98, 0x11, 0x69, 0xD9, 0x8E, 0x94, 0x9B, 0x1E, 0x87, 0xE9, 0xCE, 0x55, 0x28, 
+ 700              	/* F- */ 0x8C, 0xA1, 0x89, 0x0D, 0xBF, 0xE6, 0x42, 0x68, 0x41, 0x99, 0x2D, 0x0F, 0xB0, 0x54, 0xBB, 
+ 701              	};
+ 702              	
+ 703              	
+ 704              	#if 0
+ 705              	static __inline__
+ 706              	CipherVec AESBCMEMBER(SubBytes) (CipherVec state)
+ 707              	    __attribute__ ((always_inline));
+ 708              	
+ 709              	static __inline__
+ 710              	CipherVec AESBCMEMBER(SubBytes) (CipherVec state)
+ 711              	{
+ 712              	    CipherVec_AES_u u;
+ 713              	    unsigned ix;
+ 714              	
+ 715              	    u.state = state;
+ 716              	
+ 717              	    for (ix = 0; ix < sizeof (u.bytes); ++ix)
+ 718              	    {
+ 719              	        u.bytes[ix] = AESBCMEMBER(RijndaelSBox)[u.bytes[ix]];
+ 720              	    }
+ 721              	
+ 722              	    return u.state;
+ 723              	}
+ 724              	#endif
+ 725              	
+ 726              	/*
+ 727              	 * SubWord performs the same operation as SubBytes but on
+ 728              	 * the four bytes of a column and not a whole state
+ 729              	 */
+ 730              	static __inline__
+ 731              	AESWord AESBCMEMBER(SubWord) (AESWord w)
+ 732              	    __attribute__ ((always_inline));
+ 733              	
+ 734              	static __inline__
+ 735              	AESWord AESBCMEMBER(SubWord) (AESWord w)
+ 736              	{
+ 737              	    AESColumn col;
+ 738              	    unsigned ix;
+GAS LISTING /tmp/ccVFFGPf.s 			page 15
+
+
+ 739              	
+ 740              	    col.word = w;
+ 741              	    for (ix = 0; ix < sizeof (col); ++ix)
+ 742              	        col.bytes[ix] = AESBCMEMBER(RijndaelSBox)[(unsigned)col.bytes[ix]];
+ 743              	    return col.word;
+ 744              	}
+ 745              	
+ 746              	#if 0
+ 747              	/*
+ 748              	 * InvSubBytes replaces each byte in a state with a specific byte value from
+ 749              	 * an Inversze Rijndael Substitution box.  That is InvSubBytes undoes SubBytes
+ 750              	 */
+ 751              	static const 
+ 752              	uint8_t AESBCMEMBER(RijndaelInvSBox)[256] = 
+ 753              	{
+ 754              	/*        -0    -1    -2    -3    -4    -5    -6    -7    -8    -9    -A    -B    -C    -D    -E   
+ 755              	/* 0- */ 0x52, 0x09, 0x6A, 0xD5, 0x30, 0x36, 0xA5, 0x38, 0xBF, 0x40, 0xA3, 0x9E, 0x81, 0xF3, 0xD7, 
+ 756              	/* 1- */ 0x7C, 0xE3, 0x39, 0x82, 0x9B, 0x2F, 0xFF, 0x87, 0x34, 0x8E, 0x43, 0x44, 0xC4, 0xDE, 0xE9, 
+ 757              	/* 2- */ 0x54, 0x7B, 0x94, 0x32, 0xA6, 0xC2, 0x23, 0x3D, 0xEE, 0x4C, 0x95, 0x0B, 0x42, 0xFA, 0xC3, 
+ 758              	/* 3- */ 0x08, 0x2E, 0xA1, 0x66, 0x28, 0xD9, 0x24, 0xB2, 0x76, 0x5B, 0xA2, 0x49, 0x6D, 0x8B, 0xD1, 
+ 759              	/* 4- */ 0x72, 0xF8, 0xF6, 0x64, 0x86, 0x68, 0x98, 0x16, 0xD4, 0xA4, 0x5C, 0xCC, 0x5D, 0x65, 0xB6, 
+ 760              	/* 5- */ 0x6C, 0x70, 0x48, 0x50, 0xFD, 0xED, 0xB9, 0xDA, 0x5E, 0x15, 0x46, 0x57, 0xA7, 0x8D, 0x9D, 
+ 761              	/* 6- */ 0x90, 0xD8, 0xAB, 0x00, 0x8C, 0xBC, 0xD3, 0x0A, 0xF7, 0xE4, 0x58, 0x05, 0xB8, 0xB3, 0x45, 
+ 762              	/* 7- */ 0xD0, 0x2C, 0x1E, 0x8F, 0xCA, 0x3F, 0x0F, 0x02, 0xC1, 0xAF, 0xBD, 0x03, 0x01, 0x13, 0x8A, 
+ 763              	/* 8- */ 0x3A, 0x91, 0x11, 0x41, 0x4F, 0x67, 0xDC, 0xEA, 0x97, 0xF2, 0xCF, 0xCE, 0xF0, 0xB4, 0xE6, 
+ 764              	/* 9- */ 0x96, 0xAC, 0x74, 0x22, 0xE7, 0xAD, 0x35, 0x85, 0xE2, 0xF9, 0x37, 0xE8, 0x1C, 0x75, 0xDF, 
+ 765              	/* A- */ 0x47, 0xF1, 0x1A, 0x71, 0x1D, 0x29, 0xC5, 0x89, 0x6F, 0xB7, 0x62, 0x0E, 0xAA, 0x18, 0xBE, 
+ 766              	/* B- */ 0xFC, 0x56, 0x3E, 0x4B, 0xC6, 0xD2, 0x79, 0x20, 0x9A, 0xDB, 0xC0, 0xFE, 0x78, 0xCD, 0x5A, 
+ 767              	/* C- */ 0x1F, 0xDD, 0xA8, 0x33, 0x88, 0x07, 0xC7, 0x31, 0xB1, 0x12, 0x10, 0x59, 0x27, 0x80, 0xEC, 
+ 768              	/* D- */ 0x60, 0x51, 0x7F, 0xA9, 0x19, 0xB5, 0x4A, 0x0D, 0x2D, 0xE5, 0x7A, 0x9F, 0x93, 0xC9, 0x9C, 
+ 769              	/* E- */ 0xA0, 0xE0, 0x3B, 0x4D, 0xAE, 0x2A, 0xF5, 0xB0, 0xC8, 0xEB, 0xBB, 0x3C, 0x83, 0x53, 0x99, 
+ 770              	/* F- */ 0x17, 0x2B, 0x04, 0x7E, 0xBA, 0x77, 0xD6, 0x26, 0xE1, 0x69, 0x14, 0x63, 0x55, 0x21, 0x0C, 
+ 771              	};
+ 772              	
+ 773              	
+ 774              	static __inline__
+ 775              	CipherVec AESBCMEMBER(InvSubBytes) (CipherVec state)
+ 776              	    __attribute__ ((always_inline));
+ 777              	
+ 778              	static __inline__
+ 779              	CipherVec AESBCMEMBER(InvSubBytes) (CipherVec state)
+ 780              	{
+ 781              	    CipherVec_AES_u u;
+ 782              	    unsigned ix;
+ 783              	
+ 784              	    u.state = state;
+ 785              	    for (ix = 0; ix < sizeof (u.bytes); ++ix)
+ 786              	        u.bytes[ix] = AESBCMEMBER(RijndaelInvSBox)[u.bytes[ix]];
+ 787              	
+ 788              	    return u.state;
+ 789              	}
+ 790              	#endif
+ 791              	
+ 792              	static const
+ 793              	CipherVec AESBCMEMBER(RijndaelSBoxV)[16] = 
+ 794              	{
+ 795              	/*     -0    -1    -2    -3    -4    -5    -6    -7    -8    -9    -A    -B    -C    -D    -E    -F
+GAS LISTING /tmp/ccVFFGPf.s 			page 16
+
+
+ 796              	    { 0x63, 0x7C, 0x77, 0x7B, 0xF2, 0x6B, 0x6F, 0xC5, 0x30, 0x01, 0x67, 0x2B, 0xFE, 0xD7, 0xAB, 0x7
+ 797              	    { 0xCA, 0x82, 0xC9, 0x7D, 0xFA, 0x59, 0x47, 0xF0, 0xAD, 0xD4, 0xA2, 0xAF, 0x9C, 0xA4, 0x72, 0xC
+ 798              	    { 0xB7, 0xFD, 0x93, 0x26, 0x36, 0x3F, 0xF7, 0xCC, 0x34, 0xA5, 0xE5, 0xF1, 0x71, 0xD8, 0x31, 0x1
+ 799              	    { 0x04, 0xC7, 0x23, 0xC3, 0x18, 0x96, 0x05, 0x9A, 0x07, 0x12, 0x80, 0xE2, 0xEB, 0x27, 0xB2, 0x7
+ 800              	    { 0x09, 0x83, 0x2C, 0x1A, 0x1B, 0x6E, 0x5A, 0xA0, 0x52, 0x3B, 0xD6, 0xB3, 0x29, 0xE3, 0x2F, 0x8
+ 801              	    { 0x53, 0xD1, 0x00, 0xED, 0x20, 0xFC, 0xB1, 0x5B, 0x6A, 0xCB, 0xBE, 0x39, 0x4A, 0x4C, 0x58, 0xC
+ 802              	    { 0xD0, 0xEF, 0xAA, 0xFB, 0x43, 0x4D, 0x33, 0x85, 0x45, 0xF9, 0x02, 0x7F, 0x50, 0x3C, 0x9F, 0xA
+ 803              	    { 0x51, 0xA3, 0x40, 0x8F, 0x92, 0x9D, 0x38, 0xF5, 0xBC, 0xB6, 0xDA, 0x21, 0x10, 0xFF, 0xF3, 0xD
+ 804              	    { 0xCD, 0x0C, 0x13, 0xEC, 0x5F, 0x97, 0x44, 0x17, 0xC4, 0xA7, 0x7E, 0x3D, 0x64, 0x5D, 0x19, 0x7
+ 805              	    { 0x60, 0x81, 0x4F, 0xDC, 0x22, 0x2A, 0x90, 0x88, 0x46, 0xEE, 0xB8, 0x14, 0xDE, 0x5E, 0x0B, 0xD
+ 806              	    { 0xE0, 0x32, 0x3A, 0x0A, 0x49, 0x06, 0x24, 0x5C, 0xC2, 0xD3, 0xAC, 0x62, 0x91, 0x95, 0xE4, 0x7
+ 807              	    { 0xE7, 0xC8, 0x37, 0x6D, 0x8D, 0xD5, 0x4E, 0xA9, 0x6C, 0x56, 0xF4, 0xEA, 0x65, 0x7A, 0xAE, 0x0
+ 808              	    { 0xBA, 0x78, 0x25, 0x2E, 0x1C, 0xA6, 0xB4, 0xC6, 0xE8, 0xDD, 0x74, 0x1F, 0x4B, 0xBD, 0x8B, 0x8
+ 809              	    { 0x70, 0x3E, 0xB5, 0x66, 0x48, 0x03, 0xF6, 0x0E, 0x61, 0x35, 0x57, 0xB9, 0x86, 0xC1, 0x1D, 0x9
+ 810              	    { 0xE1, 0xF8, 0x98, 0x11, 0x69, 0xD9, 0x8E, 0x94, 0x9B, 0x1E, 0x87, 0xE9, 0xCE, 0x55, 0x28, 0xD
+ 811              	    { 0x8C, 0xA1, 0x89, 0x0D, 0xBF, 0xE6, 0x42, 0x68, 0x41, 0x99, 0x2D, 0x0F, 0xB0, 0x54, 0xBB, 0x1
+ 812              	};
+ 813              	
+ 814              	static const
+ 815              	CipherVec AESBCMEMBER(RijndaelInvSBoxV)[16] = 
+ 816              	{
+ 817              	/*     -0    -1    -2    -3    -4    -5    -6    -7    -8    -9    -A    -B    -C    -D    -E    -F
+ 818              	    { 0x52, 0x09, 0x6A, 0xD5, 0x30, 0x36, 0xA5, 0x38, 0xBF, 0x40, 0xA3, 0x9E, 0x81, 0xF3, 0xD7, 0xF
+ 819              	    { 0x7C, 0xE3, 0x39, 0x82, 0x9B, 0x2F, 0xFF, 0x87, 0x34, 0x8E, 0x43, 0x44, 0xC4, 0xDE, 0xE9, 0xC
+ 820              	    { 0x54, 0x7B, 0x94, 0x32, 0xA6, 0xC2, 0x23, 0x3D, 0xEE, 0x4C, 0x95, 0x0B, 0x42, 0xFA, 0xC3, 0x4
+ 821              	    { 0x08, 0x2E, 0xA1, 0x66, 0x28, 0xD9, 0x24, 0xB2, 0x76, 0x5B, 0xA2, 0x49, 0x6D, 0x8B, 0xD1, 0x2
+ 822              	    { 0x72, 0xF8, 0xF6, 0x64, 0x86, 0x68, 0x98, 0x16, 0xD4, 0xA4, 0x5C, 0xCC, 0x5D, 0x65, 0xB6, 0x9
+ 823              	    { 0x6C, 0x70, 0x48, 0x50, 0xFD, 0xED, 0xB9, 0xDA, 0x5E, 0x15, 0x46, 0x57, 0xA7, 0x8D, 0x9D, 0x8
+ 824              	    { 0x90, 0xD8, 0xAB, 0x00, 0x8C, 0xBC, 0xD3, 0x0A, 0xF7, 0xE4, 0x58, 0x05, 0xB8, 0xB3, 0x45, 0x0
+ 825              	    { 0xD0, 0x2C, 0x1E, 0x8F, 0xCA, 0x3F, 0x0F, 0x02, 0xC1, 0xAF, 0xBD, 0x03, 0x01, 0x13, 0x8A, 0x6
+ 826              	    { 0x3A, 0x91, 0x11, 0x41, 0x4F, 0x67, 0xDC, 0xEA, 0x97, 0xF2, 0xCF, 0xCE, 0xF0, 0xB4, 0xE6, 0x7
+ 827              	    { 0x96, 0xAC, 0x74, 0x22, 0xE7, 0xAD, 0x35, 0x85, 0xE2, 0xF9, 0x37, 0xE8, 0x1C, 0x75, 0xDF, 0x6
+ 828              	    { 0x47, 0xF1, 0x1A, 0x71, 0x1D, 0x29, 0xC5, 0x89, 0x6F, 0xB7, 0x62, 0x0E, 0xAA, 0x18, 0xBE, 0x1
+ 829              	    { 0xFC, 0x56, 0x3E, 0x4B, 0xC6, 0xD2, 0x79, 0x20, 0x9A, 0xDB, 0xC0, 0xFE, 0x78, 0xCD, 0x5A, 0xF
+ 830              	    { 0x1F, 0xDD, 0xA8, 0x33, 0x88, 0x07, 0xC7, 0x31, 0xB1, 0x12, 0x10, 0x59, 0x27, 0x80, 0xEC, 0x5
+ 831              	    { 0x60, 0x51, 0x7F, 0xA9, 0x19, 0xB5, 0x4A, 0x0D, 0x2D, 0xE5, 0x7A, 0x9F, 0x93, 0xC9, 0x9C, 0xE
+ 832              	    { 0xA0, 0xE0, 0x3B, 0x4D, 0xAE, 0x2A, 0xF5, 0xB0, 0xC8, 0xEB, 0xBB, 0x3C, 0x83, 0x53, 0x99, 0x6
+ 833              	    { 0x17, 0x2B, 0x04, 0x7E, 0xBA, 0x77, 0xD6, 0x26, 0xE1, 0x69, 0x14, 0x63, 0x55, 0x21, 0x0C, 0x7
+ 834              	};
+ 835              	
+ 836              	
+ 837              	static const
+ 838              	CipherVec lo_filter = { 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+ 839              	                        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
+ 840              	
+ 841              	static __inline__
+ 842              	CipherVec AESBCMEMBER(SubBytesInt) (CipherVec state, const CipherVec box [16])
+ 843              	    __attribute__ ((always_inline));
+ 844              	
+ 845              	static __inline__
+ 846              	CipherVec AESBCMEMBER(SubBytesInt) (CipherVec state, const CipherVec box [16])
+ 847              	{
+ 848              	    CipherVec lo, hi, tmp, out;
+ 849              	    unsigned ix;
+ 850              	
+ 851              	    out = vec_00;
+ 852              	
+GAS LISTING /tmp/ccVFFGPf.s 			page 17
+
+
+ 853              	/*     DEBUG_CIPHER_VECTOR ("state", state); */
+ 854              	    lo = AESBCMEMBER(VecAnd) (state, vec_0F);
+ 855              	/*     DEBUG_CIPHER_VECTOR ("lo", lo); */
+ 856              	#if USE_VEC_REG
+ 857              	    hi = op_PSRLDI128 (state, 4);
+ 858              	/*     DEBUG_CIPHER_VECTOR ("hi", hi); */
+ 859              	    hi = AESBCMEMBER(VecAnd) (hi, vec_0F);
+ 860              	/*     DEBUG_CIPHER_VECTOR ("hi", hi); */
+ 861              	#else
+ 862              	    hi = AESBCMEMBER(VecDiv) (state, vec_10);
+ 863              	/*     DEBUG_CIPHER_VECTOR ("hi", hi); */
+ 864              	#endif
+ 865              	
+ 866              	    for (ix = 0; ix < sizeof (state); ++ix)
+ 867              	    {
+ 868              	        tmp = AESBCMEMBER(PackShuffleBytes) (lo_filter, hi);
+ 869              	/*         DEBUG_CIPHER_VECTOR ("tmp", tmp); */
+ 870              	        tmp = AESBCMEMBER(VecOr) (lo, tmp);
+ 871              	/*         DEBUG_CIPHER_VECTOR ("tmp", tmp); */
+ 872              	        tmp = AESBCMEMBER(PackShuffleBytes) (box[ix], tmp);
+ 873              	/*         DEBUG_CIPHER_VECTOR ("tmp", tmp); */
+ 874              	        out = AESBCMEMBER(VecOr) (out, tmp);
+ 875              	/*         DEBUG_CIPHER_VECTOR ("out", out); */
+ 876              	        hi  = AESBCMEMBER(VecSub) (hi, vec_01);
+ 877              	/*         DEBUG_CIPHER_VECTOR ("hi", hi); */
+ 878              	        hi  = AESBCMEMBER(VecAnd) (hi, vec_0F);
+ 879              	/*         DEBUG_CIPHER_VECTOR ("hi", hi); */
+ 880              	    }
+ 881              	/*     DEBUG_CIPHER_VECTOR ("out", out); */
+ 882              	    return out;
+ 883              	}
+ 884              	
+ 885              	
+ 886              	static __inline__
+ 887              	CipherVec AESBCMEMBER(SubBytes) (CipherVec state)
+ 888              	    __attribute__ ((always_inline));
+ 889              	
+ 890              	static __inline__
+ 891              	CipherVec AESBCMEMBER(SubBytes) (CipherVec state)
+ 892              	{
+ 893              	    return AESBCMEMBER(SubBytesInt) (state, AESBCMEMBER(RijndaelSBoxV));
+ 894              	}
+ 895              	
+ 896              	
+ 897              	static __inline__
+ 898              	CipherVec AESBCMEMBER(InvSubBytes) (CipherVec state)
+ 899              	    __attribute__ ((always_inline));
+ 900              	
+ 901              	static __inline__
+ 902              	CipherVec AESBCMEMBER(InvSubBytes) (CipherVec state)
+ 903              	{
+ 904              	    return AESBCMEMBER(SubBytesInt) (state, AESBCMEMBER(RijndaelInvSBoxV));
+ 905              	}
+ 906              	
+ 907              	
+ 908              	/* ======================================================================
+ 909              	 * FIPS-197 5.1.3
+GAS LISTING /tmp/ccVFFGPf.s 			page 18
+
+
+ 910              	 */
+ 911              	
+ 912              	/*
+ 913              	 * there are no psllb or psrlb instructions so shift words not bytes
+ 914              	 * and then cut off bits that would have been zeroed if there were
+ 915              	 * such instructions
+ 916              	 *
+ 917              	 * 
+ 918              	 */
+ 919              	static const CipherVec FF_tab = 
+ 920              	{ 0x00, 0x1B, 0x36, 0x2D, 0x6C, 0x77, 0x5A, 0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
+ 921              	
+ 922              	static __inline__
+ 923              	CipherVec AESBCMEMBER(FF_mul) (register CipherVec state, const int bits)
+ 924              	    __attribute__ ((always_inline));
+ 925              	
+ 926              	static __inline__
+ 927              	CipherVec AESBCMEMBER(FF_mul) (register CipherVec state, const int bits)
+ 928              	{
+ 929              	    CipherVec sl, sr;
+ 930              	
+ 931              	    assert (bits <= 8);
+ 932              	
+ 933              	    DEBUG_CIPHER_VECTOR ("state", state);
+ 934              	    sr = AESBCMEMBER(VecSRLBI) (state, 8 - bits);
+ 935              	    DEBUG_CIPHER_VECTOR ("sr", sr);
+ 936              	    sl = AESBCMEMBER(VecSLLBI) (state, bits);
+ 937              	    DEBUG_CIPHER_VECTOR ("sl", sl);
+ 938              	    sr = AESBCMEMBER(PackShuffleBytes) (FF_tab, sr);
+ 939              	    return AESBCMEMBER(VecXor)(sl, sr);
+ 940              	}
+ 941              	
+ 942              	
+ 943              	static __inline__
+ 944              	CipherVec AESBCMEMBER(FF_mul_02) (CipherVec state)
+ 945              	    __attribute__ ((always_inline));
+ 946              	
+ 947              	static __inline__
+ 948              	CipherVec AESBCMEMBER(FF_mul_02) (register CipherVec state)
+ 949              	{
+ 950              	    DEBUG_CIPHER_VECTOR ("state", state);
+ 951              	
+ 952              	    state =  AESBCMEMBER(FF_mul) (state, 1);
+ 953              	    DEBUG_CIPHER_VECTOR ("state", state);
+ 954              	
+ 955              	    return state;
+ 956              	}
+ 957              	
+ 958              	
+ 959              	static __inline__
+ 960              	CipherVec AESBCMEMBER(FF_mul_04) (CipherVec state)
+ 961              	    __attribute__ ((always_inline));
+ 962              	
+ 963              	static __inline__
+ 964              	CipherVec AESBCMEMBER(FF_mul_04) (CipherVec state)
+ 965              	{
+ 966              	    DEBUG_CIPHER_VECTOR ("state", state);
+GAS LISTING /tmp/ccVFFGPf.s 			page 19
+
+
+ 967              	
+ 968              	    state =  AESBCMEMBER(FF_mul) (state, 2);
+ 969              	    DEBUG_CIPHER_VECTOR ("state", state);
+ 970              	
+ 971              	    return state;
+ 972              	}
+ 973              	
+ 974              	
+ 975              	static __inline__
+ 976              	CipherVec AESBCMEMBER(FF_mul_08) (CipherVec state)
+ 977              	    __attribute__ ((always_inline));
+ 978              	
+ 979              	static __inline__
+ 980              	CipherVec AESBCMEMBER(FF_mul_08) (CipherVec state)
+ 981              	{
+ 982              	    DEBUG_CIPHER_VECTOR ("state", state);
+ 983              	
+ 984              	    state =  AESBCMEMBER(FF_mul) (state, 3);
+ 985              	    DEBUG_CIPHER_VECTOR ("state", state);
+ 986              	
+ 987              	    return state;
+ 988              	}
+ 989              	
+ 990              	
+ 991              	static AESByte AESBCMEMBER(FFtable)[] = { 0x00, 0x1b, 0x36, 0x2d, 0x6c, 0x77, 0x5a, 0x41 };
+ 992              	
+ 993              	
+ 994              	static __inline__ 
+ 995              	AESByte AESBCMEMBER(FFtab) (uint8_t x)
+ 996              	    __attribute__ ((always_inline));
+ 997              	
+ 998              	static __inline__ 
+ 999              	AESByte AESBCMEMBER(FFtab) (uint8_t x)
+ 1000              	{
+ 1001              	    return AESBCMEMBER(FFtable)[x];
+ 1002              	}
+ 1003              	
+ 1004              	
+ 1005              	static __inline__ 
+ 1006              	AESByte AESBCMEMBER(FFmul02) (AESByte b)
+ 1007              	    __attribute__ ((always_inline));
+ 1008              	
+ 1009              	static __inline__ 
+ 1010              	AESByte AESBCMEMBER(FFmul02) (AESByte b)
+ 1011              	{
+ 1012              	    return (b << 1) ^ AESBCMEMBER(FFtab)(b >> 7);
+ 1013              	}
+ 1014              	
+ 1015              	
+ 1016              	static __inline__ 
+ 1017              	AESByte AESBCMEMBER(FFmul04) (AESByte b)
+ 1018              	    __attribute__ ((always_inline));
+ 1019              	
+ 1020              	static __inline__ 
+ 1021              	AESByte AESBCMEMBER(FFmul04) (AESByte b)
+ 1022              	{
+ 1023              	    return (b << 2) ^ AESBCMEMBER(FFtab)(b >> 6);
+GAS LISTING /tmp/ccVFFGPf.s 			page 20
+
+
+ 1024              	}
+ 1025              	
+ 1026              	
+ 1027              	static __inline__ 
+ 1028              	AESByte AESBCMEMBER(FFmul08) (AESByte b)
+ 1029              	    __attribute__ ((always_inline));
+ 1030              	
+ 1031              	static __inline__ 
+ 1032              	AESByte AESBCMEMBER(FFmul08) (AESByte b)
+ 1033              	{
+ 1034              	    return (b << 3) ^ AESBCMEMBER(FFtab)(b >> 5);
+ 1035              	}
+ 1036              	
+ 1037              	
+ 1038              	static __inline__
+ 1039              	CipherVec AESBCMEMBER(MixColumns) (CipherVec state)
+ 1040              	    __attribute__ ((always_inline));
+ 1041              	
+ 1042              	static __inline__
+ 1043              	CipherVec AESBCMEMBER(MixColumns) (CipherVec state)
+ 1044              	{
+ 1045              	    register CipherVec c0, c1, c2, c3;
+ 1046              	    
+ 1047              	    c1 = AESBCMEMBER(RotBytesLeft) (state);
+ 1048              	    c2 = AESBCMEMBER(RotBytesLeft) (c1);
+ 1049              	    c3 = AESBCMEMBER(RotBytesLeft) (c2);
+ 1050              	    c0 = AESBCMEMBER(VecXor) (state, c1);
+ 1051              	
+ 1052              	
+ 1053              	#if USE_VEC_REG
+ 1054              	    c0 = AESBCMEMBER(FF_mul_02) (c0);
+ 1055              	#else
+ 1056              	    {
+ 1057              	        CipherVec_AES_u tmp;
+ 1058              	        unsigned ix;
+ 1059              	
+ 1060              	        tmp.state = c0;
+ 1061              	    
+ 1062              	        for (ix = 0; ix < sizeof tmp; ++ix)
+ 1063              	            tmp.bytes[ix] = AESBCMEMBER(FFmul02)(tmp.bytes[ix]);
+ 1064              	        c0 = tmp.state;
+ 1065              	    }
+ 1066              	#endif
+ 1067              	    c1 = AESBCMEMBER(VecXor) (c1, c2);
+ 1068              	    c1 = AESBCMEMBER(VecXor) (c1, c3);
+ 1069              	    c1 = AESBCMEMBER(VecXor) (c1, c0);
+ 1070              	
+ 1071              	    return c1;
+ 1072              	/* obsoleted 
+ 1073              	    CipherVec_AES_u in, out;
+ 1074              	    unsigned ix;
+ 1075              	
+ 1076              	    in.state = state;
+ 1077              	
+ 1078              	    for (ix = 0; ix < sizeof (out.bytes); ix += 4)
+ 1079              	    {
+ 1080              	        unsigned const s0 = in.bytes[ix + 0];
+GAS LISTING /tmp/ccVFFGPf.s 			page 21
+
+
+ 1081              	        unsigned const s1 = in.bytes[ix + 1];
+ 1082              	        unsigned const s2 = in.bytes[ix + 2];
+ 1083              	        unsigned const s3 = in.bytes[ix + 3];
+ 1084              	
+ 1085              	        out.bytes[ix + 0] =      s1 ^ s2 ^ s3 ^ AESBCMEMBER(FFmul02)(s0 ^ s1);
+ 1086              	        out.bytes[ix + 1] = s0      ^ s2 ^ s3 ^ AESBCMEMBER(FFmul02)(s1 ^ s2);
+ 1087              	        out.bytes[ix + 2] = s0 ^ s1      ^ s3 ^ AESBCMEMBER(FFmul02)(s2 ^ s3);
+ 1088              	        out.bytes[ix + 3] = s0 ^ s1 ^ s2      ^ AESBCMEMBER(FFmul02)(s3 ^ s0);
+ 1089              	    }
+ 1090              	    return out.state;
+ 1091              	*/
+ 1092              	}
+ 1093              	
+ 1094              	static __inline__
+ 1095              	CipherVec AESBCMEMBER(InvMixColumns) (CipherVec state)
+ 1096              	    __attribute__ ((always_inline));
+ 1097              	
+ 1098              	static __inline__
+ 1099              	CipherVec AESBCMEMBER(InvMixColumns) (CipherVec state)
+ 1100              	{
+ 1101              	#if USE_AES_NI
+ 1102              	    state = op_AESIMC (state);
+ 1103              	#else
+ 1104              	    register CipherVec r1, r2, r3, f2, f4, f8;
+ 1105              	
+ 1106              	    r1 = AESBCMEMBER(RotBytesLeft) (state);
+ 1107              	    r2 = AESBCMEMBER(RotBytesLeft) (r1);
+ 1108              	    r3 = AESBCMEMBER(RotBytesLeft) (r2);        
+ 1109              	
+ 1110              	    f4 = AESBCMEMBER(VecXor) (state, r2);
+ 1111              	    f2 = AESBCMEMBER(VecXor) (state, r1);
+ 1112              	    f8 = AESBCMEMBER(VecXor) (r2, r3);
+ 1113              	    state = AESBCMEMBER(VecXor) (f8, r1);
+ 1114              	    f8 = AESBCMEMBER(VecXor) (f8, f2);
+ 1115              	
+ 1116              	
+ 1117              	#if USE_VEC_REG
+ 1118              	    f2 = AESBCMEMBER(FF_mul) (f2,1);
+ 1119              	    f4 = AESBCMEMBER(FF_mul) (f4,2);
+ 1120              	    f8 = AESBCMEMBER(FF_mul) (f8,3);
+ 1121              	#else
+ 1122              	    {
+ 1123              	        CipherVec_AES_u fu2, fu4, fu8;
+ 1124              	        unsigned ix;
+ 1125              	
+ 1126              	        fu2.state = f2;
+ 1127              	        fu4.state = f4;
+ 1128              	        fu8.state = f8;
+ 1129              	
+ 1130              	        for (ix = 0; ix < sizeof fu2; ++ix)
+ 1131              	        {
+ 1132              	            fu2.bytes[ix] = AESBCMEMBER(FFmul02)(fu2.bytes[ix]);
+ 1133              	            fu4.bytes[ix] = AESBCMEMBER(FFmul04)(fu4.bytes[ix]);
+ 1134              	            fu8.bytes[ix] = AESBCMEMBER(FFmul08)(fu8.bytes[ix]);
+ 1135              	        }
+ 1136              	        f2 = fu2.state;
+ 1137              	        f4 = fu4.state;
+GAS LISTING /tmp/ccVFFGPf.s 			page 22
+
+
+ 1138              	        f8 = fu8.state;
+ 1139              	    }
+ 1140              	#endif
+ 1141              	
+ 1142              	    state = AESBCMEMBER(VecXor) (state, f2);
+ 1143              	    state = AESBCMEMBER(VecXor) (state, f4);
+ 1144              	    state = AESBCMEMBER(VecXor) (state, f8);
+ 1145              	
+ 1146              	#endif
+ 1147              	
+ 1148              	    return state;
+ 1149              	/*
+ 1150              	    CipherVec_AES_u in, out;
+ 1151              	    unsigned ix;
+ 1152              	
+ 1153              	    in.state = state;
+ 1154              	
+ 1155              	    for (ix = 0; ix < sizeof (out.bytes); ix += AES_Nb)
+ 1156              	    {
+ 1157              	        AESWord s0 = in.bytes[ix + 0];
+ 1158              	        AESWord s1 = in.bytes[ix + 1];
+ 1159              	        AESWord s2 = in.bytes[ix + 2];
+ 1160              	        AESWord s3 = in.bytes[ix + 3];
+ 1161              	        AESWord p, q;
+ 1162              	
+ 1163              	        q =     AESBCMEMBER(FFmul08)(s0 ^ s1 ^ s2 ^ s3);
+ 1164              	        p = q ^ AESBCMEMBER(FFmul04)(s0 ^ s2);
+ 1165              	        q = q ^ AESBCMEMBER(FFmul04)(s1 ^ s3);
+ 1166              	
+ 1167              	        out.bytes[ix + 0] =      s1 ^ s2 ^ s3 ^ AESBCMEMBER(FFmul02)(s0 ^ s1) ^ p;
+ 1168              	        out.bytes[ix + 1] = s0      ^ s2 ^ s3 ^ AESBCMEMBER(FFmul02)(s1 ^ s2) ^ q;
+ 1169              	        out.bytes[ix + 2] = s0 ^ s1      ^ s3 ^ AESBCMEMBER(FFmul02)(s2 ^ s3) ^ p;
+ 1170              	        out.bytes[ix + 3] = s0 ^ s1 ^ s2      ^ AESBCMEMBER(FFmul02)(s3 ^ s0) ^ q;
+ 1171              	    }
+ 1172              	
+ 1173              	    return out.state;
+ 1174              	*/
+ 1175              	}
+ 1176              	
+ 1177              	
+ 1178              	/* ======================================================================
+ 1179              	 * FIPS-197 5.2
+ 1180              	 */
+ 1181              	static const
+ 1182              	AESWord AESBCMEMBER(Rcon)[] = {
+ 1183              	    0x00000001, 0x00000002, 0x00000004, 0x00000008,
+ 1184              	    0x00000010, 0x00000020, 0x00000040, 0x00000080,
+ 1185              	    0x0000001B, 0x00000036
+ 1186              	};
+ 1187              	
+ 1188              	
+ 1189              	static __inline__
+ 1190              	AESWord AESBCMEMBER(RotWord) (AESWord w)
+ 1191              	    __attribute__ ((always_inline));
+ 1192              	
+ 1193              	static __inline__
+ 1194              	AESWord AESBCMEMBER(RotWord) (AESWord w)
+GAS LISTING /tmp/ccVFFGPf.s 			page 23
+
+
+ 1195              	{
+ 1196              	    return (w >> 8) | (w << 24);
+ 1197              	}
+ 1198              	
+ 1199              	
+ 1200              	static __inline__
+ 1201              	AESWord AESBCMEMBER(GetWord) (const AESByte * pointer)
+ 1202              	    __attribute__ ((always_inline));
+ 1203              	
+ 1204              	static __inline__
+ 1205              	AESWord AESBCMEMBER(GetWord) (const AESByte * pointer)
+ 1206              	{
+ 1207              	    /*
+ 1208              	     * not portable to architectures which require aligned multibyte reads
+ 1209              	     * but as this only runs on Intel at this point it is fine for now
+ 1210              	     */
+ 1211              	    return *(AESWord*)pointer;
+ 1212              	}
+ 1213              	
+ 1214              	
+ 1215              	
+ 1216              	static __inline__
+ 1217              	void AESBCMEMBER(KeyExpansion) (CipherVec * r, const AESByte * key, unsigned Nr, unsigned Nk)
+ 1218              	{
+ 1219              	    AESWord * w = (AESWord*)r;
+ 1220              	    const AESWord * pRcon;
+ 1221              	    unsigned ix, limit;
+ 1222              	    AESWord temp;
+ 1223              	
+ 1224              	
+ 1225              	    DEBUG_KEYEXP(("%s (w (%p), key (%p), Nr (%u) Nk (%u))\n", __func__, w, key, Nr, Nk));
+ 1226              	
+ 1227              	    for (ix = 0; ix < Nk; ++ix)
+ 1228              	    {
+ 1229              	        DEBUG_KEYEXP(("i (dec): %u\n", ix));
+ 1230              	        temp = AESBCMEMBER(GetWord) (key+(ix*4));
+ 1231              	        w[ix] = temp;
+ 1232              	        DEBUG_KEYEXP(("kw[%i]: %0.8x\n", ix, temp));
+ 1233              	    }
+ 1234              	
+ 1235              	    limit = AES_Nb * (Nr + 1);
+ 1236              	    pRcon = AESBCMEMBER(Rcon);
+ 1237              	    DEBUG_KEYEXP(("Nk (%u) Nr (%u) limit (%u)\n", Nk, Nr, limit));
+ 1238              	        
+ 1239              	    for (; ix < limit; ++ix)
+ 1240              	    {
+ 1241              	
+ 1242              	        DEBUG_KEYEXP(("i (dec): %u %u\n", ix, limit));
+ 1243              	
+ 1244              	        /* temp should already be set */
+ 1245              	        DEBUG_KEYEXP(("temp: %0.8x\n", temp));
+ 1246              	        if ((ix % Nk) == 0)
+ 1247              	        {
+ 1248              	            temp = AESBCMEMBER(RotWord)(temp);
+ 1249              	            DEBUG_KEYEXP(("after RotWord: %0.8x \n", temp));
+ 1250              	            temp = AESBCMEMBER(SubWord) (temp);
+ 1251              	            DEBUG_KEYEXP(("after SubWord: %0.8x \n", temp));
+GAS LISTING /tmp/ccVFFGPf.s 			page 24
+
+
+ 1252              	            DEBUG_KEYEXP(("Rcon [i/Nk]: %0.8x\n", *pRcon));
+ 1253              	            temp ^= *pRcon++;
+ 1254              	            DEBUG_KEYEXP(("after XOR with Rcon: %0.8x \n", temp));
+ 1255              	        }
+ 1256              	        else if ((Nk > 6) && ((ix % Nk) == 4))
+ 1257              	        {
+ 1258              	            temp = AESBCMEMBER(SubWord) (temp);
+ 1259              	            DEBUG_KEYEXP(("after SubWord: %0.8x \n", temp));
+ 1260              	        }
+ 1261              	        DEBUG_KEYEXP(("w[i-Nk]: %0.8x\n", w[ix-Nk]));
+ 1262              	        temp ^= w [ix - Nk];
+ 1263              	        DEBUG_KEYEXP(("kw[ix]: %0.8x\n", temp));
+ 1264              	        w [ix] = temp;
+ 1265              	    }
+ 1266              	}
+ 1267              	
+ 1268              	
+ 1269              	static __inline__
+ 1270              	CipherVec AESBCMEMBER(StateShiftLeft32) (CipherVec state)
+ 1271              	    __attribute__ ((always_inline));
+ 1272              	
+ 1273              	static __inline__
+ 1274              	CipherVec AESBCMEMBER(StateShiftLeft32) (CipherVec state)
+ 1275              	{
+ 1276              	#if (USE_VEC_REG)
+ 1277              	    static const CipherVec mask = { 0xFF, 0xFF, 0xFF, 0xFF, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11 };
+ 1278              	    return AESBCMEMBER(PackShuffleBytes) (state, mask);
+ 1279              	#else
+ 1280              	    CipherVec_AES_u temp;
+ 1281              	
+ 1282              	    temp.state = state;
+ 1283              	    temp.columns[3] = temp.columns[2];
+ 1284              	    temp.columns[2] = temp.columns[1];
+ 1285              	    temp.columns[1] = temp.columns[0];
+ 1286              	    temp.columns[0] = 0;
+ 1287              	    return temp.state;
+ 1288              	#endif
+ 1289              	}
+ 1290              	
+ 1291              	
+ 1292              	static __inline__
+ 1293              	CipherVec AESBCMEMBER(StateShiftRight64) (CipherVec state)
+ 1294              	    __attribute__ ((always_inline));
+ 1295              	
+ 1296              	static __inline__
+ 1297              	CipherVec AESBCMEMBER(StateShiftRight64) (CipherVec state)
+ 1298              	{
+ 1299              	#if (USE_VEC_REG)
+ 1300              	    static const CipherVec mask = { 8, 9, 10, 11, 12, 13, 14, 15, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xF
+ 1301              	    return AESBCMEMBER(PackShuffleBytes) (state, mask);
+ 1302              	#else
+ 1303              	    CipherVec_AES_u temp;
+ 1304              	
+ 1305              	    temp.state = state;
+ 1306              	    temp.columns[0] = temp.columns[2];
+ 1307              	    temp.columns[1] = temp.columns[3];
+ 1308              	    temp.columns[2] = 0;
+GAS LISTING /tmp/ccVFFGPf.s 			page 25
+
+
+ 1309              	    temp.columns[3] = 0;
+ 1310              	    return temp.state;
+ 1311              	#endif
+ 1312              	}
+ 1313              	
+ 1314              	
+ 1315              	static __inline__
+ 1316              	CipherVec AESBCMEMBER(StateShiftLeft64) (CipherVec state)
+ 1317              	    __attribute__ ((always_inline));
+ 1318              	
+ 1319              	static __inline__
+ 1320              	CipherVec AESBCMEMBER(StateShiftLeft64) (CipherVec state)
+ 1321              	{
+ 1322              	#if (USE_VEC_REG)
+ 1323              	    static const CipherVec mask = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0, 1, 2, 3, 4, 
+ 1324              	    return AESBCMEMBER(PackShuffleBytes) (state, mask);
+ 1325              	#else
+ 1326              	    CipherVec_AES_u temp;
+ 1327              	
+ 1328              	    temp.state = state;
+ 1329              	    temp.columns[3] = temp.columns[2];
+ 1330              	    temp.columns[2] = temp.columns[1];
+ 1331              	    temp.columns[1] = temp.columns[0];
+ 1332              	    temp.columns[0] = 0;
+ 1333              	    return temp.state;
+ 1334              	#endif
+ 1335              	}
+ 1336              	
+ 1337              	
+ 1338              	/*
+ 1339              	 * incoming vector in words
+ 1340              	 *     W0:W1:W2:W3
+ 1341              	 *
+ 1342              	 * output vector in words
+ 1343              	 *     W3:W3:W3:W3
+ 1344              	 */
+ 1345              	static __inline__
+ 1346              	CipherVec AESBCMEMBER(StateDupColumn3) (CipherVec state)
+ 1347              	    __attribute__ ((always_inline));
+ 1348              	
+ 1349              	static __inline__
+ 1350              	CipherVec AESBCMEMBER(StateDupColumn3) (CipherVec state)
+ 1351              	{
+ 1352              	#if (USE_VEC_REG)
+ 1353              	    return op_PSHUFD128 (state,0xFF);
+ 1354              	#else
+ 1355              	    CipherVec_AES_u temp;
+ 1356              	
+ 1357              	    temp.state = state;
+ 1358              	    temp.columns[2] = temp.columns[3];
+ 1359              	    temp.columns[1] = temp.columns[3];
+ 1360              	    temp.columns[0] = temp.columns[3];
+ 1361              	    return temp.state;
+ 1362              	#endif
+ 1363              	}
+ 1364              	
+ 1365              	
+GAS LISTING /tmp/ccVFFGPf.s 			page 26
+
+
+ 1366              	/*
+ 1367              	 * incoming vector in words
+ 1368              	 *     W0:W1:W2:W3
+ 1369              	 *
+ 1370              	 * output vector in words
+ 1371              	 *     W2:W2:W2:W2
+ 1372              	 */
+ 1373              	static __inline__
+ 1374              	CipherVec AESBCMEMBER(StateDupColumn2) (CipherVec state)
+ 1375              	    __attribute__ ((always_inline));
+ 1376              	
+ 1377              	static __inline__
+ 1378              	CipherVec AESBCMEMBER(StateDupColumn2) (CipherVec state)
+ 1379              	{
+ 1380              	#if (USE_VEC_REG)
+ 1381              	    return op_PSHUFD128 (state,0xAA);
+ 1382              	#else
+ 1383              	    CipherVec_AES_u temp;
+ 1384              	
+ 1385              	    temp.state = state;
+ 1386              	    temp.columns[3] = temp.columns[2];
+ 1387              	    temp.columns[1] = temp.columns[2];
+ 1388              	    temp.columns[0] = temp.columns[2];
+ 1389              	    return temp.state;
+ 1390              	#endif
+ 1391              	}
+ 1392              	
+ 1393              	
+ 1394              	/*
+ 1395              	 * incoming vector in words
+ 1396              	 *     W0:W1:W2:W3
+ 1397              	 *
+ 1398              	 * output vector in words
+ 1399              	 *     W2:W2:W2:W2
+ 1400              	 */
+ 1401              	static __inline__
+ 1402              	CipherVec AESBCMEMBER(StateDupColumn1) (CipherVec state)
+ 1403              	    __attribute__ ((always_inline));
+ 1404              	
+ 1405              	static __inline__
+ 1406              	CipherVec AESBCMEMBER(StateDupColumn1) (CipherVec state)
+ 1407              	{
+ 1408              	#if (USE_VEC_REG)
+ 1409              	    return op_PSHUFD128 (state,0x55);
+ 1410              	#else
+ 1411              	    CipherVec_AES_u temp;
+ 1412              	
+ 1413              	    temp.state = state;
+ 1414              	    temp.columns[3] = temp.columns[1];
+ 1415              	    temp.columns[2] = temp.columns[1];
+ 1416              	    temp.columns[0] = temp.columns[1];
+ 1417              	    return temp.state;
+ 1418              	#endif
+ 1419              	}
+ 1420              	
+ 1421              	
+ 1422              	/*
+GAS LISTING /tmp/ccVFFGPf.s 			page 27
+
+
+ 1423              	 * incoming vector in words
+ 1424              	 *     W0:W1:W2:W3
+ 1425              	 *
+ 1426              	 * output vector in words
+ 1427              	 *     W0:W0:W0:W0
+ 1428              	 */
+ 1429              	static __inline__
+ 1430              	CipherVec AESBCMEMBER(StateDupColumn0) (CipherVec state)
+ 1431              	    __attribute__ ((always_inline));
+ 1432              	
+ 1433              	static __inline__
+ 1434              	CipherVec AESBCMEMBER(StateDupColumn0) (CipherVec state)
+ 1435              	{
+ 1436              	#if (USE_VEC_REG)
+ 1437              	    return op_PSHUFD128 (state,0x00);
+ 1438              	#else
+ 1439              	    CipherVec_AES_u temp;
+ 1440              	
+ 1441              	    temp.state = state;
+ 1442              	    temp.columns[3] = temp.columns[0];
+ 1443              	    temp.columns[2] = temp.columns[0];
+ 1444              	    temp.columns[1] = temp.columns[0];
+ 1445              	    return temp.state;
+ 1446              	#endif
+ 1447              	}
+ 1448              	
+ 1449              	
+ 1450              	/*
+ 1451              	 * incoming vector in words
+ 1452              	 *     W0:W1:W2:W3
+ 1453              	 *     X0:X1:X2:X3
+ 1454              	 *
+ 1455              	 * output vector in words
+ 1456              	 *     W0:W1:X0:X1
+ 1457              	 */
+ 1458              	static __inline__
+ 1459              	CipherVec AESBCMEMBER(StateMerge1) (CipherVec w, CipherVec x)
+ 1460              	    __attribute__ ((always_inline));
+ 1461              	
+ 1462              	static __inline__
+ 1463              	CipherVec AESBCMEMBER(StateMerge1) (CipherVec w, CipherVec x)
+ 1464              	{
+ 1465              	#if USE_VEC_REG
+ 1466              	    return op_SHUFPD (w, x, 0x00);
+ 1467              	#else
+ 1468              	    CipherVec_AES_u ww;
+ 1469              	    CipherVec_AES_u xx;
+ 1470              	
+ 1471              	    ww.state = w;
+ 1472              	    xx.state = x;
+ 1473              	
+ 1474              	    ww.columns[2] = xx.columns[0];
+ 1475              	    ww.columns[3] = xx.columns[1];
+ 1476              	
+ 1477              	    return ww.state;
+ 1478              	#endif
+ 1479              	}
+GAS LISTING /tmp/ccVFFGPf.s 			page 28
+
+
+ 1480              	
+ 1481              	
+ 1482              	/*
+ 1483              	 * incoming vector in words
+ 1484              	 *     W0:W1:W2:W3
+ 1485              	 *     X0:X1:X2:X3
+ 1486              	 *
+ 1487              	 * output vector in words
+ 1488              	 *     X2:X3:W0:W1
+ 1489              	 */
+ 1490              	static __inline__
+ 1491              	CipherVec AESBCMEMBER(StateMerge2) (CipherVec w, CipherVec x)
+ 1492              	    __attribute__ ((always_inline));
+ 1493              	
+ 1494              	static __inline__
+ 1495              	CipherVec AESBCMEMBER(StateMerge2) (CipherVec w, CipherVec x)
+ 1496              	{
+ 1497              	#if USE_VEC_REG
+ 1498              	    return op_SHUFPD (w, x, 0x01);
+ 1499              	#else
+ 1500              	    CipherVec_AES_u ww;
+ 1501              	    CipherVec_AES_u xx;
+ 1502              	
+ 1503              	    ww.state = w;
+ 1504              	    xx.state = x;
+ 1505              	
+ 1506              	    ww.columns[0] = ww.columns[2];
+ 1507              	    ww.columns[1] = ww.columns[3];
+ 1508              	    ww.columns[2] = xx.columns[0];
+ 1509              	    ww.columns[3] = xx.columns[1];
+ 1510              	
+ 1511              	    return ww.state;
+ 1512              	#endif
+ 1513              	}
+ 1514              	
+ 1515              	
+ 1516              	/*
+ 1517              	 * incoming vector in words
+ 1518              	 *     W0:W1:W2:W3
+ 1519              	 *     X0:X1:X2:X3
+ 1520              	 *
+ 1521              	 * output vector in words
+ 1522              	 *     X2:X3:W0:W1
+ 1523              	 */
+ 1524              	static __inline__
+ 1525              	CipherVec AESBCMEMBER(StateMerge3) (CipherVec v0, CipherVec v1)
+ 1526              	    __attribute__ ((always_inline));
+ 1527              	
+ 1528              	static __inline__
+ 1529              	CipherVec AESBCMEMBER(StateMerge3) (CipherVec v0, CipherVec v1)
+ 1530              	{
+ 1531              	#if USE_VEC_REG
+ 1532              	    return op_SHUFPD (v0, v1, 0x02);
+ 1533              	#else
+ 1534              	    CipherVec_AES_u t0;
+ 1535              	    CipherVec_AES_u t1;
+ 1536              	
+GAS LISTING /tmp/ccVFFGPf.s 			page 29
+
+
+ 1537              	    t0.state = v0;
+ 1538              	    t1.state = v1;
+ 1539              	
+ 1540              	    t0.columns[2] = t0.columns[0];
+ 1541              	    t0.columns[3] = t0.columns[1];
+ 1542              	    t0.columns[0] = t1.columns[2];
+ 1543              	    t0.columns[1] = t1.columns[3];
+ 1544              	
+ 1545              	    return t0.state;
+ 1546              	#endif
+ 1547              	}
+ 1548              	
+ 1549              	
+ 1550              	/*
+ 1551              	 * incoming vector in words
+ 1552              	 *     W0:W1:W2:W3
+ 1553              	 *
+ 1554              	 * output vector in words
+ 1555              	 *     W0:W0^W1:W0^W1^W2:W0^W1^W2^W3
+ 1556              	 */
+ 1557              	static __inline__
+ 1558              	CipherVec AESBCMEMBER(ShiftXorColumns) (CipherVec state)
+ 1559              	    __attribute__ ((always_inline));
+ 1560              	
+ 1561              	static __inline__
+ 1562              	CipherVec AESBCMEMBER(ShiftXorColumns) (CipherVec state)
+ 1563              	{
+ 1564              	#if USE_VEC
+ 1565              	    register CipherVec shift = state;
+ 1566              	
+ 1567              	    state ^= shift = AESBCMEMBER(StateShiftLeft32) (shift);
+ 1568              	    state ^= shift = AESBCMEMBER(StateShiftLeft32) (shift);
+ 1569              	    state ^= shift = AESBCMEMBER(StateShiftLeft32) (shift);
+ 1570              	
+ 1571              	    return state;
+ 1572              	#else
+ 1573              	    CipherVec_AES_u temp;
+ 1574              	
+ 1575              	    temp.state = state;
+ 1576              	
+ 1577              	    temp.columns[1] ^= temp.columns[0];
+ 1578              	    temp.columns[2] ^= temp.columns[1];
+ 1579              	    temp.columns[3] ^= temp.columns[2];
+ 1580              	
+ 1581              	    return temp.state;
+ 1582              	#endif
+ 1583              	}
+ 1584              	
+ 1585              	
+ 1586              	static __inline__ 
+ 1587              	CipherVec AESBCMEMBER(AesKeyGenAssist) (register CipherVec state, const int rcon)
+ 1588              	    __attribute__ ((always_inline));
+ 1589              	
+ 1590              	static __inline__ 
+ 1591              	CipherVec AESBCMEMBER(AesKeyGenAssist) (register CipherVec state, const int rcon)
+ 1592              	{
+ 1593              	#if (USE_AES_NI)
+GAS LISTING /tmp/ccVFFGPf.s 			page 30
+
+
+ 1594              	    return op_AESKEYGENASSIST (state, rcon);
+ 1595              	#else
+ 1596              	    CipherVec_AES_u in;
+ 1597              	    CipherVec_AES_u out;
+ 1598              	    AESWord rconw;
+ 1599              	
+ 1600              	    rconw = (AESWord)(AESByte)rcon;
+ 1601              	    in.state = state;
+ 1602              	
+ 1603              	    out.columns[0] = AESBCMEMBER(SubWord)(in.columns[1]);
+ 1604              	    out.columns[1] = AESBCMEMBER(RotWord)(out.columns[0]) ^ rconw;
+ 1605              	    out.columns[2] = AESBCMEMBER(SubWord)(in.columns[3]);
+ 1606              	    out.columns[3] = AESBCMEMBER(RotWord)(out.columns[2]) ^ rconw;
+ 1607              	
+ 1608              	    return out.state;
+ 1609              	#endif
+ 1610              	}
+ 1611              	
+ 1612              	
+ 1613              	static __inline__ 
+ 1614              	CipherVec AESBCMEMBER(AesKeyGenAssistColumn1) (register CipherVec state, const int rcon)
+ 1615              	    __attribute__ ((always_inline));
+ 1616              	
+ 1617              	static __inline__ 
+ 1618              	CipherVec AESBCMEMBER(AesKeyGenAssistColumn1) (register CipherVec state, const int rcon)
+ 1619              	{
+ 1620              	#if (USE_AES_NI)
+ 1621              	    register CipherVec tmp = state;
+ 1622              	    tmp = op_AESKEYGENASSIST (tmp, rcon);
+ 1623              	    return  AESBCMEMBER(StateDupColumn1) (tmp);
+ 1624              	#else
+ 1625              	    CipherVec_AES_u u;
+ 1626              	    AESWord rconw;
+ 1627              	    AESWord temp;
+ 1628              	
+ 1629              	    rconw = (AESWord)(AESByte)rcon;
+ 1630              	    u.state = state;
+ 1631              	    temp  = AESBCMEMBER(SubWord)(u.columns[1]);
+ 1632              	    temp  = AESBCMEMBER(RotWord)(temp);
+ 1633              	    temp ^= rconw;
+ 1634              	
+ 1635              	    u.columns [0] = u.columns [1] = u.columns [2] = u.columns [3] = temp;
+ 1636              	    return u.state;
+ 1637              	#endif
+ 1638              	}
+ 1639              	
+ 1640              	
+ 1641              	static __inline__ 
+ 1642              	CipherVec AESBCMEMBER(AesKeyGenAssistColumn2) (register CipherVec state)
+ 1643              	    __attribute__ ((always_inline));
+ 1644              	
+ 1645              	static __inline__ 
+ 1646              	CipherVec AESBCMEMBER(AesKeyGenAssistColumn2) (register CipherVec state)
+ 1647              	{
+ 1648              	#if (USE_AES_NI)
+ 1649              	    register CipherVec tmp = state;
+ 1650              	    tmp = op_AESKEYGENASSIST (tmp, 0);
+GAS LISTING /tmp/ccVFFGPf.s 			page 31
+
+
+ 1651              	    return  AESBCMEMBER(StateDupColumn2) (tmp);
+ 1652              	#else
+ 1653              	    CipherVec_AES_u u;
+ 1654              	    AESWord temp;
+ 1655              	
+ 1656              	    u.state = state;
+ 1657              	    temp  = AESBCMEMBER(SubWord)(u.columns[3]);
+ 1658              	
+ 1659              	    u.columns [0] = u.columns [1] = u.columns [2] = u.columns [3] = temp;
+ 1660              	    return u.state;
+ 1661              	#endif
+ 1662              	}
+ 1663              	
+ 1664              	
+ 1665              	static __inline__ 
+ 1666              	CipherVec AESBCMEMBER(AesKeyGenAssistColumn3) (register CipherVec state, const int rcon)
+ 1667              	    __attribute__ ((always_inline));
+ 1668              	
+ 1669              	static __inline__ 
+ 1670              	CipherVec AESBCMEMBER(AesKeyGenAssistColumn3) (register CipherVec state, const int rcon)
+ 1671              	{
+ 1672              	#if (USE_AES_NI)
+ 1673              	    register CipherVec tmp = state;
+ 1674              	    tmp = op_AESKEYGENASSIST (tmp, rcon);
+ 1675              	    return  AESBCMEMBER(StateDupColumn3) (tmp);
+ 1676              	
+ 1677              	#else
+ 1678              	    register CipherVec vrcon;
+ 1679              	    register CipherVec tmp;
+ 1680              	
+ 1681              	    vrcon = AESBCMEMBER(SetColumn) (vec_00, (AESWord)rcon, 3);
+ 1682              	    tmp = AESBCMEMBER(SubBytes) (state);
+ 1683              	    DEBUG_CIPHER_VECTOR ("SubBytes", tmp);
+ 1684              	    tmp = AESBCMEMBER(RotBytesLeft) (tmp);
+ 1685              	    DEBUG_CIPHER_VECTOR ("RotBytesLeft", tmp);
+ 1686              	    tmp = AESBCMEMBER(VecXor)(tmp, vrcon);
+ 1687              	    DEBUG_CIPHER_VECTOR ("VecXor", tmp);
+ 1688              	    tmp = AESBCMEMBER(StateDupColumn3) (tmp);
+ 1689              	    DEBUG_CIPHER_VECTOR ("StateDupColumn3", tmp);
+ 1690              	    return tmp;
+ 1691              	
+ 1692              	#endif
+ 1693              	/*
+ 1694              	#elif USE_VEC && 1
+ 1695              	    register CipherVec tmp;
+ 1696              	    CipherVec_AES_u u;
+ 1697              	    
+ 1698              	    u.columns [3] = rcon;
+ 1699              	
+ 1700              	    tmp = AESBCMEMBER(SubBytes) (state);
+ 1701              	    DEBUG_CIPHER_VECTOR ("SubBytes", tmp);
+ 1702              	    tmp = AESBCMEMBER(RotBytesLeft) (tmp);
+ 1703              	    DEBUG_CIPHER_VECTOR ("RotBytesLeft", tmp);
+ 1704              	    tmp = AESBCMEMBER(VecXor)(tmp, u.state);
+ 1705              	    DEBUG_CIPHER_VECTOR ("VecXor", tmp);
+ 1706              	    tmp = AESBCMEMBER(StateDupColumn3) (tmp);
+ 1707              	    DEBUG_CIPHER_VECTOR ("StateDupColumn3", tmp);
+GAS LISTING /tmp/ccVFFGPf.s 			page 32
+
+
+ 1708              	    return tmp;
+ 1709              	
+ 1710              	#else
+ 1711              	    CipherVec_AES_u u;
+ 1712              	    AESWord rconw;
+ 1713              	    AESWord temp;
+ 1714              	
+ 1715              	    rconw = (AESWord)(AESByte)rcon;
+ 1716              	    u.state = state;
+ 1717              	    temp  = AESBCMEMBER(SubWord)(u.columns[3]);
+ 1718              	    temp  = AESBCMEMBER(RotWord)(temp);
+ 1719              	    temp ^= rconw;
+ 1720              	
+ 1721              	    u.columns [0] = u.columns [1] = u.columns [2] = u.columns [3] = temp;
+ 1722              	    return u.state;
+ 1723              	#endif
+ 1724              	*/
+ 1725              	}
+ 1726              	
+ 1727              	
+ 1728              	#if USE_VEC
+ 1729              	static __inline__
+ 1730              	void AESBCMEMBER(KeyExpansion128) (CipherVec * round_keys, const AESByte * key)
+ 1731              	{
+ 1732              	    CipherVec state;
+ 1733              	    CipherVec kgastate;
+ 1734              	
+ 1735              	    state = AESBCMEMBER(StateIn) (key);
+ 1736              	    round_keys[0] = state;
+ 1737              	
+ 1738              	#define KE128(rcon,offset) \
+ 1739              	    kgastate = AESBCMEMBER(AesKeyGenAssistColumn3) (state, rcon); \
+ 1740              	    state = AESBCMEMBER(ShiftXorColumns) (state); \
+ 1741              	    state ^= kgastate; \
+ 1742              	    round_keys[offset] = state
+ 1743              	
+ 1744              	    KE128(0x01,1);
+ 1745              	    KE128(0x02,2);
+ 1746              	    KE128(0x04,3);
+ 1747              	    KE128(0x08,4);
+ 1748              	    KE128(0x10,5);
+ 1749              	    KE128(0x20,6);
+ 1750              	    KE128(0x40,7);
+ 1751              	    KE128(0x80,8);
+ 1752              	    KE128(0x1B,9);
+ 1753              	    KE128(0x36,10);
+ 1754              	}
+ 1755              	#else
+ 1756              	static __inline__
+ 1757              	void AESBCMEMBER(KeyExpansion128) (CipherVec * w, const AESByte * key)
+ 1758              	{
+ 1759              	    OUTMSG(("\n\n\n%s: Not my code\n\n\n",__func__));
+ 1760              	    AESBCMEMBER(KeyExpansion) (w, key, AES_Nr_128, AES_Nk_128);
+ 1761              	}
+ 1762              	#endif
+ 1763              	
+ 1764              	
+GAS LISTING /tmp/ccVFFGPf.s 			page 33
+
+
+ 1765              	#if USE_VEC
+ 1766              	static __inline__
+ 1767              	void AESBCMEMBER(KeyExpansion192) (CipherVec * round_keys, const AESByte * key)
+ 1768              	{
+ 1769              	    /* work on three blocks at a time which is two Nr worth
+ 1770              	     * we'll build it with 6 words in v0:v1 and 6 words in w0:w1
+ 1771              	     * but move them them into v0:v1:v2 before writing them to
+ 1772              	     * the key schedule
+ 1773              	     */
+ 1774              	
+ 1775              	    register CipherVec v0, v1, v2, v3, v4;
+ 1776              	    register CipherVec k;          /* we'll only need one of the key gen assist blocks at a time */
+ 1777              	
+ 1778              	/* pattern 0 */
+ 1779              	    v0  = AESBCMEMBER(StateIn) (key);              /* k0    : k1    : k2     : k3           */
+ 1780              	    v1  = AESBCMEMBER(StateIn) (key+8);            /* k2    : k3    : k4     : k5           */
+ 1781              	    v1  = AESBCMEMBER(StateShiftRight64) (v1);     /* k4    : k5    : 0      : 0            */
+ 1782              	
+ 1783              	    round_keys[0] = v0; /* K0:K1:K2:K3 */
+ 1784              	
+ 1785              	/* pattern 1 */
+ 1786              	/* start the working pattern with 6 ready words in v0:v1 */
+ 1787              	
+ 1788              	    k   = AESBCMEMBER(AesKeyGenAssistColumn1)
+ 1789              	        (k = v1, 0x01);                            /* F(k5) : F(k5) : F(k5)  : F(k5)        */
+ 1790              	    v3  = AESBCMEMBER(ShiftXorColumns) (v0);       /* k0    : k0^k1 :k0^k1^k2:k0^k1^k2^k3   */
+ 1791              	    v3 ^= k;                                       /* k6    : k7    : k8     : k9           */
+ 1792              	    v4  = AESBCMEMBER(ShiftXorColumns) (v1);       /* k4    : k4^k5 : k4^k5  : k4^k5        */
+ 1793              	    k   = AESBCMEMBER(StateDupColumn3) (k = v3);   /* k9    : k9    : k9     : k9           */
+ 1794              	    v4 ^= k;                                       /* k10   : k11   : k10    : k11          */
+ 1795              	    v1  = AESBCMEMBER(StateMerge1) (v1,v3);        /* k4    : k5    : k6     : k7           */
+ 1796              	    round_keys[1] = v1; /* K4:K5:K6:K7 */
+ 1797              	
+ 1798              	    v2  = AESBCMEMBER(StateMerge2) (v3,v4);        /* k8    : k9    : k10    : k11          */
+ 1799              	    round_keys[2] = v2; /* K8:K9:K10:K11 */
+ 1800              	
+ 1801              	/* pattern 2 */
+ 1802              	    v0  = AESBCMEMBER(ShiftXorColumns) (v3);       /* k6    : k6^k7 :k6^k7^k8:k6^k7^k8^k9   */
+ 1803              	    v1  = AESBCMEMBER(ShiftXorColumns) (v4);       /* k10   :k10^k11: k10^k11: k10^k11      */
+ 1804              	    k   = AESBCMEMBER(AesKeyGenAssistColumn3)
+ 1805              	        (k = v2,0x02);                             /* F(k11): F(k11): F(k11) : F(k11)       */
+ 1806              	    v0 ^= k;                                       /* k12   : k13   : k14    : k15          */
+ 1807              	    round_keys[3] = v0; /* K12:K13:K14:K15 */
+ 1808              	    k   = AESBCMEMBER(StateDupColumn3) (k = v0);   /* k15   : k15   : k15    : k15          */
+ 1809              	    v1 ^= k;                                       /* k16   : k17   : k16    : k17          */
+ 1810              	
+ 1811              	
+ 1812              	/* pattern 1 */
+ 1813              	/* start the working pattern with 6 ready words in v0:v1 */
+ 1814              	
+ 1815              	    k   = AESBCMEMBER(AesKeyGenAssistColumn1)
+ 1816              	        (k = v1,0x04);                             /* F(k17): F(k17): F(k17) : F(k17)       */
+ 1817              	    v3  = AESBCMEMBER(ShiftXorColumns) (v0);       /* k12   :k12^k13:k12^k13^k14:k12^k13^k14^k15 */
+ 1818              	    v3 ^= k;                                       /* k18   : k19   : k20    : k21          */
+ 1819              	    v4  = AESBCMEMBER(ShiftXorColumns) (v1);       /* k16   :k16^k17: k17    : 0            */
+ 1820              	    k   = AESBCMEMBER(StateDupColumn3) (k = v3);   /* k21   : k21   : k21    : k21          */
+ 1821              	    v4 ^= k;                                       /* k22   : k23   : x      : x            */
+GAS LISTING /tmp/ccVFFGPf.s 			page 34
+
+
+ 1822              	    v1  = AESBCMEMBER(StateMerge1) (v1,v3);        /* k16   : k17   : k18    : k19          */
+ 1823              	    round_keys[4] = v1; /* K16:K17:K18:K19 */
+ 1824              	
+ 1825              	    v2  = AESBCMEMBER(StateMerge2) (v3,v4);        /* k20   : k21   : k22    : k23          */
+ 1826              	    round_keys[5] = v2; /* K20:K21:K22:K23 */
+ 1827              	
+ 1828              	/* pattern 2 */
+ 1829              	    v0  = AESBCMEMBER(ShiftXorColumns) (v3);       /* k18   :k18^k19:k18^k19^k20:k18^k19^k20^k21 */
+ 1830              	    v1  = AESBCMEMBER(ShiftXorColumns) (v4);       /* k22   :k22^k23: k23    : 0            */
+ 1831              	    k   = AESBCMEMBER(AesKeyGenAssistColumn3)
+ 1832              	        (k = v2,0x08);                             /* F(k23): F(k23): F(k23) : F(k23)       */
+ 1833              	    v0 ^= k;                                       /* k24   : k25   : k26    : k27          */
+ 1834              	    k   = AESBCMEMBER(StateDupColumn3) (k = v0);   /* k27   : k27   : k27    : k27          */
+ 1835              	    v1 ^= k;                                       /* k28   : k29   : x      : x            */
+ 1836              	
+ 1837              	    round_keys[6] = v0; /* K24:K25:K26:K27 */
+ 1838              	
+ 1839              	/* pattern 1 4-15 = 28-39 */
+ 1840              	/* start the working pattern with 6 ready words in v0:v1 */
+ 1841              	
+ 1842              	    k   = AESBCMEMBER(AesKeyGenAssistColumn1)
+ 1843              	        (k = v1,0x10);                             /* F(k29): F(k29): F(k29) : F(k29)       */
+ 1844              	    v3  = AESBCMEMBER(ShiftXorColumns) (v0);       /* k24   :k24^k25:k24^k25^k26:k24^k25^k26^k27 */
+ 1845              	    v3 ^= k;                                       /* k30   : k31   : k32    : k33          */
+ 1846              	    v4  = AESBCMEMBER(ShiftXorColumns) (v1);       /* k26   :k28^k29: k29    : 0            */
+ 1847              	    k   = AESBCMEMBER(StateDupColumn3) (k = v3);   /* k33   : k33   : k33    : k33          */
+ 1848              	    v4 ^= k;                                       /* k34   : k35   : x      : x            */
+ 1849              	    v1  = AESBCMEMBER(StateMerge1) (v1,v3);        /* k28   : k29   : k30    : k31          */
+ 1850              	
+ 1851              	    round_keys[7] = v1; /* K28:K29:K30:K31 */
+ 1852              	
+ 1853              	    v2  = AESBCMEMBER(StateMerge2) (v3,v4);        /* k32   : k33   : k34    : k35          */
+ 1854              	    round_keys[8] = v2; /* K32:K33:K34:K35 */
+ 1855              	/* pattern 2 */
+ 1856              	    v0  = AESBCMEMBER(ShiftXorColumns) (v3);       /* k30   :k30^k31:k30^k31^k32:k30^k31^k32^k33 */
+ 1857              	    v1  = AESBCMEMBER(ShiftXorColumns) (v4);       /* k26   :k26^k27: k27    : 0            */
+ 1858              	    k   = AESBCMEMBER(AesKeyGenAssistColumn3)
+ 1859              	        (k = v2,0x20);                             /* F(k35): F(k35): F(k35) : F(k35)       */
+ 1860              	    v0 ^= k;                                       /* k36   : k37   : k38    : k39          */
+ 1861              	    k   = AESBCMEMBER(StateDupColumn3) (v0);       /* k39   : k39   : k39    : k39          */
+ 1862              	    v1 ^= k;                                       /* k40   : k41   : x      : x            */
+ 1863              	
+ 1864              	    round_keys[9] = v0; /* K36:K37:K38:K39 */
+ 1865              	
+ 1866              	/* pattern 1 4-15 = 40-55 but we only need through 51 so we change from pattern 2 to pattern 3 */
+ 1867              	/* start the working pattern with 6 ready words in v0:v1 */
+ 1868              	
+ 1869              	    k   = AESBCMEMBER(AesKeyGenAssistColumn1)
+ 1870              	        (k = v1,0x40);                             /* F(k41): F(k41): F(k41) : F(k41)       */
+ 1871              	    v3  = AESBCMEMBER(ShiftXorColumns) (v0);       /* k36   :k36^k37:k36^k37^k38:k36^k37^k38^k39 */
+ 1872              	    v4  = AESBCMEMBER(ShiftXorColumns) (v1);       /* k40   :k40^k41: x   5  : x            */
+ 1873              	    v3 ^= k;                                       /* k42   : k43   : k44    : k45          */
+ 1874              	    k   = AESBCMEMBER(StateDupColumn3) (k = v3);   /* k45   : k45   : k45    : k45          */
+ 1875              	    v4 ^= k;                                       /* k46   : k47   : x      : x            */
+ 1876              	    v1  = AESBCMEMBER(StateMerge1) (v1,v3);        /* k40   : k41   : k42    : k43          */
+ 1877              	    round_keys[10] = v1; /* K40:K41:K42:K43 */
+ 1878              	    v2  = AESBCMEMBER(StateMerge2) (v3,v4);        /* k44   : k45   : k46    : k47          */
+GAS LISTING /tmp/ccVFFGPf.s 			page 35
+
+
+ 1879              	    round_keys[11] = v2; /* K44:K45:K46:K47 */
+ 1880              	
+ 1881              	/* pattern 3 */
+ 1882              	    v0  = AESBCMEMBER(ShiftXorColumns) (v3);       /* k42   :k42^k43:k42^k43^k44:k42^k43^k44^k45  *
+ 1883              	    k   = AESBCMEMBER(AesKeyGenAssistColumn3)
+ 1884              	                                       (v2,0x80);  /* F(k47): F(k47): F(k47) : F(k47)       */
+ 1885              	    v0 ^= k;                                       /* k48   : k49   : k50    : k51          */
+ 1886              	    round_keys[12] = v0;                           /* K48:K49:K50:K51 */
+ 1887              	}
+ 1888              	#else
+ 1889              	static __inline__
+ 1890              	void AESBCMEMBER(KeyExpansion192) (CipherVec * w, const AESByte * key)
+ 1891              	{
+ 1892              	    AESBCMEMBER(KeyExpansion) (w, key, AES_Nr_192, AES_Nk_192);
+ 1893              	}
+ 1894              	#endif
+ 1895              	
+ 1896              	
+ 1897              	
+ 1898              	
+ 1899              	/* ----- */
+ 1900              	
+ 1901              	#if USE_VEC || 1
+ 1902              	static __inline__
+ 1903              	void AESBCMEMBER(KeyExpansion256) (CipherVec * round_keys, const AESByte * key)
+ 1904              	{
+ 1905              	    CipherVec v0, v1;
+ 1906              	    CipherVec k;
+ 1907              	
+ 1908              	    v0 = AESBCMEMBER (StateIn) (key);
+ 1909              	    v1 = AESBCMEMBER (StateIn) (key + sizeof v0);
+ 1910              	
+ 1911              	    round_keys[0] = v0; /* k0  : k1  : k2  : k3  */
+ 1912              	    round_keys[1] = v1; /* k4  : k5  : k6  : k7  */
+ 1913              	
+ 1914              	#define KE256_1(offset,rcon)                            \
+ 1915              	    k   = AESBCMEMBER(AesKeyGenAssistColumn3)(v1,rcon); \
+ 1916              	    v0  = AESBCMEMBER(ShiftXorColumns) (v0);            \
+ 1917              	    v0  = AESBCMEMBER(VecXor) (v0, k);                  \
+ 1918              	    round_keys[offset] = v0
+ 1919              	
+ 1920              	#define KE256_2(offset) \
+ 1921              	    k   = AESBCMEMBER(AesKeyGenAssistColumn2)(v0);      \
+ 1922              	    v1  = AESBCMEMBER(ShiftXorColumns) (v1);            \
+ 1923              	    v1  = AESBCMEMBER(VecXor) (v1, k);                  \
+ 1924              	    round_keys[offset] = v1
+ 1925              	
+ 1926              	    KE256_1(2,0x01);    /* k8  : k9  : k10 : k11 */
+ 1927              	    KE256_2(3);         /* k12 : k13 : k14 : k15 */
+ 1928              	    KE256_1(4,0x02);    /* k16 : k17 : k18 : k19 */
+ 1929              	    KE256_2(5);         /* k20 : k21 : k22 : k23 */
+ 1930              	    KE256_1(6,0x04);    /* k24 : k25 : k26 : k27 */
+ 1931              	    KE256_2(7);         /* k28 : k29 : k30 : k31 */
+ 1932              	    KE256_1(8,0x08);    /* k32 : k33 : k34 : k35 */
+ 1933              	    KE256_2(9);         /* k36 : k37 : k38 : k39 */
+ 1934              	    KE256_1(10,0x10);   /* k40 : k41 : k42 : k43 */
+ 1935              	    KE256_2(11);        /* k44 : k45 : k46 : k47 */
+GAS LISTING /tmp/ccVFFGPf.s 			page 36
+
+
+ 1936              	    KE256_1(12,0x20);   /* k48 : k49 : k50 : k51 */
+ 1937              	    KE256_2(13);        /* k52 : k53 : k54 : k55 */
+ 1938              	    KE256_1(14,0x40);   /* k56 : k57 : k58 : k59 */
+ 1939              	}
+ 1940              	#else
+ 1941              	static __inline__
+ 1942              	void AESBCMEMBER(KeyExpansion256) (CipherVec * w, const AESByte * key)
+ 1943              	{
+ 1944              	    AESBCMEMBER(KeyExpansion) (w, key, AES_Nr_256, AES_Nk_256);
+ 1945              	}
+ 1946              	#endif
+ 1947              	
+ 1948              	
+ 1949              	static __inline__
+ 1950              	void AESBCMEMBER(EqInvKeyExpansion) (CipherVec * r, const CipherVec * dr, unsigned Nr)
+ 1951              	{
+ 1952              	    unsigned ix, jx;
+ 1953              	
+ 1954              	    jx = Nr;
+ 1955              	    ix = 0;
+ 1956              	    r[ix++] = dr[jx--];
+ 1957              	    while (jx)
+ 1958              	        r[ix++] = AESBCMEMBER(InvMixColumns)(dr[jx--]);
+ 1959              	    r[ix] = dr[jx];
+ 1960              	}
+ 1961              	
+ 1962              	
+ 1963              	static __inline__
+ 1964              	void AESBCMEMBER(EqInvKeyExpansion128) (CipherVec * w, const CipherVec * kw)
+ 1965              	{
+ 1966              	    AESBCMEMBER(EqInvKeyExpansion) (w, kw, AES_Nr_128);
+ 1967              	}
+ 1968              	
+ 1969              	
+ 1970              	static __inline__
+ 1971              	void AESBCMEMBER(EqInvKeyExpansion192) (CipherVec * w, const CipherVec * kw)
+ 1972              	{
+ 1973              	    AESBCMEMBER(EqInvKeyExpansion) (w, kw, AES_Nr_192);
+ 1974              	}
+ 1975              	
+ 1976              	
+ 1977              	static __inline__
+ 1978              	void AESBCMEMBER(EqInvKeyExpansion256) (CipherVec * w, const CipherVec * kw)
+ 1979              	{
+ 1980              	    AESBCMEMBER(EqInvKeyExpansion) (w, kw, AES_Nr_256);
+ 1981              	}
+ 1982              	
+ 1983              	
+ 1984              	/*
+ 1985              	 * Cipher First Round
+ 1986              	 */
+ 1987              	static __inline__ 
+ 1988              	CipherVec AESBCMEMBER(FirstRound) (CipherVec state, const CipherVec round_keys)
+ 1989              	    __attribute__ ((always_inline));
+ 1990              	
+ 1991              	static __inline__ 
+ 1992              	CipherVec AESBCMEMBER(FirstRound) (CipherVec state, const CipherVec round_keys)
+GAS LISTING /tmp/ccVFFGPf.s 			page 37
+
+
+ 1993              	{
+ 1994              	    DEBUG_CIPHER_VECTOR("Start of Round", state);
+ 1995              	
+ 1996              	    DEBUG_CIPHER_VECTOR("Round Key", round_keys);
+ 1997              	
+ 1998              	    state = AESBCMEMBER(AddRoundKey) (state, round_keys);
+ 1999              	
+ 2000              	    DEBUG_CIPHER_VECTOR("End 1st Round", state);
+ 2001              	
+ 2002              	    return state;
+ 2003              	}
+ 2004              	
+ 2005              	
+ 2006              	static __inline__ 
+ 2007              	CipherVec AESBCMEMBER(MiddleRound) (register CipherVec state,
+ 2008              	                                    register const CipherVec round_keys)
+ 2009              	    __attribute__ ((always_inline));
+ 2010              	
+ 2011              	static __inline__ 
+ 2012              	CipherVec AESBCMEMBER(MiddleRound) (register CipherVec state,
+ 2013              	                                    register const CipherVec round_keys)
+ 2014              	{
+ 2015              	#if _DEBUGGING
+ 2016              	    CipherVec mstate;
+ 2017              	    CipherVec mround_keys;
+ 2018              	
+ 2019              	    mstate = state;
+ 2020              	    mround_keys = round_keys;
+ 2021              	
+ 2022              	    DEBUG_CIPHER_VECTOR("Start of Round", mstate);
+ 2023              	
+ 2024              	#endif
+ 2025              	
+ 2026              	#if USE_AES_NI
+ 2027              	    state = op_AESENC (state, round_keys);
+ 2028              	#else
+ 2029              	    state = AESBCMEMBER(SubBytes) (state);
+ 2030              	
+ 2031              	    DEBUG_CIPHER_VECTOR("After SubBytes", state);
+ 2032              	
+ 2033              	    state = AESBCMEMBER(ShiftRows) (state);
+ 2034              	
+ 2035              	    DEBUG_CIPHER_VECTOR("After ShiftRow", state);
+ 2036              	
+ 2037              	    state = AESBCMEMBER(MixColumns) (state);
+ 2038              	
+ 2039              	    /* ommited n on purpose */
+ 2040              	    DEBUG_CIPHER_VECTOR("After MixColum", state);
+ 2041              	
+ 2042              	    state = AESBCMEMBER(AddRoundKey) (state, round_keys);
+ 2043              	#endif
+ 2044              	    DEBUG_CIPHER_VECTOR("Round Key", round_keys);
+ 2045              	    DEBUG_CIPHER_VECTOR("End of Round", state);
+ 2046              	
+ 2047              	    return state;
+ 2048              	}
+ 2049              	
+GAS LISTING /tmp/ccVFFGPf.s 			page 38
+
+
+ 2050              	
+ 2051              	static __inline__ 
+ 2052              	CipherVec AESBCMEMBER(LastRound) (register CipherVec state, register CipherVec round_keys)
+ 2053              	    __attribute__ ((always_inline));
+ 2054              	
+ 2055              	static __inline__ 
+ 2056              	CipherVec AESBCMEMBER(LastRound) (register CipherVec state, register CipherVec round_keys)
+ 2057              	{
+ 2058              	    DEBUG_CIPHER_VECTOR("Start of Round", state);
+ 2059              	
+ 2060              	#if USE_AES_NI
+ 2061              	    state = op_AESENCLAST (state, round_keys);
+ 2062              	#else
+ 2063              	    state = AESBCMEMBER(SubBytes) (state);
+ 2064              	
+ 2065              	    DEBUG_CIPHER_VECTOR("After SubBytes", state);
+ 2066              	
+ 2067              	    state = AESBCMEMBER(ShiftRows) (state);
+ 2068              	
+ 2069              	    DEBUG_CIPHER_VECTOR("After ShiftRow", state);
+ 2070              	
+ 2071              	    state = AESBCMEMBER(AddRoundKey) (state, round_keys);
+ 2072              	#endif
+ 2073              	    DEBUG_CIPHER_VECTOR("Round Key", round_keys);
+ 2074              	    DEBUG_CIPHER_VECTOR("End of Round", state);
+ 2075              	
+ 2076              	    return state;
+ 2077              	}
+ 2078              	
+ 2079              	
+ 2080              	/* ----------------------------------------------------------------------
+ 2081              	 * Cipher
+ 2082              	 */
+ 2083              	/*
+ 2084              	 * 
+ 2085              	This implementation as stated
+ 2086              	 * above for simplifaction broke out the three types of rounds into
+ 2087              	 * first round, middle rounds, and last round.  This approach was taken
+ 2088              	 * for ease of coding for optimization using smaller bytes of code
+ 2089              	 * but inlining of the functions for efficiency
+ 2090              	 */
+ 2091              	static __inline__ 
+ 2092              	CipherVec AESBCMEMBER(Cipher) (CipherVec state, const CipherVec * key,
+ 2093              	                            unsigned Nr)
+ 2094              	{
+ 2095              	    unsigned ix = 0;
+ 2096              	
+ 2097              	    state = AESBCMEMBER(FirstRound) (state, key[ix++]);
+ 2098              	
+ 2099              	    for ( ; ix < Nr; ++ix)
+ 2100              	        state = AESBCMEMBER(MiddleRound) (state, key[ix] );
+ 2101              	
+ 2102              	    return AESBCMEMBER(LastRound) (state, key[ix]);
+ 2103              	}
+ 2104              	
+ 2105              	
+ 2106              	/* 
+GAS LISTING /tmp/ccVFFGPf.s 			page 39
+
+
+ 2107              	 * Section 5.1 of FIPS 197
+ 2108              	 *
+ 2109              	 *   This set of routines implements our structured wrapping of the 
+ 2110              	 *   FIPS-197 Section 5.3.5 Equivalent Inverse Cipher.  In particular
+ 2111              	 *   figure 15 Pseudo Code for the Equivalent Inverse Cipher.
+ 2112              	 *
+ 2113              	 *   The FIPS pseudocode has a single function which we have broken out 
+ 2114              	 *   into three kinds of rounds - first round, middle rounds and last
+ 2115              	 *   round as we have also done with the cipher rountine.
+ 2116              	 *
+ 2117              	 *   The EqInvCipher operates on whole cipher blocks so the Byte and Block
+ 2118              	 *   code is the same here until subroutines of the round functions are
+ 2119              	 *   called.  
+ 2120              	 */
+ 2121              	
+ 2122              	/* 
+ 2123              	 * First round of equivalent inverse cipher is merely an XOR against the
+ 2124              	 * round key.
+ 2125              	 */
+ 2126              	static __inline__
+ 2127              	CipherVec AESBCMEMBER(EqInvFirstRound) (CipherVec state, CipherVec round_keys)
+ 2128              	    __attribute__ ((always_inline));
+ 2129              	
+ 2130              	static __inline__
+ 2131              	CipherVec AESBCMEMBER(EqInvFirstRound) (CipherVec state, CipherVec round_keys)
+ 2132              	{
+ 2133              	    DEBUG_INVCIPHER_VECTOR("Start of Round", state);
+ 2134              	
+ 2135              	    state =  AESBCMEMBER(AddRoundKey) (state, round_keys);
+ 2136              	
+ 2137              	    DEBUG_INVCIPHER_VECTOR("Round Key", round_keys);
+ 2138              	    DEBUG_INVCIPHER_VECTOR("End of Round", state);
+ 2139              	    return state;
+ 2140              	}
+ 2141              	
+ 2142              	
+ 2143              	/*
+ 2144              	 * middle rounds of the equivalent inverse cipher perform four steps
+ 2145              	 *   InvSubBytes (inverse substitute bytes
+ 2146              	 *   InvShiftRows (inverse shift rows
+ 2147              	 *   InvMixColumns (inverse mix columns)
+ 2148              	 *   AddRoundKey   (xor against the round key)
+ 2149              	 *
+ 2150              	 * the AES-NI instruction set from until implments all four steps with 
+ 2151              	 * a single instruction
+ 2152              	 */
+ 2153              	
+ 2154              	static __inline__
+ 2155              	CipherVec AESBCMEMBER(EqInvMiddleRound) (register CipherVec state,
+ 2156              	                                         register CipherVec round_keys)
+ 2157              	    __attribute__ ((always_inline));
+ 2158              	
+ 2159              	static __inline__
+ 2160              	CipherVec AESBCMEMBER(EqInvMiddleRound) (register CipherVec state,
+ 2161              	                                         register CipherVec round_keys)
+ 2162              	{
+ 2163              	#if _DEBUGGING
+GAS LISTING /tmp/ccVFFGPf.s 			page 40
+
+
+ 2164              	    CipherVec mstate;
+ 2165              	    CipherVec mround_keys;
+ 2166              	
+ 2167              	    mstate = state;
+ 2168              	    mround_keys = round_keys;
+ 2169              	#endif
+ 2170              	
+ 2171              	    DEBUG_INVCIPHER_VECTOR("Start of Round", mstate);
+ 2172              	
+ 2173              	    /* 
+ 2174              	     * AES-NI implmentation
+ 2175              	     */
+ 2176              	#if USE_AES_NI
+ 2177              	
+ 2178              	    state = op_AESDEC (state, round_keys);
+ 2179              	
+ 2180              	#else /* #if USE_AES_NI */
+ 2181              	
+ 2182              	    /*
+ 2183              	     * All other implementations
+ 2184              	     */
+ 2185              	    state = AESBCMEMBER(InvSubBytes) (state);
+ 2186              	
+ 2187              	# if _DEBUGGING
+ 2188              	    mstate = state;
+ 2189              	
+ 2190              	    DEBUG_INVCIPHER_VECTOR("After InvSubBy", mstate);
+ 2191              	# endif
+ 2192              	
+ 2193              	    state = AESBCMEMBER(InvShiftRows) (state);
+ 2194              	
+ 2195              	# if _DEBUGGING
+ 2196              	    mstate = state;
+ 2197              	
+ 2198              	    DEBUG_INVCIPHER_VECTOR("After InvShift", mstate);
+ 2199              	# endif
+ 2200              	
+ 2201              	    state = AESBCMEMBER(InvMixColumns) (state);
+ 2202              	
+ 2203              	# if _DEBUGGING
+ 2204              	    mstate = state;
+ 2205              	
+ 2206              	    DEBUG_INVCIPHER_VECTOR("After InvMixCo", mstate);
+ 2207              	# endif
+ 2208              	
+ 2209              	    state = AESBCMEMBER(AddRoundKey) (state, round_keys);
+ 2210              	#endif
+ 2211              	
+ 2212              	#if _DEBUGGING
+ 2213              	    mstate = state;
+ 2214              	
+ 2215              	    DEBUG_INVCIPHER_VECTOR("Round Key", mround_keys);
+ 2216              	
+ 2217              	    DEBUG_INVCIPHER_VECTOR("End of Round", mstate);
+ 2218              	#endif /* #if USE_AES_NI */
+ 2219              	
+ 2220              	    return state;
+GAS LISTING /tmp/ccVFFGPf.s 			page 41
+
+
+ 2221              	}
+ 2222              	
+ 2223              	
+ 2224              	/*
+ 2225              	 * The final round of the equivalent inverse cipher is the same as 
+ 2226              	 * the middle rounds with the ommission of the InvMixColumns step.
+ 2227              	 */
+ 2228              	static __inline__
+ 2229              	CipherVec AESBCMEMBER(EqInvLastRound) (register CipherVec state,
+ 2230              	                                       register CipherVec round_keys)
+ 2231              	    __attribute__ ((always_inline));
+ 2232              	
+ 2233              	static __inline__
+ 2234              	CipherVec AESBCMEMBER(EqInvLastRound) (register CipherVec state,
+ 2235              	                                       register CipherVec round_keys)
+ 2236              	{
+ 2237              	    DEBUG_INVCIPHER_VECTOR("Start of Round", state);
+ 2238              	
+ 2239              	#if USE_AES_NI
+ 2240              	    state = op_AESDECLAST (state, round_keys);
+ 2241              	#else
+ 2242              	
+ 2243              	    state = AESBCMEMBER(InvSubBytes) (state);
+ 2244              	
+ 2245              	    DEBUG_INVCIPHER_VECTOR("After InvSubBy", state);
+ 2246              	
+ 2247              	    state = AESBCMEMBER(InvShiftRows) (state);
+ 2248              	
+ 2249              	    DEBUG_INVCIPHER_VECTOR("After InvShift", state);
+ 2250              	
+ 2251              	    state = AESBCMEMBER(AddRoundKey) (state, round_keys);
+ 2252              	#endif
+ 2253              	    DEBUG_INVCIPHER_VECTOR("Round Key", round_keys);
+ 2254              	    DEBUG_INVCIPHER_VECTOR("End of Round", state);
+ 2255              	
+ 2256              	    return state;
+ 2257              	}
+ 2258              	
+ 2259              	
+ 2260              	/*
+ 2261              	 * The EqInvCipher functions (is defined in Figure 15 'Pseudo Code for
+ 2262              	 * for the Equivalent Inverse Cipher.  This implementation as stated
+ 2263              	 * above for simplifaction broke out the three types of rounds into
+ 2264              	 * first round, middle rounds, and last round.  This approach was taken
+ 2265              	 * for ease of coding for optimization using smaller bytes of code
+ 2266              	 * but inlining of the functions for efficiency
+ 2267              	 */
+ 2268              	static /*__inline__*/
+ 2269              	CipherVec AESBCMEMBER(EqInvCipher) (CipherVec state, const CipherVec * key,
+ 2270              	                                    unsigned Nr)
+ 2271              	{
+ 2272              	    unsigned ix = 0;
+ 2273              	
+ 2274              	    state = AESBCMEMBER(EqInvFirstRound) (state, key[ix++]);
+ 2275              	
+ 2276              	    for ( ; ix < Nr; ++ix)
+ 2277              	        state = AESBCMEMBER(EqInvMiddleRound) (state, key[ix] );
+GAS LISTING /tmp/ccVFFGPf.s 			page 42
+
+
+ 2278              	
+ 2279              	    return AESBCMEMBER(EqInvLastRound) (state, key[ix]);
+ 2280              	}
+ 2281              	
+ 2282              	
+ 2283              	/* ======================================================================
+ 2284              	 * This section of the file is the use of the cipher defined above within
+ 2285              	 * our BlockCipherObject.
+ 2286              	 *
+ 2287              	 * These are the functions that will be directly referenced in the vector
+ 2288              	 * table for the block cipher.  These are not specifically derived from
+ 2289              	 * the FIPS-197 document.
+ 2290              	 */
+ 2291              	#include "blockcipher-impl.h"
+ 2292              	
+ 2293              	typedef struct AES_CLASS AES_CLASS;
+ 2294              	
+ 2295              	static const char AESBCMEMBER(aes_ncbi_name) [] = CLASS_STRING(AES_CLASS);
+ 2296              	
+ 2297              	
+ 2298              	/* ----------------------------------------------------------------------
+ 2299              	 * Destroy
+ 2300              	 *   How large is the stored key for this cipher?  Not the user key used
+ 2301              	 *   to create this key (key schedule)
+ 2302              	 *
+ 2303              	 *   This is needed by KCipher to know how large the KCipher objecr is at
+ 2304              	 *   allocation and to know how much of a buffer each decryption/encryption is
+ 2305              	 */
+ 2306              	static
+ 2307              	void AESBCMEMBER(Destroy) (const BLOCKCIPHER_VEC_IMPL * self)
+ 2308              	{
+ 2309              	    /* we use a constant object so do nothing */
+ 2310              	}
+ 2311              	
+ 2312              	
+ 2313              	/* ----------------------------------------------------------------------
+ 2314              	 * BlockSize
+ 2315              	 */
+ 2316              	static
+ 2317              	uint32_t AESBCMEMBER(BlockSize) ()
+ 2318              	{
+ 2319              	    return (uint32_t) sizeof (AESBlock);
+ 2320              	}
+ 2321              	
+ 2322              	
+ 2323              	/* ----------------------------------------------------------------------
+ 2324              	 * KeySize
+ 2325              	 *   How large is the stored key for this cipher?  Not the user key used
+ 2326              	 *   to create this key (key schedule)
+ 2327              	 *
+ 2328              	 *   This is needed by KCipher to know how large the KCipher objecr is at
+ 2329              	 *   allocation and to know how much of a buffer each decryption/encryption is
+ 2330              	 */
+ 2331              	static
+ 2332              	uint32_t AESBCMEMBER(KeySize) ()
+ 2333              	{
+ 2334              	    return (uint32_t) sizeof (AESKeySchedule);
+GAS LISTING /tmp/ccVFFGPf.s 			page 43
+
+
+ 2335              	}
+ 2336              	
+ 2337              	
+ 2338              	/* ----------------------------------------------------------------------
+ 2339              	 * SetEncryptKey
+ 2340              	 *   The KCipher calls this to have the block cipher build an encryption
+ 2341              	 *   key in the KCipher object
+ 2342              	 *
+ 2343              	 */
+ 2344              	static
+ 2345              	rc_t AESBCMEMBER(SetEncryptKey) (void * encrypt_key, const char * user_key,
+ 2346              	                                 uint32_t user_key_size)
+ 2347              	{
+ 2348              	    rc_t rc;
+ 2349              	    AESKeySchedule * key;
+ 2350              	
+ 2351              	    rc = 0;
+ 2352              	    key = encrypt_key;
+ 2353              	
+ 2354              	    switch (user_key_size)
+ 2355              	    {
+ 2356              	    case AES_Nk_128 * sizeof (AESWord):
+ 2357              	        key->number_of_rounds = AES_Nr_128;
+ 2358              	        AESBCMEMBER(KeyExpansion128) (key->round_keys, (AESByte*)user_key);
+ 2359              	        break;
+ 2360              	
+ 2361              	    case AES_Nk_192 * sizeof (AESWord):
+ 2362              	        key->number_of_rounds = AES_Nr_192;
+ 2363              	        AESBCMEMBER(KeyExpansion192) (key->round_keys, (AESByte*)user_key);
+ 2364              	        break;
+ 2365              	
+ 2366              	    case AES_Nk_256 * sizeof (AESWord):
+ 2367              	        key->number_of_rounds = AES_Nr_256;
+ 2368              	        AESBCMEMBER(KeyExpansion256) (key->round_keys, (AESByte*)user_key);
+ 2369              	        break;
+ 2370              	
+ 2371              	    default:
+ 2372              	        key->number_of_rounds = 0;
+ 2373              	        memset (key, 0, sizeof (*key));
+ 2374              	        rc = RC (rcKrypto, rcBlockCipher, rcUpdating, rcParam, rcInvalid);
+ 2375              	        break;
+ 2376              	    }
+ 2377              	    return rc;
+ 2378              	}
+ 2379              	
+ 2380              	
+ 2381              	/* ----------------------------------------------------------------------
+ 2382              	 * SetDecryptKey
+ 2383              	 *   The KCipher calls this to have the block cipher build an decryption
+ 2384              	 *   key in the KCipher object
+ 2385              	 *
+ 2386              	 */
+ 2387              	static
+ 2388              	rc_t AESBCMEMBER(SetDecryptKey) (void * decrypt_key,
+ 2389              	                                 const char * user_key,
+ 2390              	                                 uint32_t user_key_size)
+ 2391              	{
+GAS LISTING /tmp/ccVFFGPf.s 			page 44
+
+
+ 2392              	    AESKeySchedule encrypt_key;
+ 2393              	    rc_t rc;
+ 2394              	
+ 2395              	    rc = AESBCMEMBER(SetEncryptKey) (&encrypt_key, user_key, user_key_size);
+ 2396              	    if (rc == 0)
+ 2397              	    {
+ 2398              	        AESKeySchedule * key;
+ 2399              	
+ 2400              	        key = decrypt_key;
+ 2401              	
+ 2402              	        switch (key->number_of_rounds = encrypt_key.number_of_rounds)
+ 2403              	        {
+ 2404              	        case AES_Nr_128:
+ 2405              	            AESBCMEMBER(EqInvKeyExpansion128) (key->round_keys,
+ 2406              	                                               encrypt_key.round_keys);
+ 2407              	            break;
+ 2408              	
+ 2409              	        case AES_Nr_192:
+ 2410              	            AESBCMEMBER(EqInvKeyExpansion192) (key->round_keys,
+ 2411              	                                               encrypt_key.round_keys);
+ 2412              	            break;
+ 2413              	
+ 2414              	        case AES_Nr_256:
+ 2415              	            AESBCMEMBER(EqInvKeyExpansion256) (key->round_keys,
+ 2416              	                                               encrypt_key.round_keys);
+ 2417              	            break;
+ 2418              	        }
+ 2419              	    }
+ 2420              	    return rc;
+ 2421              	}
+ 2422              	
+ 2423              	
+ 2424              	/* ----------------------------------------------------------------------
+ 2425              	 * Encrypt
+ 2426              	 *
+ 2427              	 *   Perform an encryption of a single block.  Chained modes and stream
+ 2428              	 *   cipher modes will call this multiple times.
+ 2429              	 *
+ 2430              	 */
+ 2431              	static
+ 2432              	CipherVec AESBCMEMBER(Encrypt) (CipherVec state,
+ 2433              	                                const void * encrypt_key)
+ 2434              	{
+ 2435              	    const AESKeySchedule * key = encrypt_key;
+ 2436              	    assert (key);
+ 2437              	
+ 2438              	    switch (key->number_of_rounds)
+ 2439              	    {
+ 2440              	    default:
+ 2441              	        state = vec_00;
+ 2442              	        break;
+ 2443              	
+ 2444              	    case AES_Nr_128:
+ 2445              	        state = AESBCMEMBER(Cipher) (state, key->round_keys, AES_Nr_128);
+ 2446              	        break;
+ 2447              	
+ 2448              	    case AES_Nr_192:
+GAS LISTING /tmp/ccVFFGPf.s 			page 45
+
+
+ 2449              	        state = AESBCMEMBER(Cipher) (state, key->round_keys, AES_Nr_192);
+ 2450              	        break;
+ 2451              	
+ 2452              	    case AES_Nr_256:
+ 2453              	        state = AESBCMEMBER(Cipher) (state, key->round_keys, AES_Nr_256);
+ 2454              	        break;
+ 2455              	    }
+ 2456              	
+ 2457              	    return state;
+ 2458              	}
+ 2459              	
+ 2460              	
+ 2461              	/* ----------------------------------------------------------------------
+ 2462              	 * Decrypt
+ 2463              	 *
+ 2464              	 *   Perform a decryption of a single block.  Chained modes and stream
+ 2465              	 *   cipher modes will call this multiple times.
+ 2466              	 */
+ 2467              	static
+ 2468              	CipherVec AESBCMEMBER(Decrypt) (CipherVec state,
+ 2469              	                                const void * decrypt_key)
+ 2470              	{
+ 2471              	    const AESKeySchedule * key = decrypt_key;
+ 2472              	
+ 2473              	    assert (key);
+ 2474              	
+ 2475              	    switch (key->number_of_rounds)
+ 2476              	    {
+ 2477              	    default:
+ 2478              	        state = vec_00; /* for an illegal cipher key schedule just write zeroes */
+ 2479              	        break;
+ 2480              	
+ 2481              	    case AES_Nr_128:
+ 2482              	        state = AESBCMEMBER(EqInvCipher) (state, key->round_keys,
+ 2483              	                                          AES_Nr_128);
+ 2484              	        break;
+ 2485              	
+ 2486              	    case AES_Nr_192:
+ 2487              	        state = AESBCMEMBER(EqInvCipher) (state, key->round_keys,
+ 2488              	                                          AES_Nr_192);
+ 2489              	        break;
+ 2490              	
+ 2491              	    case AES_Nr_256:
+ 2492              	        state = AESBCMEMBER(EqInvCipher) (state, key->round_keys,
+ 2493              	                                          AES_Nr_256);
+ 2494              	        break;
+ 2495              	    }
+ 2496              	
+ 2497              	    return state;
+ 2498              	}
+ 2499              	
+ 2500              	
+ 2501              	/* ----------------------------------------------------------------------
+ 2502              	 * MakeProcessorSupport
+ 2503              	 *
+ 2504              	 * Run-time check for support of this particular AES implmentation by
+ 2505              	 * checking the flags given via the cpuid instruction.
+GAS LISTING /tmp/ccVFFGPf.s 			page 46
+
+
+ 2506              	 */
+ 2507              	static __inline__
+ 2508              	bool AESBCMEMBER(ProcessorSupport) ()
+ 2509              	{
+ 2510              	    uint32_t level = 1, a, b, c, d;
+ 2511              	    bool ret = true;
+ 2512              	
+ 2513 0047 0FA2     	    __cpuid (level, a, b, c, d);
+ 2514              	
+ 2515              	    DEBUG_OBJECT(("%s: level %x a %x, b %x c %x d %x\n",__func__, level, a,b,c,d));
+  49              		cpuid
+  50              		
+  51              	# 0 "" 2
+  52              	#NO_APP
+  53 0049 F7C10000 		testl	$33554432, %ecx
+  53      0002
+  54 004f 7437     		je	.L10
+  55 0051 F7C10000 		testl	$524288, %ecx
+  55      0800
+  56 0057 742F     		je	.L10
+  57 0059 F6C502   		testb	$2, %ch
+  58 005c 742A     		je	.L10
+  59 005e 83E101   		andl	$1, %ecx
+  60              		.p2align 4,,5
+  61 0061 7425     		je	.L10
+  62 0063 F7C20000 		testl	$67108864, %edx
+  62      0004
+  63              		.p2align 4,,5
+  64 0069 741D     		je	.L10
+  65 006b 81E20000 		andl	$33554432, %edx
+  65      0002
+  66              		.p2align 4,,5
+  67 0071 7415     		je	.L10
+  68 0073 488D0500 		leaq	KAESBlockCipherVecAesNi_vt_(%rip), %rax
+  68      000000
+  69 007a 488907   		movq	%rax, (%rdi)
+  70 007d 31C0     		xorl	%eax, %eax
+  71 007f 90       		.p2align 4,,10
+  72              		.p2align 3
+  73              	.L9:
+  74 0080 5B       		popq	%rbx
+  75 0081 C3       		ret
+  76              		.p2align 4,,10
+  77 0082 660F1F44 		.p2align 3
+  77      0000
+  78              	.L10:
+  79 0088 B8038500 		movl	$-2030009085, %eax
+  79      87
+  80 008d 5B       		popq	%rbx
+  81 008e C3       		ret
+  82              		.cfi_endproc
+  83              	.LFE744:
+  84              		.size	KAESBlockCipherVecAesNiMake, .-KAESBlockCipherVecAesNiMake
+  85 008f 90       		.p2align 4,,15
+  86              		.type	KAESBlockCipherVecAesNiKeyExpansion128, @function
+  87              	KAESBlockCipherVecAesNiKeyExpansion128:
+  88              	.LFB721:
+GAS LISTING /tmp/ccVFFGPf.s 			page 47
+
+
+  89              		.cfi_startproc
+  90 0090 660F6F05 		movdqa	.LC0(%rip), %xmm0
+  90      00000000 
+  91 0098 4889F8   		movq	%rdi, %rax
+  92 009b 4889F7   		movq	%rsi, %rdi
+  93              	#APP
+  94              	# 126 "/home/rodarmer/sra_sdk-2.2.2a/libs/krypto/aes-ncbi.c" 1
+  95              		movdqu (%rdi),%xmm1
+  96              	# 0 "" 2
+  97              	#NO_APP
+  98 00a2 660F6FD1 		movdqa	%xmm1, %xmm2
+  99 00a6 660F3ADF 		aeskeygenassist	$1, %xmm1, %xmm3
+  99      D901
+ 100 00ac 660F3800 		pshufb	%xmm0, %xmm2
+ 100      D0
+ 101 00b1 660F7F08 		movdqa	%xmm1, (%rax)
+ 102 00b5 660F70DB 		pshufd	$255, %xmm3, %xmm3
+ 102      FF
+ 103 00ba 660FEFCA 		pxor	%xmm2, %xmm1
+ 104 00be 660F3800 		pshufb	%xmm0, %xmm2
+ 104      D0
+ 105 00c3 660F6FE2 		movdqa	%xmm2, %xmm4
+ 106 00c7 660FEFCA 		pxor	%xmm2, %xmm1
+ 107 00cb 660F3800 		pshufb	%xmm0, %xmm4
+ 107      E0
+ 108 00d0 660FEFCC 		pxor	%xmm4, %xmm1
+ 109 00d4 660FEFCB 		pxor	%xmm3, %xmm1
+ 110 00d8 660F6FD1 		movdqa	%xmm1, %xmm2
+ 111 00dc 660F3ADF 		aeskeygenassist	$2, %xmm1, %xmm3
+ 111      D902
+ 112 00e2 660F3800 		pshufb	%xmm0, %xmm2
+ 112      D0
+ 113 00e7 660F7F48 		movdqa	%xmm1, 16(%rax)
+ 113      10
+ 114 00ec 660F70DB 		pshufd	$255, %xmm3, %xmm3
+ 114      FF
+ 115 00f1 660FEFCA 		pxor	%xmm2, %xmm1
+ 116 00f5 660F3800 		pshufb	%xmm0, %xmm2
+ 116      D0
+ 117 00fa 660F6FE2 		movdqa	%xmm2, %xmm4
+ 118 00fe 660FEFCA 		pxor	%xmm2, %xmm1
+ 119 0102 660F3800 		pshufb	%xmm0, %xmm4
+ 119      E0
+ 120 0107 660FEFCC 		pxor	%xmm4, %xmm1
+ 121 010b 660FEFCB 		pxor	%xmm3, %xmm1
+ 122 010f 660F6FD1 		movdqa	%xmm1, %xmm2
+ 123 0113 660F3ADF 		aeskeygenassist	$4, %xmm1, %xmm3
+ 123      D904
+ 124 0119 660F3800 		pshufb	%xmm0, %xmm2
+ 124      D0
+ 125 011e 660F7F48 		movdqa	%xmm1, 32(%rax)
+ 125      20
+ 126 0123 660F70DB 		pshufd	$255, %xmm3, %xmm3
+ 126      FF
+ 127 0128 660FEFCA 		pxor	%xmm2, %xmm1
+ 128 012c 660F3800 		pshufb	%xmm0, %xmm2
+ 128      D0
+GAS LISTING /tmp/ccVFFGPf.s 			page 48
+
+
+ 129 0131 660F6FE2 		movdqa	%xmm2, %xmm4
+ 130 0135 660FEFCA 		pxor	%xmm2, %xmm1
+ 131 0139 660F3800 		pshufb	%xmm0, %xmm4
+ 131      E0
+ 132 013e 660FEFCC 		pxor	%xmm4, %xmm1
+ 133 0142 660FEFCB 		pxor	%xmm3, %xmm1
+ 134 0146 660F6FD1 		movdqa	%xmm1, %xmm2
+ 135 014a 660F3ADF 		aeskeygenassist	$8, %xmm1, %xmm3
+ 135      D908
+ 136 0150 660F3800 		pshufb	%xmm0, %xmm2
+ 136      D0
+ 137 0155 660F7F48 		movdqa	%xmm1, 48(%rax)
+ 137      30
+ 138 015a 660F70DB 		pshufd	$255, %xmm3, %xmm3
+ 138      FF
+ 139 015f 660FEFCA 		pxor	%xmm2, %xmm1
+ 140 0163 660F3800 		pshufb	%xmm0, %xmm2
+ 140      D0
+ 141 0168 660F6FE2 		movdqa	%xmm2, %xmm4
+ 142 016c 660FEFCA 		pxor	%xmm2, %xmm1
+ 143 0170 660F3800 		pshufb	%xmm0, %xmm4
+ 143      E0
+ 144 0175 660FEFCC 		pxor	%xmm4, %xmm1
+ 145 0179 660FEFCB 		pxor	%xmm3, %xmm1
+ 146 017d 660F6FD1 		movdqa	%xmm1, %xmm2
+ 147 0181 660F3ADF 		aeskeygenassist	$16, %xmm1, %xmm3
+ 147      D910
+ 148 0187 660F3800 		pshufb	%xmm0, %xmm2
+ 148      D0
+ 149 018c 660F7F48 		movdqa	%xmm1, 64(%rax)
+ 149      40
+ 150 0191 660F70DB 		pshufd	$255, %xmm3, %xmm3
+ 150      FF
+ 151 0196 660FEFCA 		pxor	%xmm2, %xmm1
+ 152 019a 660F3800 		pshufb	%xmm0, %xmm2
+ 152      D0
+ 153 019f 660F6FE2 		movdqa	%xmm2, %xmm4
+ 154 01a3 660FEFCA 		pxor	%xmm2, %xmm1
+ 155 01a7 660F3800 		pshufb	%xmm0, %xmm4
+ 155      E0
+ 156 01ac 660FEFCC 		pxor	%xmm4, %xmm1
+ 157 01b0 660FEFCB 		pxor	%xmm3, %xmm1
+ 158 01b4 660F6FD1 		movdqa	%xmm1, %xmm2
+ 159 01b8 660F3ADF 		aeskeygenassist	$32, %xmm1, %xmm3
+ 159      D920
+ 160 01be 660F3800 		pshufb	%xmm0, %xmm2
+ 160      D0
+ 161 01c3 660F7F48 		movdqa	%xmm1, 80(%rax)
+ 161      50
+ 162 01c8 660F70DB 		pshufd	$255, %xmm3, %xmm3
+ 162      FF
+ 163 01cd 660FEFCA 		pxor	%xmm2, %xmm1
+ 164 01d1 660F3800 		pshufb	%xmm0, %xmm2
+ 164      D0
+ 165 01d6 660F6FE2 		movdqa	%xmm2, %xmm4
+ 166 01da 660FEFCA 		pxor	%xmm2, %xmm1
+ 167 01de 660F3800 		pshufb	%xmm0, %xmm4
+GAS LISTING /tmp/ccVFFGPf.s 			page 49
+
+
+ 167      E0
+ 168 01e3 660FEFCC 		pxor	%xmm4, %xmm1
+ 169 01e7 660FEFCB 		pxor	%xmm3, %xmm1
+ 170 01eb 660F6FD1 		movdqa	%xmm1, %xmm2
+ 171 01ef 660F3ADF 		aeskeygenassist	$64, %xmm1, %xmm3
+ 171      D940
+ 172 01f5 660F3800 		pshufb	%xmm0, %xmm2
+ 172      D0
+ 173 01fa 660F7F48 		movdqa	%xmm1, 96(%rax)
+ 173      60
+ 174 01ff 660F70DB 		pshufd	$255, %xmm3, %xmm3
+ 174      FF
+ 175 0204 660FEFCA 		pxor	%xmm2, %xmm1
+ 176 0208 660F3800 		pshufb	%xmm0, %xmm2
+ 176      D0
+ 177 020d 660F6FE2 		movdqa	%xmm2, %xmm4
+ 178 0211 660FEFCA 		pxor	%xmm2, %xmm1
+ 179 0215 660F3800 		pshufb	%xmm0, %xmm4
+ 179      E0
+ 180 021a 660FEFCC 		pxor	%xmm4, %xmm1
+ 181 021e 660FEFCB 		pxor	%xmm3, %xmm1
+ 182 0222 660F6FD1 		movdqa	%xmm1, %xmm2
+ 183 0226 660F3ADF 		aeskeygenassist	$128, %xmm1, %xmm3
+ 183      D980
+ 184 022c 660F3800 		pshufb	%xmm0, %xmm2
+ 184      D0
+ 185 0231 660F7F48 		movdqa	%xmm1, 112(%rax)
+ 185      70
+ 186 0236 660F70DB 		pshufd	$255, %xmm3, %xmm3
+ 186      FF
+ 187 023b 660FEFCA 		pxor	%xmm2, %xmm1
+ 188 023f 660F3800 		pshufb	%xmm0, %xmm2
+ 188      D0
+ 189 0244 660F6FE2 		movdqa	%xmm2, %xmm4
+ 190 0248 660FEFCA 		pxor	%xmm2, %xmm1
+ 191 024c 660F3800 		pshufb	%xmm0, %xmm4
+ 191      E0
+ 192 0251 660FEFCC 		pxor	%xmm4, %xmm1
+ 193 0255 660FEFCB 		pxor	%xmm3, %xmm1
+ 194 0259 660F6FD1 		movdqa	%xmm1, %xmm2
+ 195 025d 660F3ADF 		aeskeygenassist	$27, %xmm1, %xmm3
+ 195      D91B
+ 196 0263 660F3800 		pshufb	%xmm0, %xmm2
+ 196      D0
+ 197 0268 660F7F88 		movdqa	%xmm1, 128(%rax)
+ 197      80000000 
+ 198 0270 660F70DB 		pshufd	$255, %xmm3, %xmm3
+ 198      FF
+ 199 0275 660FEFCA 		pxor	%xmm2, %xmm1
+ 200 0279 660F3800 		pshufb	%xmm0, %xmm2
+ 200      D0
+ 201 027e 660F6FE2 		movdqa	%xmm2, %xmm4
+ 202 0282 660FEFCA 		pxor	%xmm2, %xmm1
+ 203 0286 660F3800 		pshufb	%xmm0, %xmm4
+ 203      E0
+ 204 028b 660FEFCC 		pxor	%xmm4, %xmm1
+ 205 028f 660FEFCB 		pxor	%xmm3, %xmm1
+GAS LISTING /tmp/ccVFFGPf.s 			page 50
+
+
+ 206 0293 660F6FD1 		movdqa	%xmm1, %xmm2
+ 207 0297 660F3ADF 		aeskeygenassist	$54, %xmm1, %xmm3
+ 207      D936
+ 208 029d 660F3800 		pshufb	%xmm0, %xmm2
+ 208      D0
+ 209 02a2 660F7F88 		movdqa	%xmm1, 144(%rax)
+ 209      90000000 
+ 210 02aa 660F70DB 		pshufd	$255, %xmm3, %xmm3
+ 210      FF
+ 211 02af 660FEFCA 		pxor	%xmm2, %xmm1
+ 212 02b3 660F3800 		pshufb	%xmm0, %xmm2
+ 212      D0
+ 213 02b8 660F6FE2 		movdqa	%xmm2, %xmm4
+ 214 02bc 660FEFCA 		pxor	%xmm2, %xmm1
+ 215 02c0 660F3800 		pshufb	%xmm0, %xmm4
+ 215      E0
+ 216 02c5 660FEFCC 		pxor	%xmm4, %xmm1
+ 217 02c9 660FEFCB 		pxor	%xmm3, %xmm1
+ 218 02cd 660F7F88 		movdqa	%xmm1, 160(%rax)
+ 218      A0000000 
+ 219 02d5 C3       		ret
+ 220              		.cfi_endproc
+ 221              	.LFE721:
+ 222              		.size	KAESBlockCipherVecAesNiKeyExpansion128, .-KAESBlockCipherVecAesNiKeyExpansion128
+ 223 02d6 662E0F1F 		.p2align 4,,15
+ 223      84000000 
+ 223      0000
+ 224              		.type	KAESBlockCipherVecAesNiKeyExpansion256, @function
+ 225              	KAESBlockCipherVecAesNiKeyExpansion256:
+ 226              	.LFB723:
+ 227              		.cfi_startproc
+ 228 02e0 660F6F05 		movdqa	.LC0(%rip), %xmm0
+ 228      00000000 
+ 229 02e8 4889F8   		movq	%rdi, %rax
+ 230 02eb 4889F7   		movq	%rsi, %rdi
+ 231              	#APP
+ 232              	# 126 "/home/rodarmer/sra_sdk-2.2.2a/libs/krypto/aes-ncbi.c" 1
+ 233              		movdqu (%rdi),%xmm1
+ 234              	# 0 "" 2
+ 235              	#NO_APP
+ 236 02f2 660F6FD9 		movdqa	%xmm1, %xmm3
+ 237 02f6 488D7E10 		leaq	16(%rsi), %rdi
+ 238 02fa 660F7F08 		movdqa	%xmm1, (%rax)
+ 239 02fe 660F3800 		pshufb	%xmm0, %xmm3
+ 239      D8
+ 240              	#APP
+ 241              	# 126 "/home/rodarmer/sra_sdk-2.2.2a/libs/krypto/aes-ncbi.c" 1
+ 242              		movdqu (%rdi),%xmm2
+ 243              	# 0 "" 2
+ 244              	#NO_APP
+ 245 0307 660F3ADF 		aeskeygenassist	$1, %xmm2, %xmm4
+ 245      E201
+ 246 030d 660FEFCB 		pxor	%xmm3, %xmm1
+ 247 0311 660F3800 		pshufb	%xmm0, %xmm3
+ 247      D8
+ 248 0316 660F70E4 		pshufd	$255, %xmm4, %xmm4
+ 248      FF
+GAS LISTING /tmp/ccVFFGPf.s 			page 51
+
+
+ 249 031b 660F7F50 		movdqa	%xmm2, 16(%rax)
+ 249      10
+ 250 0320 660F6FEB 		movdqa	%xmm3, %xmm5
+ 251 0324 660FEFCB 		pxor	%xmm3, %xmm1
+ 252 0328 660F6FDA 		movdqa	%xmm2, %xmm3
+ 253 032c 660F3800 		pshufb	%xmm0, %xmm5
+ 253      E8
+ 254 0331 660F3800 		pshufb	%xmm0, %xmm3
+ 254      D8
+ 255 0336 660FEFCD 		pxor	%xmm5, %xmm1
+ 256 033a 660FEFD3 		pxor	%xmm3, %xmm2
+ 257 033e 660F3800 		pshufb	%xmm0, %xmm3
+ 257      D8
+ 258 0343 660FEFCC 		pxor	%xmm4, %xmm1
+ 259 0347 660F6FEB 		movdqa	%xmm3, %xmm5
+ 260 034b 660FEFD3 		pxor	%xmm3, %xmm2
+ 261 034f 660F6FD9 		movdqa	%xmm1, %xmm3
+ 262 0353 660F3ADF 		aeskeygenassist	$0, %xmm1, %xmm4
+ 262      E100
+ 263 0359 660F3800 		pshufb	%xmm0, %xmm5
+ 263      E8
+ 264 035e 660F3800 		pshufb	%xmm0, %xmm3
+ 264      D8
+ 265 0363 660F70E4 		pshufd	$170, %xmm4, %xmm4
+ 265      AA
+ 266 0368 660FEFD5 		pxor	%xmm5, %xmm2
+ 267 036c 660F7F48 		movdqa	%xmm1, 32(%rax)
+ 267      20
+ 268 0371 660FEFCB 		pxor	%xmm3, %xmm1
+ 269 0375 660F3800 		pshufb	%xmm0, %xmm3
+ 269      D8
+ 270 037a 660FEFD4 		pxor	%xmm4, %xmm2
+ 271 037e 660F6FEB 		movdqa	%xmm3, %xmm5
+ 272 0382 660F3ADF 		aeskeygenassist	$2, %xmm2, %xmm4
+ 272      E202
+ 273 0388 660F3800 		pshufb	%xmm0, %xmm5
+ 273      E8
+ 274 038d 660FEFCB 		pxor	%xmm3, %xmm1
+ 275 0391 660F6FDA 		movdqa	%xmm2, %xmm3
+ 276 0395 660F70E4 		pshufd	$255, %xmm4, %xmm4
+ 276      FF
+ 277 039a 660F3800 		pshufb	%xmm0, %xmm3
+ 277      D8
+ 278 039f 660FEFCD 		pxor	%xmm5, %xmm1
+ 279 03a3 660F7F50 		movdqa	%xmm2, 48(%rax)
+ 279      30
+ 280 03a8 660FEFD3 		pxor	%xmm3, %xmm2
+ 281 03ac 660F3800 		pshufb	%xmm0, %xmm3
+ 281      D8
+ 282 03b1 660FEFCC 		pxor	%xmm4, %xmm1
+ 283 03b5 660F6FEB 		movdqa	%xmm3, %xmm5
+ 284 03b9 660FEFD3 		pxor	%xmm3, %xmm2
+ 285 03bd 660F6FD9 		movdqa	%xmm1, %xmm3
+ 286 03c1 660F3ADF 		aeskeygenassist	$0, %xmm1, %xmm4
+ 286      E100
+ 287 03c7 660F3800 		pshufb	%xmm0, %xmm5
+ 287      E8
+GAS LISTING /tmp/ccVFFGPf.s 			page 52
+
+
+ 288 03cc 660F3800 		pshufb	%xmm0, %xmm3
+ 288      D8
+ 289 03d1 660F70E4 		pshufd	$170, %xmm4, %xmm4
+ 289      AA
+ 290 03d6 660FEFD5 		pxor	%xmm5, %xmm2
+ 291 03da 660F7F48 		movdqa	%xmm1, 64(%rax)
+ 291      40
+ 292 03df 660FEFCB 		pxor	%xmm3, %xmm1
+ 293 03e3 660F3800 		pshufb	%xmm0, %xmm3
+ 293      D8
+ 294 03e8 660FEFD4 		pxor	%xmm4, %xmm2
+ 295 03ec 660F6FEB 		movdqa	%xmm3, %xmm5
+ 296 03f0 660F3ADF 		aeskeygenassist	$4, %xmm2, %xmm4
+ 296      E204
+ 297 03f6 660F3800 		pshufb	%xmm0, %xmm5
+ 297      E8
+ 298 03fb 660FEFCB 		pxor	%xmm3, %xmm1
+ 299 03ff 660F6FDA 		movdqa	%xmm2, %xmm3
+ 300 0403 660F70E4 		pshufd	$255, %xmm4, %xmm4
+ 300      FF
+ 301 0408 660F3800 		pshufb	%xmm0, %xmm3
+ 301      D8
+ 302 040d 660FEFCD 		pxor	%xmm5, %xmm1
+ 303 0411 660F7F50 		movdqa	%xmm2, 80(%rax)
+ 303      50
+ 304 0416 660FEFD3 		pxor	%xmm3, %xmm2
+ 305 041a 660F3800 		pshufb	%xmm0, %xmm3
+ 305      D8
+ 306 041f 660FEFCC 		pxor	%xmm4, %xmm1
+ 307 0423 660F6FEB 		movdqa	%xmm3, %xmm5
+ 308 0427 660FEFD3 		pxor	%xmm3, %xmm2
+ 309 042b 660F6FD9 		movdqa	%xmm1, %xmm3
+ 310 042f 660F3ADF 		aeskeygenassist	$0, %xmm1, %xmm4
+ 310      E100
+ 311 0435 660F3800 		pshufb	%xmm0, %xmm5
+ 311      E8
+ 312 043a 660F3800 		pshufb	%xmm0, %xmm3
+ 312      D8
+ 313 043f 660F70E4 		pshufd	$170, %xmm4, %xmm4
+ 313      AA
+ 314 0444 660FEFD5 		pxor	%xmm5, %xmm2
+ 315 0448 660F7F48 		movdqa	%xmm1, 96(%rax)
+ 315      60
+ 316 044d 660FEFCB 		pxor	%xmm3, %xmm1
+ 317 0451 660F3800 		pshufb	%xmm0, %xmm3
+ 317      D8
+ 318 0456 660FEFD4 		pxor	%xmm4, %xmm2
+ 319 045a 660F6FEB 		movdqa	%xmm3, %xmm5
+ 320 045e 660F3ADF 		aeskeygenassist	$8, %xmm2, %xmm4
+ 320      E208
+ 321 0464 660F3800 		pshufb	%xmm0, %xmm5
+ 321      E8
+ 322 0469 660FEFCB 		pxor	%xmm3, %xmm1
+ 323 046d 660F6FDA 		movdqa	%xmm2, %xmm3
+ 324 0471 660F70E4 		pshufd	$255, %xmm4, %xmm4
+ 324      FF
+ 325 0476 660F3800 		pshufb	%xmm0, %xmm3
+GAS LISTING /tmp/ccVFFGPf.s 			page 53
+
+
+ 325      D8
+ 326 047b 660FEFCD 		pxor	%xmm5, %xmm1
+ 327 047f 660F7F50 		movdqa	%xmm2, 112(%rax)
+ 327      70
+ 328 0484 660FEFD3 		pxor	%xmm3, %xmm2
+ 329 0488 660F3800 		pshufb	%xmm0, %xmm3
+ 329      D8
+ 330 048d 660FEFCC 		pxor	%xmm4, %xmm1
+ 331 0491 660F6FEB 		movdqa	%xmm3, %xmm5
+ 332 0495 660FEFD3 		pxor	%xmm3, %xmm2
+ 333 0499 660F6FD9 		movdqa	%xmm1, %xmm3
+ 334 049d 660F3ADF 		aeskeygenassist	$0, %xmm1, %xmm4
+ 334      E100
+ 335 04a3 660F3800 		pshufb	%xmm0, %xmm5
+ 335      E8
+ 336 04a8 660F3800 		pshufb	%xmm0, %xmm3
+ 336      D8
+ 337 04ad 660F70E4 		pshufd	$170, %xmm4, %xmm4
+ 337      AA
+ 338 04b2 660FEFD5 		pxor	%xmm5, %xmm2
+ 339 04b6 660F7F88 		movdqa	%xmm1, 128(%rax)
+ 339      80000000 
+ 340 04be 660FEFCB 		pxor	%xmm3, %xmm1
+ 341 04c2 660F3800 		pshufb	%xmm0, %xmm3
+ 341      D8
+ 342 04c7 660FEFD4 		pxor	%xmm4, %xmm2
+ 343 04cb 660F6FEB 		movdqa	%xmm3, %xmm5
+ 344 04cf 660F3ADF 		aeskeygenassist	$16, %xmm2, %xmm4
+ 344      E210
+ 345 04d5 660F3800 		pshufb	%xmm0, %xmm5
+ 345      E8
+ 346 04da 660FEFCB 		pxor	%xmm3, %xmm1
+ 347 04de 660F6FDA 		movdqa	%xmm2, %xmm3
+ 348 04e2 660F70E4 		pshufd	$255, %xmm4, %xmm4
+ 348      FF
+ 349 04e7 660F3800 		pshufb	%xmm0, %xmm3
+ 349      D8
+ 350 04ec 660FEFCD 		pxor	%xmm5, %xmm1
+ 351 04f0 660F7F90 		movdqa	%xmm2, 144(%rax)
+ 351      90000000 
+ 352 04f8 660FEFD3 		pxor	%xmm3, %xmm2
+ 353 04fc 660F3800 		pshufb	%xmm0, %xmm3
+ 353      D8
+ 354 0501 660FEFCC 		pxor	%xmm4, %xmm1
+ 355 0505 660F6FEB 		movdqa	%xmm3, %xmm5
+ 356 0509 660FEFD3 		pxor	%xmm3, %xmm2
+ 357 050d 660F6FD9 		movdqa	%xmm1, %xmm3
+ 358 0511 660F3ADF 		aeskeygenassist	$0, %xmm1, %xmm4
+ 358      E100
+ 359 0517 660F3800 		pshufb	%xmm0, %xmm5
+ 359      E8
+ 360 051c 660F3800 		pshufb	%xmm0, %xmm3
+ 360      D8
+ 361 0521 660F70E4 		pshufd	$170, %xmm4, %xmm4
+ 361      AA
+ 362 0526 660FEFD5 		pxor	%xmm5, %xmm2
+ 363 052a 660F7F88 		movdqa	%xmm1, 160(%rax)
+GAS LISTING /tmp/ccVFFGPf.s 			page 54
+
+
+ 363      A0000000 
+ 364 0532 660FEFCB 		pxor	%xmm3, %xmm1
+ 365 0536 660F3800 		pshufb	%xmm0, %xmm3
+ 365      D8
+ 366 053b 660FEFD4 		pxor	%xmm4, %xmm2
+ 367 053f 660F6FEB 		movdqa	%xmm3, %xmm5
+ 368 0543 660F3ADF 		aeskeygenassist	$32, %xmm2, %xmm4
+ 368      E220
+ 369 0549 660F3800 		pshufb	%xmm0, %xmm5
+ 369      E8
+ 370 054e 660FEFCB 		pxor	%xmm3, %xmm1
+ 371 0552 660F6FDA 		movdqa	%xmm2, %xmm3
+ 372 0556 660F70E4 		pshufd	$255, %xmm4, %xmm4
+ 372      FF
+ 373 055b 660F3800 		pshufb	%xmm0, %xmm3
+ 373      D8
+ 374 0560 660FEFCD 		pxor	%xmm5, %xmm1
+ 375 0564 660F7F90 		movdqa	%xmm2, 176(%rax)
+ 375      B0000000 
+ 376 056c 660FEFD3 		pxor	%xmm3, %xmm2
+ 377 0570 660F3800 		pshufb	%xmm0, %xmm3
+ 377      D8
+ 378 0575 660FEFCC 		pxor	%xmm4, %xmm1
+ 379 0579 660F6FEB 		movdqa	%xmm3, %xmm5
+ 380 057d 660FEFD3 		pxor	%xmm3, %xmm2
+ 381 0581 660F6FD9 		movdqa	%xmm1, %xmm3
+ 382 0585 660F3ADF 		aeskeygenassist	$0, %xmm1, %xmm4
+ 382      E100
+ 383 058b 660F3800 		pshufb	%xmm0, %xmm5
+ 383      E8
+ 384 0590 660F3800 		pshufb	%xmm0, %xmm3
+ 384      D8
+ 385 0595 660F70E4 		pshufd	$170, %xmm4, %xmm4
+ 385      AA
+ 386 059a 660FEFD5 		pxor	%xmm5, %xmm2
+ 387 059e 660F7F88 		movdqa	%xmm1, 192(%rax)
+ 387      C0000000 
+ 388 05a6 660FEFCB 		pxor	%xmm3, %xmm1
+ 389 05aa 660F3800 		pshufb	%xmm0, %xmm3
+ 389      D8
+ 390 05af 660FEFD4 		pxor	%xmm4, %xmm2
+ 391 05b3 660F6FE3 		movdqa	%xmm3, %xmm4
+ 392 05b7 660F7F90 		movdqa	%xmm2, 208(%rax)
+ 392      D0000000 
+ 393 05bf 660F3800 		pshufb	%xmm0, %xmm4
+ 393      E0
+ 394 05c4 660F3ADF 		aeskeygenassist	$64, %xmm2, %xmm2
+ 394      D240
+ 395 05ca 660FEFCB 		pxor	%xmm3, %xmm1
+ 396 05ce 660F70D2 		pshufd	$255, %xmm2, %xmm2
+ 396      FF
+ 397 05d3 660FEFCC 		pxor	%xmm4, %xmm1
+ 398 05d7 660FEFCA 		pxor	%xmm2, %xmm1
+ 399 05db 660F7F88 		movdqa	%xmm1, 224(%rax)
+ 399      E0000000 
+ 400 05e3 C3       		ret
+ 401              		.cfi_endproc
+GAS LISTING /tmp/ccVFFGPf.s 			page 55
+
+
+ 402              	.LFE723:
+ 403              		.size	KAESBlockCipherVecAesNiKeyExpansion256, .-KAESBlockCipherVecAesNiKeyExpansion256
+ 404 05e4 6666662E 		.p2align 4,,15
+ 404      0F1F8400 
+ 404      00000000 
+ 405              		.type	KAESBlockCipherVecAesNiKeyExpansion192, @function
+ 406              	KAESBlockCipherVecAesNiKeyExpansion192:
+ 407              	.LFB722:
+ 408              		.cfi_startproc
+ 409 05f0 660F6F05 		movdqa	.LC0(%rip), %xmm0
+ 409      00000000 
+ 410 05f8 4889F8   		movq	%rdi, %rax
+ 411 05fb 4889F7   		movq	%rsi, %rdi
+ 412              	#APP
+ 413              	# 126 "/home/rodarmer/sra_sdk-2.2.2a/libs/krypto/aes-ncbi.c" 1
+ 414              		movdqu (%rdi),%xmm1
+ 415              	# 0 "" 2
+ 416              	#NO_APP
+ 417 0602 660F6FD1 		movdqa	%xmm1, %xmm2
+ 418 0606 488D7E08 		leaq	8(%rsi), %rdi
+ 419 060a 660F7F08 		movdqa	%xmm1, (%rax)
+ 420 060e 660F3800 		pshufb	%xmm0, %xmm2
+ 420      D0
+ 421              	#APP
+ 422              	# 126 "/home/rodarmer/sra_sdk-2.2.2a/libs/krypto/aes-ncbi.c" 1
+ 423              		movdqu (%rdi),%xmm3
+ 424              	# 0 "" 2
+ 425              	#NO_APP
+ 426 0617 660F3800 		pshufb	.LC1(%rip), %xmm3
+ 426      1D000000 
+ 426      00
+ 427 0620 660FEFCA 		pxor	%xmm2, %xmm1
+ 428 0624 660F3800 		pshufb	%xmm0, %xmm2
+ 428      D0
+ 429 0629 660F3ADF 		aeskeygenassist	$1, %xmm3, %xmm4
+ 429      E301
+ 430 062f 660F6FEA 		movdqa	%xmm2, %xmm5
+ 431 0633 660FEFCA 		pxor	%xmm2, %xmm1
+ 432 0637 660F6FD3 		movdqa	%xmm3, %xmm2
+ 433 063b 660F3800 		pshufb	%xmm0, %xmm5
+ 433      E8
+ 434 0640 660F70E4 		pshufd	$85, %xmm4, %xmm4
+ 434      55
+ 435 0645 660FEFCD 		pxor	%xmm5, %xmm1
+ 436 0649 660FEFCC 		pxor	%xmm4, %xmm1
+ 437 064d 660F6FE3 		movdqa	%xmm3, %xmm4
+ 438 0651 660F3800 		pshufb	%xmm0, %xmm4
+ 438      E0
+ 439 0656 660F14D9 		unpcklpd	%xmm1, %xmm3
+ 440 065a 660FEFD4 		pxor	%xmm4, %xmm2
+ 441 065e 660F3800 		pshufb	%xmm0, %xmm4
+ 441      E0
+ 442 0663 660F7F58 		movdqa	%xmm3, 16(%rax)
+ 442      10
+ 443 0668 660F28D9 		movapd	%xmm1, %xmm3
+ 444 066c 660F6FEC 		movdqa	%xmm4, %xmm5
+ 445 0670 660FEFD4 		pxor	%xmm4, %xmm2
+GAS LISTING /tmp/ccVFFGPf.s 			page 56
+
+
+ 446 0674 660F70E1 		pshufd	$255, %xmm1, %xmm4
+ 446      FF
+ 447 0679 660F3800 		pshufb	%xmm0, %xmm5
+ 447      E8
+ 448 067e 660FEFD5 		pxor	%xmm5, %xmm2
+ 449 0682 660FEFD4 		pxor	%xmm4, %xmm2
+ 450 0686 660F6FE1 		movdqa	%xmm1, %xmm4
+ 451 068a 660F3800 		pshufb	%xmm0, %xmm4
+ 451      E0
+ 452 068f 660FC6DA 		shufpd	$1, %xmm2, %xmm3
+ 452      01
+ 453 0694 660FEFCC 		pxor	%xmm4, %xmm1
+ 454 0698 660F3800 		pshufb	%xmm0, %xmm4
+ 454      E0
+ 455 069d 660F7F58 		movdqa	%xmm3, 32(%rax)
+ 455      20
+ 456 06a2 660F3ADF 		aeskeygenassist	$2, %xmm3, %xmm3
+ 456      DB02
+ 457 06a8 660F6FEC 		movdqa	%xmm4, %xmm5
+ 458 06ac 660FEFCC 		pxor	%xmm4, %xmm1
+ 459 06b0 660F6FE2 		movdqa	%xmm2, %xmm4
+ 460 06b4 660F3800 		pshufb	%xmm0, %xmm5
+ 460      E8
+ 461 06b9 660F3800 		pshufb	%xmm0, %xmm4
+ 461      E0
+ 462 06be 660F70DB 		pshufd	$255, %xmm3, %xmm3
+ 462      FF
+ 463 06c3 660FEFCD 		pxor	%xmm5, %xmm1
+ 464 06c7 660FEFD4 		pxor	%xmm4, %xmm2
+ 465 06cb 660F3800 		pshufb	%xmm0, %xmm4
+ 465      E0
+ 466 06d0 660FEFCB 		pxor	%xmm3, %xmm1
+ 467 06d4 660F6FEC 		movdqa	%xmm4, %xmm5
+ 468 06d8 660FEFD4 		pxor	%xmm4, %xmm2
+ 469 06dc 660F3800 		pshufb	%xmm0, %xmm5
+ 469      E8
+ 470 06e1 660F70D9 		pshufd	$255, %xmm1, %xmm3
+ 470      FF
+ 471 06e6 660F7F48 		movdqa	%xmm1, 48(%rax)
+ 471      30
+ 472 06eb 660FEFD5 		pxor	%xmm5, %xmm2
+ 473 06ef 660FEFD3 		pxor	%xmm3, %xmm2
+ 474 06f3 660F6FD9 		movdqa	%xmm1, %xmm3
+ 475 06f7 660F3800 		pshufb	%xmm0, %xmm3
+ 475      D8
+ 476 06fc 660F3ADF 		aeskeygenassist	$4, %xmm2, %xmm4
+ 476      E204
+ 477 0702 660FEFCB 		pxor	%xmm3, %xmm1
+ 478 0706 660F3800 		pshufb	%xmm0, %xmm3
+ 478      D8
+ 479 070b 660F70E4 		pshufd	$85, %xmm4, %xmm4
+ 479      55
+ 480 0710 660F6FEB 		movdqa	%xmm3, %xmm5
+ 481 0714 660FEFCB 		pxor	%xmm3, %xmm1
+ 482 0718 660F6FDA 		movdqa	%xmm2, %xmm3
+ 483 071c 660F3800 		pshufb	%xmm0, %xmm5
+ 483      E8
+GAS LISTING /tmp/ccVFFGPf.s 			page 57
+
+
+ 484 0721 660FEFCD 		pxor	%xmm5, %xmm1
+ 485 0725 660FEFCC 		pxor	%xmm4, %xmm1
+ 486 0729 660F6FE2 		movdqa	%xmm2, %xmm4
+ 487 072d 660F3800 		pshufb	%xmm0, %xmm4
+ 487      E0
+ 488 0732 660F14D1 		unpcklpd	%xmm1, %xmm2
+ 489 0736 660FEFDC 		pxor	%xmm4, %xmm3
+ 490 073a 660F3800 		pshufb	%xmm0, %xmm4
+ 490      E0
+ 491 073f 660F7F50 		movdqa	%xmm2, 64(%rax)
+ 491      40
+ 492 0744 660F28D1 		movapd	%xmm1, %xmm2
+ 493 0748 660F6FEC 		movdqa	%xmm4, %xmm5
+ 494 074c 660FEFDC 		pxor	%xmm4, %xmm3
+ 495 0750 660F70E1 		pshufd	$255, %xmm1, %xmm4
+ 495      FF
+ 496 0755 660F3800 		pshufb	%xmm0, %xmm5
+ 496      E8
+ 497 075a 660FEFDD 		pxor	%xmm5, %xmm3
+ 498 075e 660FEFDC 		pxor	%xmm4, %xmm3
+ 499 0762 660F6FE1 		movdqa	%xmm1, %xmm4
+ 500 0766 660F3800 		pshufb	%xmm0, %xmm4
+ 500      E0
+ 501 076b 660FC6D3 		shufpd	$1, %xmm3, %xmm2
+ 501      01
+ 502 0770 660FEFCC 		pxor	%xmm4, %xmm1
+ 503 0774 660F3800 		pshufb	%xmm0, %xmm4
+ 503      E0
+ 504 0779 660F7F50 		movdqa	%xmm2, 80(%rax)
+ 504      50
+ 505 077e 660F3ADF 		aeskeygenassist	$8, %xmm2, %xmm2
+ 505      D208
+ 506 0784 660F6FEC 		movdqa	%xmm4, %xmm5
+ 507 0788 660FEFCC 		pxor	%xmm4, %xmm1
+ 508 078c 660F6FE3 		movdqa	%xmm3, %xmm4
+ 509 0790 660F3800 		pshufb	%xmm0, %xmm5
+ 509      E8
+ 510 0795 660F3800 		pshufb	%xmm0, %xmm4
+ 510      E0
+ 511 079a 660F70D2 		pshufd	$255, %xmm2, %xmm2
+ 511      FF
+ 512 079f 660FEFCD 		pxor	%xmm5, %xmm1
+ 513 07a3 660FEFDC 		pxor	%xmm4, %xmm3
+ 514 07a7 660F3800 		pshufb	%xmm0, %xmm4
+ 514      E0
+ 515 07ac 660FEFCA 		pxor	%xmm2, %xmm1
+ 516 07b0 660F6FEC 		movdqa	%xmm4, %xmm5
+ 517 07b4 660FEFDC 		pxor	%xmm4, %xmm3
+ 518 07b8 660F3800 		pshufb	%xmm0, %xmm5
+ 518      E8
+ 519 07bd 660F70D1 		pshufd	$255, %xmm1, %xmm2
+ 519      FF
+ 520 07c2 660F7F48 		movdqa	%xmm1, 96(%rax)
+ 520      60
+ 521 07c7 660FEFDD 		pxor	%xmm5, %xmm3
+ 522 07cb 660FEFDA 		pxor	%xmm2, %xmm3
+ 523 07cf 660F6FD1 		movdqa	%xmm1, %xmm2
+GAS LISTING /tmp/ccVFFGPf.s 			page 58
+
+
+ 524 07d3 660F3800 		pshufb	%xmm0, %xmm2
+ 524      D0
+ 525 07d8 660F3ADF 		aeskeygenassist	$16, %xmm3, %xmm4
+ 525      E310
+ 526 07de 660FEFCA 		pxor	%xmm2, %xmm1
+ 527 07e2 660F3800 		pshufb	%xmm0, %xmm2
+ 527      D0
+ 528 07e7 660F70E4 		pshufd	$85, %xmm4, %xmm4
+ 528      55
+ 529 07ec 660F6FEA 		movdqa	%xmm2, %xmm5
+ 530 07f0 660FEFCA 		pxor	%xmm2, %xmm1
+ 531 07f4 660F6FD3 		movdqa	%xmm3, %xmm2
+ 532 07f8 660F3800 		pshufb	%xmm0, %xmm5
+ 532      E8
+ 533 07fd 660FEFCD 		pxor	%xmm5, %xmm1
+ 534 0801 660FEFCC 		pxor	%xmm4, %xmm1
+ 535 0805 660F6FE3 		movdqa	%xmm3, %xmm4
+ 536 0809 660F3800 		pshufb	%xmm0, %xmm4
+ 536      E0
+ 537 080e 660F14D9 		unpcklpd	%xmm1, %xmm3
+ 538 0812 660FEFD4 		pxor	%xmm4, %xmm2
+ 539 0816 660F3800 		pshufb	%xmm0, %xmm4
+ 539      E0
+ 540 081b 660F7F58 		movdqa	%xmm3, 112(%rax)
+ 540      70
+ 541 0820 660F28D9 		movapd	%xmm1, %xmm3
+ 542 0824 660F6FEC 		movdqa	%xmm4, %xmm5
+ 543 0828 660FEFD4 		pxor	%xmm4, %xmm2
+ 544 082c 660F70E1 		pshufd	$255, %xmm1, %xmm4
+ 544      FF
+ 545 0831 660F3800 		pshufb	%xmm0, %xmm5
+ 545      E8
+ 546 0836 660FEFD5 		pxor	%xmm5, %xmm2
+ 547 083a 660FEFD4 		pxor	%xmm4, %xmm2
+ 548 083e 660F6FE1 		movdqa	%xmm1, %xmm4
+ 549 0842 660F3800 		pshufb	%xmm0, %xmm4
+ 549      E0
+ 550 0847 660FC6DA 		shufpd	$1, %xmm2, %xmm3
+ 550      01
+ 551 084c 660FEFCC 		pxor	%xmm4, %xmm1
+ 552 0850 660F3800 		pshufb	%xmm0, %xmm4
+ 552      E0
+ 553 0855 660F7F98 		movdqa	%xmm3, 128(%rax)
+ 553      80000000 
+ 554 085d 660F3ADF 		aeskeygenassist	$32, %xmm3, %xmm3
+ 554      DB20
+ 555 0863 660F6FEC 		movdqa	%xmm4, %xmm5
+ 556 0867 660FEFCC 		pxor	%xmm4, %xmm1
+ 557 086b 660F6FE2 		movdqa	%xmm2, %xmm4
+ 558 086f 660F3800 		pshufb	%xmm0, %xmm5
+ 558      E8
+ 559 0874 660F3800 		pshufb	%xmm0, %xmm4
+ 559      E0
+ 560 0879 660F70DB 		pshufd	$255, %xmm3, %xmm3
+ 560      FF
+ 561 087e 660FEFCD 		pxor	%xmm5, %xmm1
+ 562 0882 660FEFD4 		pxor	%xmm4, %xmm2
+GAS LISTING /tmp/ccVFFGPf.s 			page 59
+
+
+ 563 0886 660F3800 		pshufb	%xmm0, %xmm4
+ 563      E0
+ 564 088b 660FEFCB 		pxor	%xmm3, %xmm1
+ 565 088f 660F6FEC 		movdqa	%xmm4, %xmm5
+ 566 0893 660FEFD4 		pxor	%xmm4, %xmm2
+ 567 0897 660F3800 		pshufb	%xmm0, %xmm5
+ 567      E8
+ 568 089c 660F70D9 		pshufd	$255, %xmm1, %xmm3
+ 568      FF
+ 569 08a1 660F7F88 		movdqa	%xmm1, 144(%rax)
+ 569      90000000 
+ 570 08a9 660FEFD5 		pxor	%xmm5, %xmm2
+ 571 08ad 660FEFD3 		pxor	%xmm3, %xmm2
+ 572 08b1 660F6FD9 		movdqa	%xmm1, %xmm3
+ 573 08b5 660F3800 		pshufb	%xmm0, %xmm3
+ 573      D8
+ 574 08ba 660F3ADF 		aeskeygenassist	$64, %xmm2, %xmm5
+ 574      EA40
+ 575 08c0 660FEFCB 		pxor	%xmm3, %xmm1
+ 576 08c4 660F3800 		pshufb	%xmm0, %xmm3
+ 576      D8
+ 577 08c9 660F70ED 		pshufd	$85, %xmm5, %xmm5
+ 577      55
+ 578 08ce 660F6FE3 		movdqa	%xmm3, %xmm4
+ 579 08d2 660FEFCB 		pxor	%xmm3, %xmm1
+ 580 08d6 660F6FDA 		movdqa	%xmm2, %xmm3
+ 581 08da 660F3800 		pshufb	%xmm0, %xmm4
+ 581      E0
+ 582 08df 660FEFCC 		pxor	%xmm4, %xmm1
+ 583 08e3 660F6FE2 		movdqa	%xmm2, %xmm4
+ 584 08e7 660F3800 		pshufb	%xmm0, %xmm4
+ 584      E0
+ 585 08ec 660FEFCD 		pxor	%xmm5, %xmm1
+ 586 08f0 660FEFDC 		pxor	%xmm4, %xmm3
+ 587 08f4 660F3800 		pshufb	%xmm0, %xmm4
+ 587      E0
+ 588 08f9 660F14D1 		unpcklpd	%xmm1, %xmm2
+ 589 08fd 660F70E9 		pshufd	$255, %xmm1, %xmm5
+ 589      FF
+ 590 0902 660F6FF4 		movdqa	%xmm4, %xmm6
+ 591 0906 660FEFDC 		pxor	%xmm4, %xmm3
+ 592 090a 660F7F90 		movdqa	%xmm2, 160(%rax)
+ 592      A0000000 
+ 593 0912 660F3800 		pshufb	%xmm0, %xmm6
+ 593      F0
+ 594 0917 660F6FD1 		movdqa	%xmm1, %xmm2
+ 595 091b 660F28E1 		movapd	%xmm1, %xmm4
+ 596 091f 660FEFDE 		pxor	%xmm6, %xmm3
+ 597 0923 660F3800 		pshufb	%xmm0, %xmm2
+ 597      D0
+ 598 0928 660FEFDD 		pxor	%xmm5, %xmm3
+ 599 092c 660FEFCA 		pxor	%xmm2, %xmm1
+ 600 0930 660F3800 		pshufb	%xmm0, %xmm2
+ 600      D0
+ 601 0935 660FC6E3 		shufpd	$1, %xmm3, %xmm4
+ 601      01
+ 602 093a 660FEFCA 		pxor	%xmm2, %xmm1
+GAS LISTING /tmp/ccVFFGPf.s 			page 60
+
+
+ 603 093e 660F28DC 		movapd	%xmm4, %xmm3
+ 604 0942 660F7FA0 		movdqa	%xmm4, 176(%rax)
+ 604      B0000000 
+ 605 094a 660F6FE2 		movdqa	%xmm2, %xmm4
+ 606 094e 660F3ADF 		aeskeygenassist	$128, %xmm3, %xmm3
+ 606      DB80
+ 607 0954 660F3800 		pshufb	%xmm0, %xmm4
+ 607      E0
+ 608 0959 660F70DB 		pshufd	$255, %xmm3, %xmm3
+ 608      FF
+ 609 095e 660FEFCC 		pxor	%xmm4, %xmm1
+ 610 0962 660FEFCB 		pxor	%xmm3, %xmm1
+ 611 0966 660F7F88 		movdqa	%xmm1, 192(%rax)
+ 611      C0000000 
+ 612 096e C3       		ret
+ 613              		.cfi_endproc
+ 614              	.LFE722:
+ 615              		.size	KAESBlockCipherVecAesNiKeyExpansion192, .-KAESBlockCipherVecAesNiKeyExpansion192
+ 616 096f 90       		.p2align 4,,15
+ 617              		.type	KAESBlockCipherVecAesNiSetEncryptKey, @function
+ 618              	KAESBlockCipherVecAesNiSetEncryptKey:
+ 619              	.LFB739:
+ 620              		.cfi_startproc
+ 621 0970 83FA18   		cmpl	$24, %edx
+ 622 0973 744B     		je	.L23
+ 623 0975 83FA20   		cmpl	$32, %edx
+ 624 0978 742E     		je	.L24
+ 625 097a 83FA10   		cmpl	$16, %edx
+ 626 097d 7411     		je	.L28
+ 627 097f 31C0     		xorl	%eax, %eax
+ 628 0981 B9200000 		movl	$32, %ecx
+ 628      00
+ 629 0986 F348AB   		rep stosq
+ 630 0989 B8CA8F04 		movl	$-2029744182, %eax
+ 630      87
+ 631 098e C3       		ret
+ 632 098f 90       		.p2align 4,,10
+ 633              		.p2align 3
+ 634              	.L28:
+ 635 0990 C787F000 		movl	$10, 240(%rdi)
+ 635      00000A00 
+ 635      0000
+ 636 099a E8F1F6FF 		call	KAESBlockCipherVecAesNiKeyExpansion128
+ 636      FF
+ 637 099f 31C0     		xorl	%eax, %eax
+ 638 09a1 C3       		ret
+ 639              		.p2align 4,,10
+ 640 09a2 660F1F44 		.p2align 3
+ 640      0000
+ 641              	.L24:
+ 642 09a8 C787F000 		movl	$14, 240(%rdi)
+ 642      00000E00 
+ 642      0000
+ 643 09b2 E829F9FF 		call	KAESBlockCipherVecAesNiKeyExpansion256
+ 643      FF
+ 644 09b7 31C0     		xorl	%eax, %eax
+ 645 09b9 C3       		ret
+GAS LISTING /tmp/ccVFFGPf.s 			page 61
+
+
+ 646 09ba 660F1F44 		.p2align 4,,10
+ 646      0000
+ 647              		.p2align 3
+ 648              	.L23:
+ 649 09c0 C787F000 		movl	$12, 240(%rdi)
+ 649      00000C00 
+ 649      0000
+ 650 09ca E821FCFF 		call	KAESBlockCipherVecAesNiKeyExpansion192
+ 650      FF
+ 651 09cf 31C0     		xorl	%eax, %eax
+ 652 09d1 C3       		ret
+ 653              		.cfi_endproc
+ 654              	.LFE739:
+ 655              		.size	KAESBlockCipherVecAesNiSetEncryptKey, .-KAESBlockCipherVecAesNiSetEncryptKey
+ 656 09d2 66666666 		.p2align 4,,15
+ 656      662E0F1F 
+ 656      84000000 
+ 656      0000
+ 657              		.type	KAESBlockCipherVecAesNiEncrypt, @function
+ 658              	KAESBlockCipherVecAesNiEncrypt:
+ 659              	.LFB741:
+ 660              		.cfi_startproc
+ 661 09e0 8B87F000 		movl	240(%rdi), %eax
+ 661      0000
+ 662 09e6 660F6FC8 		movdqa	%xmm0, %xmm1
+ 663 09ea 83F80C   		cmpl	$12, %eax
+ 664 09ed 0F84E500 		je	.L32
+ 664      0000
+ 665 09f3 83F80E   		cmpl	$14, %eax
+ 666 09f6 7468     		je	.L33
+ 667 09f8 83F80A   		cmpl	$10, %eax
+ 668 09fb 660FEFC0 		pxor	%xmm0, %xmm0
+ 669 09ff 7407     		je	.L36
+ 670 0a01 F3       		rep
+ 671 0a02 C3       		ret
+ 672              		.p2align 4,,10
+ 673 0a03 0F1F4400 		.p2align 3
+ 673      00
+ 674              	.L36:
+ 675 0a08 660F6F07 		movdqa	(%rdi), %xmm0
+ 676 0a0c 660FEFC1 		pxor	%xmm1, %xmm0
+ 677 0a10 660F38DC 		aesenc	16(%rdi), %xmm0
+ 677      4710
+ 678 0a16 660F38DC 		aesenc	32(%rdi), %xmm0
+ 678      4720
+ 679 0a1c 660F38DC 		aesenc	48(%rdi), %xmm0
+ 679      4730
+ 680 0a22 660F38DC 		aesenc	64(%rdi), %xmm0
+ 680      4740
+ 681 0a28 660F38DC 		aesenc	80(%rdi), %xmm0
+ 681      4750
+ 682 0a2e 660F38DC 		aesenc	96(%rdi), %xmm0
+ 682      4760
+ 683 0a34 660F38DC 		aesenc	112(%rdi), %xmm0
+ 683      4770
+ 684 0a3a 660F38DC 		aesenc	128(%rdi), %xmm0
+ 684      87800000 
+GAS LISTING /tmp/ccVFFGPf.s 			page 62
+
+
+ 684      00
+ 685 0a43 660F38DC 		aesenc	144(%rdi), %xmm0
+ 685      87900000 
+ 685      00
+ 686 0a4c 660F38DD 		aesenclast	160(%rdi), %xmm0
+ 686      87A00000 
+ 686      00
+ 687 0a55 C3       		ret
+ 688 0a56 662E0F1F 		.p2align 4,,10
+ 688      84000000 
+ 688      0000
+ 689              		.p2align 3
+ 690              	.L33:
+ 691 0a60 660F6F07 		movdqa	(%rdi), %xmm0
+ 692 0a64 660FEFC1 		pxor	%xmm1, %xmm0
+ 693 0a68 660F38DC 		aesenc	16(%rdi), %xmm0
+ 693      4710
+ 694 0a6e 660F38DC 		aesenc	32(%rdi), %xmm0
+ 694      4720
+ 695 0a74 660F38DC 		aesenc	48(%rdi), %xmm0
+ 695      4730
+ 696 0a7a 660F38DC 		aesenc	64(%rdi), %xmm0
+ 696      4740
+ 697 0a80 660F38DC 		aesenc	80(%rdi), %xmm0
+ 697      4750
+ 698 0a86 660F38DC 		aesenc	96(%rdi), %xmm0
+ 698      4760
+ 699 0a8c 660F38DC 		aesenc	112(%rdi), %xmm0
+ 699      4770
+ 700 0a92 660F38DC 		aesenc	128(%rdi), %xmm0
+ 700      87800000 
+ 700      00
+ 701 0a9b 660F38DC 		aesenc	144(%rdi), %xmm0
+ 701      87900000 
+ 701      00
+ 702 0aa4 660F38DC 		aesenc	160(%rdi), %xmm0
+ 702      87A00000 
+ 702      00
+ 703 0aad 660F38DC 		aesenc	176(%rdi), %xmm0
+ 703      87B00000 
+ 703      00
+ 704 0ab6 660F38DC 		aesenc	192(%rdi), %xmm0
+ 704      87C00000 
+ 704      00
+ 705 0abf 660F38DC 		aesenc	208(%rdi), %xmm0
+ 705      87D00000 
+ 705      00
+ 706 0ac8 660F38DD 		aesenclast	224(%rdi), %xmm0
+ 706      87E00000 
+ 706      00
+ 707 0ad1 C3       		ret
+ 708              		.p2align 4,,10
+ 709 0ad2 660F1F44 		.p2align 3
+ 709      0000
+ 710              	.L32:
+ 711 0ad8 660F6F07 		movdqa	(%rdi), %xmm0
+ 712 0adc 660FEFC1 		pxor	%xmm1, %xmm0
+GAS LISTING /tmp/ccVFFGPf.s 			page 63
+
+
+ 713 0ae0 660F38DC 		aesenc	16(%rdi), %xmm0
+ 713      4710
+ 714 0ae6 660F38DC 		aesenc	32(%rdi), %xmm0
+ 714      4720
+ 715 0aec 660F38DC 		aesenc	48(%rdi), %xmm0
+ 715      4730
+ 716 0af2 660F38DC 		aesenc	64(%rdi), %xmm0
+ 716      4740
+ 717 0af8 660F38DC 		aesenc	80(%rdi), %xmm0
+ 717      4750
+ 718 0afe 660F38DC 		aesenc	96(%rdi), %xmm0
+ 718      4760
+ 719 0b04 660F38DC 		aesenc	112(%rdi), %xmm0
+ 719      4770
+ 720 0b0a 660F38DC 		aesenc	128(%rdi), %xmm0
+ 720      87800000 
+ 720      00
+ 721 0b13 660F38DC 		aesenc	144(%rdi), %xmm0
+ 721      87900000 
+ 721      00
+ 722 0b1c 660F38DC 		aesenc	160(%rdi), %xmm0
+ 722      87A00000 
+ 722      00
+ 723 0b25 660F38DC 		aesenc	176(%rdi), %xmm0
+ 723      87B00000 
+ 723      00
+ 724 0b2e 660F38DD 		aesenclast	192(%rdi), %xmm0
+ 724      87C00000 
+ 724      00
+ 725 0b37 C3       		ret
+ 726              		.cfi_endproc
+ 727              	.LFE741:
+ 728              		.size	KAESBlockCipherVecAesNiEncrypt, .-KAESBlockCipherVecAesNiEncrypt
+ 729 0b38 0F1F8400 		.p2align 4,,15
+ 729      00000000 
+ 730              		.type	KAESBlockCipherVecAesNiDecrypt, @function
+ 731              	KAESBlockCipherVecAesNiDecrypt:
+ 732              	.LFB742:
+ 733              		.cfi_startproc
+ 734 0b40 8B87F000 		movl	240(%rdi), %eax
+ 734      0000
+ 735 0b46 660F6FC8 		movdqa	%xmm0, %xmm1
+ 736 0b4a 83F80C   		cmpl	$12, %eax
+ 737 0b4d 0F84E500 		je	.L40
+ 737      0000
+ 738 0b53 83F80E   		cmpl	$14, %eax
+ 739 0b56 7468     		je	.L41
+ 740 0b58 83F80A   		cmpl	$10, %eax
+ 741 0b5b 660FEFC0 		pxor	%xmm0, %xmm0
+ 742 0b5f 7407     		je	.L44
+ 743 0b61 F3       		rep
+ 744 0b62 C3       		ret
+ 745              		.p2align 4,,10
+ 746 0b63 0F1F4400 		.p2align 3
+ 746      00
+ 747              	.L44:
+ 748 0b68 660F6F07 		movdqa	(%rdi), %xmm0
+GAS LISTING /tmp/ccVFFGPf.s 			page 64
+
+
+ 749 0b6c 660FEFC1 		pxor	%xmm1, %xmm0
+ 750 0b70 660F38DE 		aesdec	16(%rdi), %xmm0
+ 750      4710
+ 751 0b76 660F38DE 		aesdec	32(%rdi), %xmm0
+ 751      4720
+ 752 0b7c 660F38DE 		aesdec	48(%rdi), %xmm0
+ 752      4730
+ 753 0b82 660F38DE 		aesdec	64(%rdi), %xmm0
+ 753      4740
+ 754 0b88 660F38DE 		aesdec	80(%rdi), %xmm0
+ 754      4750
+ 755 0b8e 660F38DE 		aesdec	96(%rdi), %xmm0
+ 755      4760
+ 756 0b94 660F38DE 		aesdec	112(%rdi), %xmm0
+ 756      4770
+ 757 0b9a 660F38DE 		aesdec	128(%rdi), %xmm0
+ 757      87800000 
+ 757      00
+ 758 0ba3 660F38DE 		aesdec	144(%rdi), %xmm0
+ 758      87900000 
+ 758      00
+ 759 0bac 660F38DF 		aesdeclast	160(%rdi), %xmm0
+ 759      87A00000 
+ 759      00
+ 760 0bb5 C3       		ret
+ 761 0bb6 662E0F1F 		.p2align 4,,10
+ 761      84000000 
+ 761      0000
+ 762              		.p2align 3
+ 763              	.L41:
+ 764 0bc0 660F6F07 		movdqa	(%rdi), %xmm0
+ 765 0bc4 660FEFC1 		pxor	%xmm1, %xmm0
+ 766 0bc8 660F38DE 		aesdec	16(%rdi), %xmm0
+ 766      4710
+ 767 0bce 660F38DE 		aesdec	32(%rdi), %xmm0
+ 767      4720
+ 768 0bd4 660F38DE 		aesdec	48(%rdi), %xmm0
+ 768      4730
+ 769 0bda 660F38DE 		aesdec	64(%rdi), %xmm0
+ 769      4740
+ 770 0be0 660F38DE 		aesdec	80(%rdi), %xmm0
+ 770      4750
+ 771 0be6 660F38DE 		aesdec	96(%rdi), %xmm0
+ 771      4760
+ 772 0bec 660F38DE 		aesdec	112(%rdi), %xmm0
+ 772      4770
+ 773 0bf2 660F38DE 		aesdec	128(%rdi), %xmm0
+ 773      87800000 
+ 773      00
+ 774 0bfb 660F38DE 		aesdec	144(%rdi), %xmm0
+ 774      87900000 
+ 774      00
+ 775 0c04 660F38DE 		aesdec	160(%rdi), %xmm0
+ 775      87A00000 
+ 775      00
+ 776 0c0d 660F38DE 		aesdec	176(%rdi), %xmm0
+ 776      87B00000 
+GAS LISTING /tmp/ccVFFGPf.s 			page 65
+
+
+ 776      00
+ 777 0c16 660F38DE 		aesdec	192(%rdi), %xmm0
+ 777      87C00000 
+ 777      00
+ 778 0c1f 660F38DE 		aesdec	208(%rdi), %xmm0
+ 778      87D00000 
+ 778      00
+ 779 0c28 660F38DF 		aesdeclast	224(%rdi), %xmm0
+ 779      87E00000 
+ 779      00
+ 780 0c31 C3       		ret
+ 781              		.p2align 4,,10
+ 782 0c32 660F1F44 		.p2align 3
+ 782      0000
+ 783              	.L40:
+ 784 0c38 660F6F07 		movdqa	(%rdi), %xmm0
+ 785 0c3c 660FEFC1 		pxor	%xmm1, %xmm0
+ 786 0c40 660F38DE 		aesdec	16(%rdi), %xmm0
+ 786      4710
+ 787 0c46 660F38DE 		aesdec	32(%rdi), %xmm0
+ 787      4720
+ 788 0c4c 660F38DE 		aesdec	48(%rdi), %xmm0
+ 788      4730
+ 789 0c52 660F38DE 		aesdec	64(%rdi), %xmm0
+ 789      4740
+ 790 0c58 660F38DE 		aesdec	80(%rdi), %xmm0
+ 790      4750
+ 791 0c5e 660F38DE 		aesdec	96(%rdi), %xmm0
+ 791      4760
+ 792 0c64 660F38DE 		aesdec	112(%rdi), %xmm0
+ 792      4770
+ 793 0c6a 660F38DE 		aesdec	128(%rdi), %xmm0
+ 793      87800000 
+ 793      00
+ 794 0c73 660F38DE 		aesdec	144(%rdi), %xmm0
+ 794      87900000 
+ 794      00
+ 795 0c7c 660F38DE 		aesdec	160(%rdi), %xmm0
+ 795      87A00000 
+ 795      00
+ 796 0c85 660F38DE 		aesdec	176(%rdi), %xmm0
+ 796      87B00000 
+ 796      00
+ 797 0c8e 660F38DF 		aesdeclast	192(%rdi), %xmm0
+ 797      87C00000 
+ 797      00
+ 798 0c97 C3       		ret
+ 799              		.cfi_endproc
+ 800              	.LFE742:
+ 801              		.size	KAESBlockCipherVecAesNiDecrypt, .-KAESBlockCipherVecAesNiDecrypt
+ 802 0c98 0F1F8400 		.p2align 4,,15
+ 802      00000000 
+ 803              		.type	KAESBlockCipherVecAesNiSetDecryptKey, @function
+ 804              	KAESBlockCipherVecAesNiSetDecryptKey:
+ 805              	.LFB740:
+ 806              		.cfi_startproc
+ 807 0ca0 53       		pushq	%rbx
+GAS LISTING /tmp/ccVFFGPf.s 			page 66
+
+
+ 808              		.cfi_def_cfa_offset 16
+ 809 0ca1 4889FB   		movq	%rdi, %rbx
+ 810              		.cfi_offset 3, -16
+ 811 0ca4 4881EC00 		subq	$256, %rsp
+ 811      010000
+ 812              		.cfi_def_cfa_offset 272
+ 813 0cab 83FA18   		cmpl	$24, %edx
+ 814 0cae 0F843C01 		je	.L48
+ 814      0000
+ 815 0cb4 83FA20   		cmpl	$32, %edx
+ 816 0cb7 0F841301 		je	.L49
+ 816      0000
+ 817 0cbd 83FA10   		cmpl	$16, %edx
+ 818 0cc0 B8CA8F04 		movl	$-2029744182, %eax
+ 818      87
+ 819 0cc5 7411     		je	.L58
+ 820              	.L51:
+ 821 0cc7 4881C400 		addq	$256, %rsp
+ 821      010000
+ 822 0cce 5B       		popq	%rbx
+ 823 0ccf 90       		.p2align 4,,2
+ 824 0cd0 C3       		ret
+ 825              		.p2align 4,,10
+ 826 0cd1 0F1F8000 		.p2align 3
+ 826      000000
+ 827              	.L58:
+ 828 0cd8 4889E7   		movq	%rsp, %rdi
+ 829 0cdb C78424F0 		movl	$10, 240(%rsp)
+ 829      0000000A 
+ 829      000000
+ 830 0ce6 E8A5F3FF 		call	KAESBlockCipherVecAesNiKeyExpansion128
+ 830      FF
+ 831              	.L50:
+ 832 0ceb 8B9424F0 		movl	240(%rsp), %edx
+ 832      000000
+ 833 0cf2 83FA0C   		cmpl	$12, %edx
+ 834 0cf5 8993F000 		movl	%edx, 240(%rbx)
+ 834      0000
+ 835 0cfb 0F840F01 		je	.L54
+ 835      0000
+ 836 0d01 83FA0E   		cmpl	$14, %edx
+ 837 0d04 0F84F601 		je	.L55
+ 837      0000
+ 838 0d0a 31C0     		xorl	%eax, %eax
+ 839 0d0c 83FA0A   		cmpl	$10, %edx
+ 840 0d0f 75B6     		jne	.L51
+ 841 0d11 F30F6F84 		movdqu	160(%rsp), %xmm0
+ 841      24A00000 
+ 841      00
+ 842 0d1a F30F7F03 		movdqu	%xmm0, (%rbx)
+ 843 0d1e F30F6F84 		movdqu	144(%rsp), %xmm0
+ 843      24900000 
+ 843      00
+ 844 0d27 660F38DB 		aesimc	%xmm0, %xmm0
+ 844      C0
+ 845 0d2c 660F7F43 		movdqa	%xmm0, 16(%rbx)
+ 845      10
+GAS LISTING /tmp/ccVFFGPf.s 			page 67
+
+
+ 846 0d31 F30F6F84 		movdqu	128(%rsp), %xmm0
+ 846      24800000 
+ 846      00
+ 847 0d3a 660F38DB 		aesimc	%xmm0, %xmm0
+ 847      C0
+ 848 0d3f 660F7F43 		movdqa	%xmm0, 32(%rbx)
+ 848      20
+ 849 0d44 F30F6F44 		movdqu	112(%rsp), %xmm0
+ 849      2470
+ 850 0d4a 660F38DB 		aesimc	%xmm0, %xmm0
+ 850      C0
+ 851 0d4f 660F7F43 		movdqa	%xmm0, 48(%rbx)
+ 851      30
+ 852 0d54 F30F6F44 		movdqu	96(%rsp), %xmm0
+ 852      2460
+ 853 0d5a 660F38DB 		aesimc	%xmm0, %xmm0
+ 853      C0
+ 854 0d5f 660F7F43 		movdqa	%xmm0, 64(%rbx)
+ 854      40
+ 855 0d64 F30F6F44 		movdqu	80(%rsp), %xmm0
+ 855      2450
+ 856 0d6a 660F38DB 		aesimc	%xmm0, %xmm0
+ 856      C0
+ 857 0d6f 660F7F43 		movdqa	%xmm0, 80(%rbx)
+ 857      50
+ 858 0d74 F30F6F44 		movdqu	64(%rsp), %xmm0
+ 858      2440
+ 859 0d7a 660F38DB 		aesimc	%xmm0, %xmm0
+ 859      C0
+ 860 0d7f 660F7F43 		movdqa	%xmm0, 96(%rbx)
+ 860      60
+ 861 0d84 F30F6F44 		movdqu	48(%rsp), %xmm0
+ 861      2430
+ 862 0d8a 660F38DB 		aesimc	%xmm0, %xmm0
+ 862      C0
+ 863 0d8f 660F7F43 		movdqa	%xmm0, 112(%rbx)
+ 863      70
+ 864 0d94 F30F6F44 		movdqu	32(%rsp), %xmm0
+ 864      2420
+ 865 0d9a 660F38DB 		aesimc	%xmm0, %xmm0
+ 865      C0
+ 866 0d9f 660F7F83 		movdqa	%xmm0, 128(%rbx)
+ 866      80000000 
+ 867 0da7 F30F6F44 		movdqu	16(%rsp), %xmm0
+ 867      2410
+ 868 0dad 660F38DB 		aesimc	%xmm0, %xmm0
+ 868      C0
+ 869 0db2 660F7F83 		movdqa	%xmm0, 144(%rbx)
+ 869      90000000 
+ 870 0dba F30F6F04 		movdqu	(%rsp), %xmm0
+ 870      24
+ 871 0dbf F30F7F83 		movdqu	%xmm0, 160(%rbx)
+ 871      A0000000 
+ 872 0dc7 4881C400 		addq	$256, %rsp
+ 872      010000
+ 873 0dce 5B       		popq	%rbx
+ 874 0dcf C3       		ret
+GAS LISTING /tmp/ccVFFGPf.s 			page 68
+
+
+ 875              		.p2align 4,,10
+ 876              		.p2align 3
+ 877              	.L49:
+ 878 0dd0 4889E7   		movq	%rsp, %rdi
+ 879 0dd3 C78424F0 		movl	$14, 240(%rsp)
+ 879      0000000E 
+ 879      000000
+ 880 0dde E8FDF4FF 		call	KAESBlockCipherVecAesNiKeyExpansion256
+ 880      FF
+ 881 0de3 E903FFFF 		jmp	.L50
+ 881      FF
+ 882 0de8 0F1F8400 		.p2align 4,,10
+ 882      00000000 
+ 883              		.p2align 3
+ 884              	.L48:
+ 885 0df0 4889E7   		movq	%rsp, %rdi
+ 886 0df3 C78424F0 		movl	$12, 240(%rsp)
+ 886      0000000C 
+ 886      000000
+ 887 0dfe E8EDF7FF 		call	KAESBlockCipherVecAesNiKeyExpansion192
+ 887      FF
+ 888 0e03 E9E3FEFF 		jmp	.L50
+ 888      FF
+ 889 0e08 0F1F8400 		.p2align 4,,10
+ 889      00000000 
+ 890              		.p2align 3
+ 891              	.L54:
+ 892 0e10 F30F6F84 		movdqu	192(%rsp), %xmm0
+ 892      24C00000 
+ 892      00
+ 893 0e19 31C0     		xorl	%eax, %eax
+ 894 0e1b F30F7F03 		movdqu	%xmm0, (%rbx)
+ 895 0e1f F30F6F84 		movdqu	176(%rsp), %xmm0
+ 895      24B00000 
+ 895      00
+ 896 0e28 660F38DB 		aesimc	%xmm0, %xmm0
+ 896      C0
+ 897 0e2d 660F7F43 		movdqa	%xmm0, 16(%rbx)
+ 897      10
+ 898 0e32 F30F6F84 		movdqu	160(%rsp), %xmm0
+ 898      24A00000 
+ 898      00
+ 899 0e3b 660F38DB 		aesimc	%xmm0, %xmm0
+ 899      C0
+ 900 0e40 660F7F43 		movdqa	%xmm0, 32(%rbx)
+ 900      20
+ 901 0e45 F30F6F84 		movdqu	144(%rsp), %xmm0
+ 901      24900000 
+ 901      00
+ 902 0e4e 660F38DB 		aesimc	%xmm0, %xmm0
+ 902      C0
+ 903 0e53 660F7F43 		movdqa	%xmm0, 48(%rbx)
+ 903      30
+ 904 0e58 F30F6F84 		movdqu	128(%rsp), %xmm0
+ 904      24800000 
+ 904      00
+ 905 0e61 660F38DB 		aesimc	%xmm0, %xmm0
+GAS LISTING /tmp/ccVFFGPf.s 			page 69
+
+
+ 905      C0
+ 906 0e66 660F7F43 		movdqa	%xmm0, 64(%rbx)
+ 906      40
+ 907 0e6b F30F6F44 		movdqu	112(%rsp), %xmm0
+ 907      2470
+ 908 0e71 660F38DB 		aesimc	%xmm0, %xmm0
+ 908      C0
+ 909 0e76 660F7F43 		movdqa	%xmm0, 80(%rbx)
+ 909      50
+ 910 0e7b F30F6F44 		movdqu	96(%rsp), %xmm0
+ 910      2460
+ 911 0e81 660F38DB 		aesimc	%xmm0, %xmm0
+ 911      C0
+ 912 0e86 660F7F43 		movdqa	%xmm0, 96(%rbx)
+ 912      60
+ 913 0e8b F30F6F44 		movdqu	80(%rsp), %xmm0
+ 913      2450
+ 914 0e91 660F38DB 		aesimc	%xmm0, %xmm0
+ 914      C0
+ 915 0e96 660F7F43 		movdqa	%xmm0, 112(%rbx)
+ 915      70
+ 916 0e9b F30F6F44 		movdqu	64(%rsp), %xmm0
+ 916      2440
+ 917 0ea1 660F38DB 		aesimc	%xmm0, %xmm0
+ 917      C0
+ 918 0ea6 660F7F83 		movdqa	%xmm0, 128(%rbx)
+ 918      80000000 
+ 919 0eae F30F6F44 		movdqu	48(%rsp), %xmm0
+ 919      2430
+ 920 0eb4 660F38DB 		aesimc	%xmm0, %xmm0
+ 920      C0
+ 921 0eb9 660F7F83 		movdqa	%xmm0, 144(%rbx)
+ 921      90000000 
+ 922 0ec1 F30F6F44 		movdqu	32(%rsp), %xmm0
+ 922      2420
+ 923 0ec7 660F38DB 		aesimc	%xmm0, %xmm0
+ 923      C0
+ 924 0ecc 660F7F83 		movdqa	%xmm0, 160(%rbx)
+ 924      A0000000 
+ 925 0ed4 F30F6F44 		movdqu	16(%rsp), %xmm0
+ 925      2410
+ 926 0eda 660F38DB 		aesimc	%xmm0, %xmm0
+ 926      C0
+ 927 0edf 660F7F83 		movdqa	%xmm0, 176(%rbx)
+ 927      B0000000 
+ 928 0ee7 F30F6F04 		movdqu	(%rsp), %xmm0
+ 928      24
+ 929 0eec F30F7F83 		movdqu	%xmm0, 192(%rbx)
+ 929      C0000000 
+ 930 0ef4 4881C400 		addq	$256, %rsp
+ 930      010000
+ 931 0efb 5B       		popq	%rbx
+ 932 0efc C3       		ret
+ 933 0efd 0F1F00   		.p2align 4,,10
+ 934              		.p2align 3
+ 935              	.L55:
+ 936 0f00 F30F6F84 		movdqu	224(%rsp), %xmm0
+GAS LISTING /tmp/ccVFFGPf.s 			page 70
+
+
+ 936      24E00000 
+ 936      00
+ 937 0f09 31C0     		xorl	%eax, %eax
+ 938 0f0b F30F7F03 		movdqu	%xmm0, (%rbx)
+ 939 0f0f F30F6F84 		movdqu	208(%rsp), %xmm0
+ 939      24D00000 
+ 939      00
+ 940 0f18 660F38DB 		aesimc	%xmm0, %xmm0
+ 940      C0
+ 941 0f1d 660F7F43 		movdqa	%xmm0, 16(%rbx)
+ 941      10
+ 942 0f22 F30F6F84 		movdqu	192(%rsp), %xmm0
+ 942      24C00000 
+ 942      00
+ 943 0f2b 660F38DB 		aesimc	%xmm0, %xmm0
+ 943      C0
+ 944 0f30 660F7F43 		movdqa	%xmm0, 32(%rbx)
+ 944      20
+ 945 0f35 F30F6F84 		movdqu	176(%rsp), %xmm0
+ 945      24B00000 
+ 945      00
+ 946 0f3e 660F38DB 		aesimc	%xmm0, %xmm0
+ 946      C0
+ 947 0f43 660F7F43 		movdqa	%xmm0, 48(%rbx)
+ 947      30
+ 948 0f48 F30F6F84 		movdqu	160(%rsp), %xmm0
+ 948      24A00000 
+ 948      00
+ 949 0f51 660F38DB 		aesimc	%xmm0, %xmm0
+ 949      C0
+ 950 0f56 660F7F43 		movdqa	%xmm0, 64(%rbx)
+ 950      40
+ 951 0f5b F30F6F84 		movdqu	144(%rsp), %xmm0
+ 951      24900000 
+ 951      00
+ 952 0f64 660F38DB 		aesimc	%xmm0, %xmm0
+ 952      C0
+ 953 0f69 660F7F43 		movdqa	%xmm0, 80(%rbx)
+ 953      50
+ 954 0f6e F30F6F84 		movdqu	128(%rsp), %xmm0
+ 954      24800000 
+ 954      00
+ 955 0f77 660F38DB 		aesimc	%xmm0, %xmm0
+ 955      C0
+ 956 0f7c 660F7F43 		movdqa	%xmm0, 96(%rbx)
+ 956      60
+ 957 0f81 F30F6F44 		movdqu	112(%rsp), %xmm0
+ 957      2470
+ 958 0f87 660F38DB 		aesimc	%xmm0, %xmm0
+ 958      C0
+ 959 0f8c 660F7F43 		movdqa	%xmm0, 112(%rbx)
+ 959      70
+ 960 0f91 F30F6F44 		movdqu	96(%rsp), %xmm0
+ 960      2460
+ 961 0f97 660F38DB 		aesimc	%xmm0, %xmm0
+ 961      C0
+ 962 0f9c 660F7F83 		movdqa	%xmm0, 128(%rbx)
+GAS LISTING /tmp/ccVFFGPf.s 			page 71
+
+
+ 962      80000000 
+ 963 0fa4 F30F6F44 		movdqu	80(%rsp), %xmm0
+ 963      2450
+ 964 0faa 660F38DB 		aesimc	%xmm0, %xmm0
+ 964      C0
+ 965 0faf 660F7F83 		movdqa	%xmm0, 144(%rbx)
+ 965      90000000 
+ 966 0fb7 F30F6F44 		movdqu	64(%rsp), %xmm0
+ 966      2440
+ 967 0fbd 660F38DB 		aesimc	%xmm0, %xmm0
+ 967      C0
+ 968 0fc2 660F7F83 		movdqa	%xmm0, 160(%rbx)
+ 968      A0000000 
+ 969 0fca F30F6F44 		movdqu	48(%rsp), %xmm0
+ 969      2430
+ 970 0fd0 660F38DB 		aesimc	%xmm0, %xmm0
+ 970      C0
+ 971 0fd5 660F7F83 		movdqa	%xmm0, 176(%rbx)
+ 971      B0000000 
+ 972 0fdd F30F6F44 		movdqu	32(%rsp), %xmm0
+ 972      2420
+ 973 0fe3 660F38DB 		aesimc	%xmm0, %xmm0
+ 973      C0
+ 974 0fe8 660F7F83 		movdqa	%xmm0, 192(%rbx)
+ 974      C0000000 
+ 975 0ff0 F30F6F44 		movdqu	16(%rsp), %xmm0
+ 975      2410
+ 976 0ff6 660F38DB 		aesimc	%xmm0, %xmm0
+ 976      C0
+ 977 0ffb 660F7F83 		movdqa	%xmm0, 208(%rbx)
+ 977      D0000000 
+ 978 1003 F30F6F04 		movdqu	(%rsp), %xmm0
+ 978      24
+ 979 1008 F30F7F83 		movdqu	%xmm0, 224(%rbx)
+ 979      E0000000 
+ 980 1010 4881C400 		addq	$256, %rsp
+ 980      010000
+ 981 1017 5B       		popq	%rbx
+ 982 1018 C3       		ret
+ 983              		.cfi_endproc
+ 984              	.LFE740:
+ 985              		.size	KAESBlockCipherVecAesNiSetDecryptKey, .-KAESBlockCipherVecAesNiSetDecryptKey
+ 986              		.section	.data.rel.ro.local,"aw",@progbits
+ 987              		.align 32
+ 988              		.type	KAESBlockCipherVecAesNi_vt_, @object
+ 989              		.size	KAESBlockCipherVecAesNi_vt_, 64
+ 990              	KAESBlockCipherVecAesNi_vt_:
+ 991 0000 01000000 		.long	1
+ 992 0004 01000000 		.long	1
+ 993 0008 00000000 		.quad	KAESBlockCipherVecAesNiDestroy
+ 993      00000000 
+ 994 0010 00000000 		.quad	KAESBlockCipherVecAesNiBlockSize
+ 994      00000000 
+ 995 0018 00000000 		.quad	KAESBlockCipherVecAesNiKeySize
+ 995      00000000 
+ 996 0020 00000000 		.quad	KAESBlockCipherVecAesNiSetEncryptKey
+ 996      00000000 
+GAS LISTING /tmp/ccVFFGPf.s 			page 72
+
+
+ 997 0028 00000000 		.quad	KAESBlockCipherVecAesNiSetDecryptKey
+ 997      00000000 
+ 998 0030 00000000 		.quad	KAESBlockCipherVecAesNiEncrypt
+ 998      00000000 
+ 999 0038 00000000 		.quad	KAESBlockCipherVecAesNiDecrypt
+ 999      00000000 
+ 1000              		.section	.rodata.cst16,"aM",@progbits,16
+ 1001              		.align 16
+ 1002              	.LC0:
+ 1003 0000 FF       		.byte	-1
+ 1004 0001 FF       		.byte	-1
+ 1005 0002 FF       		.byte	-1
+ 1006 0003 FF       		.byte	-1
+ 1007 0004 00       		.byte	0
+ 1008 0005 01       		.byte	1
+ 1009 0006 02       		.byte	2
+ 1010 0007 03       		.byte	3
+ 1011 0008 04       		.byte	4
+ 1012 0009 05       		.byte	5
+ 1013 000a 06       		.byte	6
+ 1014 000b 07       		.byte	7
+ 1015 000c 08       		.byte	8
+ 1016 000d 09       		.byte	9
+ 1017 000e 0A       		.byte	10
+ 1018 000f 0B       		.byte	11
+ 1019              		.align 16
+ 1020              	.LC1:
+ 1021 0010 08       		.byte	8
+ 1022 0011 09       		.byte	9
+ 1023 0012 0A       		.byte	10
+ 1024 0013 0B       		.byte	11
+ 1025 0014 0C       		.byte	12
+ 1026 0015 0D       		.byte	13
+ 1027 0016 0E       		.byte	14
+ 1028 0017 0F       		.byte	15
+ 1029 0018 FF       		.byte	-1
+ 1030 0019 FF       		.byte	-1
+ 1031 001a FF       		.byte	-1
+ 1032 001b FF       		.byte	-1
+ 1033 001c FF       		.byte	-1
+ 1034 001d FF       		.byte	-1
+ 1035 001e FF       		.byte	-1
+ 1036 001f FF       		.byte	-1
+ 1037              		.ident	"GCC: (GNU) 4.4.2"
+ 1038              		.section	.note.GNU-stack,"",@progbits
+GAS LISTING /tmp/ccVFFGPf.s 			page 73
+
+
+DEFINED SYMBOLS
+                            *ABS*:0000000000000000 aes-ncbi.c
+     /tmp/ccVFFGPf.s:5      .text:0000000000000000 KAESBlockCipherVecAesNiDestroy
+     /tmp/ccVFFGPf.s:15     .text:0000000000000010 KAESBlockCipherVecAesNiBlockSize
+     /tmp/ccVFFGPf.s:25     .text:0000000000000020 KAESBlockCipherVecAesNiKeySize
+     /tmp/ccVFFGPf.s:36     .text:0000000000000030 KAESBlockCipherVecAesNiMake
+     /tmp/ccVFFGPf.s:990    .data.rel.ro.local:0000000000000000 KAESBlockCipherVecAesNi_vt_
+     /tmp/ccVFFGPf.s:87     .text:0000000000000090 KAESBlockCipherVecAesNiKeyExpansion128
+     /tmp/ccVFFGPf.s:225    .text:00000000000002e0 KAESBlockCipherVecAesNiKeyExpansion256
+     /tmp/ccVFFGPf.s:406    .text:00000000000005f0 KAESBlockCipherVecAesNiKeyExpansion192
+     /tmp/ccVFFGPf.s:618    .text:0000000000000970 KAESBlockCipherVecAesNiSetEncryptKey
+     /tmp/ccVFFGPf.s:658    .text:00000000000009e0 KAESBlockCipherVecAesNiEncrypt
+     /tmp/ccVFFGPf.s:731    .text:0000000000000b40 KAESBlockCipherVecAesNiDecrypt
+     /tmp/ccVFFGPf.s:804    .text:0000000000000ca0 KAESBlockCipherVecAesNiSetDecryptKey
+                    .rodata.cst16:0000000000000000 .LC0
+                    .rodata.cst16:0000000000000010 .LC1
+
+NO UNDEFINED SYMBOLS

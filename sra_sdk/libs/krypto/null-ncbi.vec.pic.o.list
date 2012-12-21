@@ -1,0 +1,161 @@
+GAS LISTING /tmp/ccLKJ3Pr.s 			page 1
+
+
+   1              		.file	"null-ncbi.c"
+   2              		.text
+   3              		.p2align 4,,15
+   4              		.type	KNullBlockCipherVecDestroy, @function
+   5              	KNullBlockCipherVecDestroy:
+   6              	.LFB557:
+   7              		.cfi_startproc
+   8 0000 F3       		rep
+   9 0001 C3       		ret
+  10              		.cfi_endproc
+  11              	.LFE557:
+  12              		.size	KNullBlockCipherVecDestroy, .-KNullBlockCipherVecDestroy
+  13 0002 66666666 		.p2align 4,,15
+  13      662E0F1F 
+  13      84000000 
+  13      0000
+  14              		.type	KNullBlockCipherVecBlockSize, @function
+  15              	KNullBlockCipherVecBlockSize:
+  16              	.LFB558:
+  17              		.cfi_startproc
+  18 0010 B8100000 		movl	$16, %eax
+  18      00
+  19 0015 C3       		ret
+  20              		.cfi_endproc
+  21              	.LFE558:
+  22              		.size	KNullBlockCipherVecBlockSize, .-KNullBlockCipherVecBlockSize
+  23 0016 662E0F1F 		.p2align 4,,15
+  23      84000000 
+  23      0000
+  24              		.type	KNullBlockCipherVecKeySize, @function
+  25              	KNullBlockCipherVecKeySize:
+  26              	.LFB559:
+  27              		.cfi_startproc
+  28 0020 31C0     		xorl	%eax, %eax
+  29 0022 C3       		ret
+  30              		.cfi_endproc
+  31              	.LFE559:
+  32              		.size	KNullBlockCipherVecKeySize, .-KNullBlockCipherVecKeySize
+  33 0023 66666666 		.p2align 4,,15
+  33      2E0F1F84 
+  33      00000000 
+  33      00
+  34              		.type	KNullBlockCipherVecSetEncryptKey, @function
+  35              	KNullBlockCipherVecSetEncryptKey:
+  36              	.LFB560:
+  37              		.cfi_startproc
+  38 0030 31C0     		xorl	%eax, %eax
+  39 0032 C3       		ret
+  40              		.cfi_endproc
+  41              	.LFE560:
+  42              		.size	KNullBlockCipherVecSetEncryptKey, .-KNullBlockCipherVecSetEncryptKey
+  43 0033 66666666 		.p2align 4,,15
+  43      2E0F1F84 
+  43      00000000 
+  43      00
+  44              		.type	KNullBlockCipherVecSetDecryptKey, @function
+  45              	KNullBlockCipherVecSetDecryptKey:
+GAS LISTING /tmp/ccLKJ3Pr.s 			page 2
+
+
+  46              	.LFB561:
+  47              		.cfi_startproc
+  48 0040 31C0     		xorl	%eax, %eax
+  49 0042 C3       		ret
+  50              		.cfi_endproc
+  51              	.LFE561:
+  52              		.size	KNullBlockCipherVecSetDecryptKey, .-KNullBlockCipherVecSetDecryptKey
+  53 0043 66666666 		.p2align 4,,15
+  53      2E0F1F84 
+  53      00000000 
+  53      00
+  54              		.type	KNullBlockCipherVecEncrypt, @function
+  55              	KNullBlockCipherVecEncrypt:
+  56              	.LFB562:
+  57              		.cfi_startproc
+  58 0050 F3       		rep
+  59 0051 C3       		ret
+  60              		.cfi_endproc
+  61              	.LFE562:
+  62              		.size	KNullBlockCipherVecEncrypt, .-KNullBlockCipherVecEncrypt
+  63 0052 66666666 		.p2align 4,,15
+  63      662E0F1F 
+  63      84000000 
+  63      0000
+  64              		.type	KNullBlockCipherVecDecrypt, @function
+  65              	KNullBlockCipherVecDecrypt:
+  66              	.LFB563:
+  67              		.cfi_startproc
+  68 0060 F3       		rep
+  69 0061 C3       		ret
+  70              		.cfi_endproc
+  71              	.LFE563:
+  72              		.size	KNullBlockCipherVecDecrypt, .-KNullBlockCipherVecDecrypt
+  73 0062 66666666 		.p2align 4,,15
+  73      662E0F1F 
+  73      84000000 
+  73      0000
+  74              	.globl KNullBlockCipherVecMake
+  75              		.type	KNullBlockCipherVecMake, @function
+  76              	KNullBlockCipherVecMake:
+  77              	.LFB565:
+  78              		.cfi_startproc
+  79 0070 4885FF   		testq	%rdi, %rdi
+  80 0073 B8878F00 		movl	$-2030006393, %eax
+  80      87
+  81 0078 740C     		je	.L17
+  82 007a 488D0500 		leaq	KNullBlockCipherVec_vt_(%rip), %rax
+  82      000000
+  83 0081 488907   		movq	%rax, (%rdi)
+  84 0084 31C0     		xorl	%eax, %eax
+  85              	.L17:
+  86 0086 F3       		rep
+  87 0087 C3       		ret
+  88              		.cfi_endproc
+  89              	.LFE565:
+  90              		.size	KNullBlockCipherVecMake, .-KNullBlockCipherVecMake
+  91              		.section	.data.rel.ro.local,"aw",@progbits
+GAS LISTING /tmp/ccLKJ3Pr.s 			page 3
+
+
+  92              		.align 32
+  93              		.type	KNullBlockCipherVec_vt_, @object
+  94              		.size	KNullBlockCipherVec_vt_, 64
+  95              	KNullBlockCipherVec_vt_:
+  96 0000 01000000 		.long	1
+  97 0004 01000000 		.long	1
+  98 0008 00000000 		.quad	KNullBlockCipherVecDestroy
+  98      00000000 
+  99 0010 00000000 		.quad	KNullBlockCipherVecBlockSize
+  99      00000000 
+ 100 0018 00000000 		.quad	KNullBlockCipherVecKeySize
+ 100      00000000 
+ 101 0020 00000000 		.quad	KNullBlockCipherVecSetEncryptKey
+ 101      00000000 
+ 102 0028 00000000 		.quad	KNullBlockCipherVecSetDecryptKey
+ 102      00000000 
+ 103 0030 00000000 		.quad	KNullBlockCipherVecEncrypt
+ 103      00000000 
+ 104 0038 00000000 		.quad	KNullBlockCipherVecDecrypt
+ 104      00000000 
+ 105              		.ident	"GCC: (GNU) 4.4.2"
+ 106              		.section	.note.GNU-stack,"",@progbits
+GAS LISTING /tmp/ccLKJ3Pr.s 			page 4
+
+
+DEFINED SYMBOLS
+                            *ABS*:0000000000000000 null-ncbi.c
+     /tmp/ccLKJ3Pr.s:5      .text:0000000000000000 KNullBlockCipherVecDestroy
+     /tmp/ccLKJ3Pr.s:15     .text:0000000000000010 KNullBlockCipherVecBlockSize
+     /tmp/ccLKJ3Pr.s:25     .text:0000000000000020 KNullBlockCipherVecKeySize
+     /tmp/ccLKJ3Pr.s:35     .text:0000000000000030 KNullBlockCipherVecSetEncryptKey
+     /tmp/ccLKJ3Pr.s:45     .text:0000000000000040 KNullBlockCipherVecSetDecryptKey
+     /tmp/ccLKJ3Pr.s:55     .text:0000000000000050 KNullBlockCipherVecEncrypt
+     /tmp/ccLKJ3Pr.s:65     .text:0000000000000060 KNullBlockCipherVecDecrypt
+     /tmp/ccLKJ3Pr.s:76     .text:0000000000000070 KNullBlockCipherVecMake
+     /tmp/ccLKJ3Pr.s:95     .data.rel.ro.local:0000000000000000 KNullBlockCipherVec_vt_
+
+NO UNDEFINED SYMBOLS

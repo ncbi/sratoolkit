@@ -1,0 +1,47 @@
+GAS LISTING /tmp/cc7LOuUz.s 			page 1
+
+
+   1              		.file	"compile-test.c"
+   2              		.text
+   3              		.p2align 4,,15
+   4              	.globl KCipherVecRegtest
+   5              		.type	KCipherVecRegtest, @function
+   6              	KCipherVecRegtest:
+   7              	.LFB622:
+   8              		.cfi_startproc
+   9 0000 660F6F05 		movdqa	.LC0(%rip), %xmm0
+   9      00000000 
+  10 0008 C3       		ret
+  11              		.cfi_endproc
+  12              	.LFE622:
+  13              		.size	KCipherVecRegtest, .-KCipherVecRegtest
+  14              		.section	.rodata.cst16,"aM",@progbits,16
+  15              		.align 16
+  16              	.LC0:
+  17 0000 01       		.byte	1
+  18 0001 01       		.byte	1
+  19 0002 01       		.byte	1
+  20 0003 01       		.byte	1
+  21 0004 01       		.byte	1
+  22 0005 01       		.byte	1
+  23 0006 01       		.byte	1
+  24 0007 01       		.byte	1
+  25 0008 01       		.byte	1
+  26 0009 01       		.byte	1
+  27 000a 01       		.byte	1
+  28 000b 01       		.byte	1
+  29 000c 01       		.byte	1
+  30 000d 01       		.byte	1
+  31 000e 01       		.byte	1
+  32 000f 01       		.byte	1
+  33              		.ident	"GCC: (GNU) 4.4.2"
+  34              		.section	.note.GNU-stack,"",@progbits
+GAS LISTING /tmp/cc7LOuUz.s 			page 2
+
+
+DEFINED SYMBOLS
+                            *ABS*:0000000000000000 compile-test.c
+     /tmp/cc7LOuUz.s:6      .text:0000000000000000 KCipherVecRegtest
+                    .rodata.cst16:0000000000000000 .LC0
+
+NO UNDEFINED SYMBOLS
