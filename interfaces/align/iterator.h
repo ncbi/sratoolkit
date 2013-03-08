@@ -251,7 +251,7 @@ struct PlacementRecordExtendFuncs
 
     /* variable allocation size calculation
        when non-NULL, takes precedence over "fixed_size" */
-    size_t ( CC * alloc_size ) ( struct VCursor const *curs, int64_t row_id, void *data );
+    rc_t ( CC * alloc_size ) ( struct VCursor const *curs, int64_t row_id, size_t * size, void *data );
     
     /* fixed allocation size
        ignored if "alloc_size" is non-NULL,
@@ -266,7 +266,7 @@ ALIGN_EXTERN void CC AlignIteratorRecordDestroy ( void *obj, void *data );
 ALIGN_EXTERN rc_t CC AlignIteratorRecordPopulate ( void *obj,
     const PlacementRecord *placement, struct VCursor const *curs,
     INSDC_coord_zero ref_window_start, INSDC_coord_len ref_window_len, void *data );
-ALIGN_EXTERN size_t CC AlignIteratorRecordSize ( struct VCursor const *curs, int64_t row_id, void *data );
+ALIGN_EXTERN rc_t CC AlignIteratorRecordSize ( struct VCursor const *curs, int64_t row_id, size_t * size, void *data );
 
 
 /*--------------------------------------------------------------------------

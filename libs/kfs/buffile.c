@@ -396,7 +396,7 @@ rc_t KBufFileMake ( KBufFile ** bp, const KFile_vt *vt,
         rc = RC ( rcFS, rcFile, rcConstructing, rcMemory, rcExhausted );
     else
     {
-        rc = KFileInit ( & buf -> dad, vt, read_enabled, write_enabled );
+        rc = KFileInit ( & buf -> dad, vt, "KBufFile", "no-name", read_enabled, write_enabled );
         if ( rc == 0 )
         {
             rc = KFileAddRef ( f );

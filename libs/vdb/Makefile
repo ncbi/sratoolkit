@@ -156,8 +156,10 @@ VDB_OBJ = \
 
 VDB_LIB = \
 	-dkdb \
+	-dvfs \
 	-dkfg \
 	-dkfs \
+	-dkproc \
 	-dklib \
 	-dz
 
@@ -195,6 +197,7 @@ WVDB_OBJ = \
 
 WVDB_LIB = \
 	-dwkdb \
+	-dvfs \
 	-dkfg \
 	-dkfs \
 	-dkproc \

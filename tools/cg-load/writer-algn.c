@@ -227,7 +227,7 @@ rc_t CGWriterAlgn_Save(CGWriterAlgn *const self,
         }
         algn->ploidy = 0;
         if( (rc = ReferenceMgr_Compress(self->rmgr, ewrefmgr_cmp_Binary,
-                    map->chr, map->offset, read, read_len, cigar, 7, 0, NULL, 0, NULL, 0, algn)) != 0 ) {
+                    map->chr, map->offset, read, read_len, cigar, 7, 0, NULL, 0, 0, NULL, 0, algn)) != 0 ) {
             PLOGERR(klogErr, (klogErr, rc, "compression failed $(id) $(o)",
                     PLOG_2(PLOG_S(id),PLOG_I32(o)), map->chr, map->offset));
         }

@@ -136,6 +136,9 @@ struct KKey;
 
 KRYPTO_EXTERN rc_t CC KEncFileWriteHeader_v1 (struct KFile * self);
 KRYPTO_EXTERN rc_t CC KEncFileWriteHeader_v2 (struct KFile * self);
+KRYPTO_EXTERN rc_t CC KEncFileMakeWriteBlock (struct KFile ** pself, 
+                                              struct KFile * encrypted,
+                                              const struct KKey * key);
 
 
 #if USE_UPDATE_V1

@@ -55,8 +55,8 @@ const char * ref_usage[] = { "Filter by position on genome.",
 const char * outf_usage[] = { "Output will be written to this file",
                               "instead of std-out", NULL };
 
-const char * table_usage[] = { "Which alignment table(s) to use (p|s):", 
-                               "p - primary, s - secondary", 
+const char * table_usage[] = { "Which alignment table(s) to use (p|s|e):", 
+                               "p - primary, s - secondary, e - evidence-interval", 
                                "(default = p)", NULL };
 
 const char * gzip_usage[] = { "Compress output using gzip", NULL };
@@ -531,7 +531,9 @@ rc_t init_ref_regions( BSTree * tree, Args * args )
     BSTreeInit( tree );
     rc = ArgsOptionCount( args, OPTION_REF, &count );
     if ( rc != 0 )
+    {
         LOGERR( klogInt, rc, "ArgsOptionCount() failed" );
+    }
     else
     {
         uint32_t i;
@@ -673,7 +675,9 @@ static rc_t resolve_accession( const KDirectory *my_dir, char ** path )
         if ( GetRCState ( rc ) != rcNotFound || GetRCTarget ( rc ) != rcDylib )
         {
             if ( rc != 0 )
+            {
                 LOGERR( klogInt, rc, "SRAPathMake() failed" );
+            }
         }
         else
             rc = 0;
@@ -812,7 +816,9 @@ rc_t foreach_argument( Args * args, KDirectory *dir, bool div_by_spotgrp, bool *
     uint32_t count;
     rc_t rc = ArgsParamCount( args, &count );
     if ( rc != 0 )
+    {
         LOGERR( klogInt, rc, "ArgsParamCount() failed" );
+    }
     else
     {
         uint32_t idx;
@@ -825,7 +831,9 @@ rc_t foreach_argument( Args * args, KDirectory *dir, bool div_by_spotgrp, bool *
             const char *param = NULL;
             rc = ArgsParamValue( args, idx, &param );
             if ( rc != 0 )
+            {
                 LOGERR( klogInt, rc, "ArgsParamvalue() failed" );
+            }
             else
             {
                 
@@ -872,7 +880,8 @@ rc_t foreach_argument( Args * args, KDirectory *dir, bool div_by_spotgrp, bool *
 static rc_t prepare_whole_file( prepare_ctx * ctx )
 {
     rc_t rc = 0;
-    if( ctx->reflist != NULL ) {
+    if ( ctx->reflist != NULL )
+    {
         uint32_t count;
         rc = ReferenceList_Count( ctx->reflist, &count );
         if ( rc != 0 )
@@ -892,10 +901,14 @@ static rc_t prepare_whole_file( prepare_ctx * ctx )
                 else
                 {
                     rc = ctx->on_section( ctx, 0, 0 );
+                    if ( rc == 0 )
+                        ReferenceObj_Release( ctx->refobj );
                 }
             }
         }
-    } else {
+    }
+    else
+    {
         ctx->refobj = NULL;
         rc = ctx->on_section( ctx, 0, 0 );
     }
@@ -914,6 +927,8 @@ static rc_t CC prepare_region_cb( const char * name, uint32_t start, uint32_t en
     else
     {
         rc = ctx->on_section( ctx, start, end );
+        if ( rc == 0 )
+            ReferenceObj_Release( ctx->refobj );
     }
     return rc;
 }

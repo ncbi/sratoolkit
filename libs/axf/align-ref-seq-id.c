@@ -62,7 +62,7 @@ void CC RefSeqIDWhack ( void *obj )
 }
 
 static
-rc_t RefSeqIDMake ( RefSeqID **objp, const VTable *tbl )
+rc_t RefSeqIDMake ( RefSeqID **objp, const VTable *tbl, const VCursor *native_curs )
 {
     rc_t rc;
 
@@ -71,28 +71,23 @@ rc_t RefSeqIDMake ( RefSeqID **objp, const VTable *tbl )
     if ( obj == NULL ) {
         rc = RC ( rcXF, rcFunction, rcConstructing, rcMemory, rcExhausted );
     } else {
-        /* open the reference table */
-        const VTable *reftbl;
-        if( (rc = AlignRefTable(tbl, &reftbl)) == 0 ) {
-            /* create a cursor */
-            rc = VTableCreateCachedCursorRead(reftbl, &obj->curs, 2*1024*1024);
-            VTableRelease(reftbl);
-            if( rc == 0 ) {
+	obj->curs=NULL;
+        /* open the reference cursor */
+        rc = AlignRefTableCursor(tbl, native_curs, &obj->curs, NULL);
+        if(rc == 0){
                 /* add columns to cursor */
-                if( (rc = VCursorAddColumn(obj->curs, &obj->seqID_idx, "SEQ_ID")) == 0 ) {
-                    rc = VCursorOpen(obj->curs);
-                }
+                rc = VCursorAddColumn(obj->curs, &obj->seqID_idx, "SEQ_ID");
                 if( GetRCObject(rc) == rcColumn && GetRCState(rc) == rcNotFound ) {
-                    if( (rc = VCursorAddColumn(obj->curs, &obj->seqID_idx, "REF_SEQ_ID")) == 0 ) {
-                        rc = VCursorOpen(obj->curs);
-                    }
+                        rc = VCursorAddColumn(obj->curs, &obj->seqID_idx, "REF_SEQ_ID");
+                }
+                if(GetRCState(rc) == rcExists){
+                        rc = 0;
                 }
                 if( rc == 0 ) {
                     *objp = obj;
                     return 0;
                 }
                 VCursorRelease ( obj -> curs );
-            }
         }
         free ( obj );
     }
@@ -149,7 +144,7 @@ VTRANSFACT_IMPL ( NCBI_align_ref_seq_id, 1, 0, 0 ) ( const void *self, const VXf
     VFuncDesc *rslt, const VFactoryParams *cp, const VFunctionParams *dp )
 {
     RefSeqID *fself;
-    rc_t rc = RefSeqIDMake ( & fself, info -> tbl );
+    rc_t rc = RefSeqIDMake ( & fself, info -> tbl, (const VCursor*)info->parms  );
     if ( rc == 0 )
     {
         rslt -> self = fself;

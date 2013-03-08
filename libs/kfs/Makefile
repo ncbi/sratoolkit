@@ -128,6 +128,7 @@ KFS_OBJ = \
 	$(addsuffix .$(LOBX),$(KFS_SRC))
 
 KFS_LIB = \
+	-dkproc \
 	-dklib \
 	-ddl \
 	-dz \

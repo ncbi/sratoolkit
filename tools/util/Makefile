@@ -37,6 +37,7 @@ EXT_TOOLS = \
 	kdbmeta \
 	vdb-lock \
 	vdb-unlock \
+	test-sra \
 	vdb-passwd
 
 ALL_TOOLS = \
@@ -192,6 +193,34 @@ VDB_UNLOCK_LIB = \
 $(BINDIR)/vdb-unlock: $(VDB_UNLOCK_OBJ)
 	$(LD) --exe --vers $(SRCDIR) -o $@ $^ $(VDB_UNLOCK_LIB)
 
+#-------------------------------------------------------------------------------
+# test-sra: print config, resolve sra, check dependencies
+#
+
+T_SRC = \
+	test-sra
+
+T_OBJ = \
+	$(addsuffix .$(OBJX),$(T_SRC))
+
+T_LIB = \
+	-dalign-reader \
+	$(READONLY_SCHEMA_LIBS) \
+	-dksrch \
+	-lsradb \
+	-lvdb \
+	-lkdb \
+	-lkapp \
+	-lvfs \
+	-lkrypto \
+	-lkfg \
+	-lkfs \
+	-lkproc \
+	-lklib \
+	-lm
+
+$(BINDIR)/test-sra: $(T_OBJ)
+	$(LD) --exe --vers $(SRCDIR) -o $@ $^ $(T_LIB)
 
 #----------------------------------------------------------------
 # vdb-passwd

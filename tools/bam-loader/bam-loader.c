@@ -71,7 +71,6 @@ static char const option_accept_dup[] = "accept-dups";
 static char const option_accept_nomatch[] = "accept-nomatch";
 static char const option_nomatch_log[] = "nomatch-log";
 static char const option_keep_mismatch_qual[] = "keep-mismatch-qual";
-static char const option_no_spot_assembly[] = "no-spot-assembly";
 static char const option_min_match[] = "minimum-match";
 static char const option_header[] = "header";
 static char const option_no_cs[] = "no-cs";
@@ -94,7 +93,6 @@ static char const option_accept_hard_clip[] = "accept-hard-clip";
 #define OPTION_ACCEPT_DUP option_accept_dup
 #define OPTION_ACCEPT_NOMATCH option_accept_nomatch
 #define OPTION_NOMATCH_LOG option_nomatch_log
-#define OPTION_NO_SPOT_ASSEMBLY option_no_spot_assembly
 #define OPTION_MIN_MATCH option_min_match
 #define OPTION_HEADER option_header
 #define OPTION_NO_CS option_no_cs
@@ -113,7 +111,6 @@ static char const option_accept_hard_clip[] = "accept-hard-clip";
 #define ALIAS_MAX_ERR_COUNT "E"
 #define ALIAS_UNALIGNED "u"
 #define ALIAS_ACCEPT_DUP "d"
-#define ALIAS_NO_SPOT_ASSEMBLY "n"
 #define ALIAS_NO_SECONDARY "P"
 #define ALIAS_REF_FILE "r"
 
@@ -269,13 +266,6 @@ char const * use_nomatch_log[] =
 };
 
 static
-char const * use_no_spot_assembly[] = 
-{
-    "Disable spot assembly",
-    NULL
-};
-
-static
 char const * use_min_match[] = 
 {
     "minimum number of matches for an alignment",
@@ -347,7 +337,6 @@ OptDef Options[] =
     { OPTION_MINMAPQ, ALIAS_MINMAPQ, NULL, min_mapq_usage, 1, true,  false },
     { OPTION_CACHE_SIZE, NULL, NULL, cache_size_usage, 1, true,  false },
     { OPTION_NO_CS, NULL, NULL, use_no_cs, 1, false,  false },
-    { OPTION_NO_SPOT_ASSEMBLY, ALIAS_NO_SPOT_ASSEMBLY, NULL, use_no_spot_assembly, 1, false,  false },
     { OPTION_MIN_MATCH, NULL, NULL, use_min_match, 1, true, false },
     { OPTION_NO_SECONDARY, ALIAS_NO_SECONDARY, NULL, use_no_secondary, 1, false, false },
     { option_unsorted, NULL, NULL, unsorted_usage, 1, false,  false },
@@ -381,7 +370,6 @@ const char* OptHelpParam[] =
     "level",
     "phred-score",
     "mbytes",
-    NULL,
     NULL,
     "count",
     NULL,
@@ -849,11 +837,6 @@ rc_t CC KMain (int argc, char * argv[])
             break;
         G.noSecondary = pcount > 0;
         
-        rc = ArgsOptionCount (args, OPTION_NO_SPOT_ASSEMBLY, &pcount);
-        if (rc)
-            break;
-        G.noSpotAssembly = pcount > 0;
-
         rc = ArgsOptionCount (args, OPTION_TI, &pcount);
         if (rc)
             break;

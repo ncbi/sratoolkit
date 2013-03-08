@@ -148,6 +148,7 @@ rc_t KCounterFileMake (KCounterFile ** pself,
     {
 	rc = KFileInit (&self->dad,			/* initialize base class */
 			(const KFile_vt*)&vtKCounterFile,/* VTable for KCounterFile */
+            "KCounterFile", "no-name",
 			original->read_enabled,
 			original->write_enabled);
 	if (rc == 0)

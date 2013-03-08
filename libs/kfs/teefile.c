@@ -203,6 +203,7 @@ rc_t KTeeFileMake (KTeeFile ** self,
     {
 	rc = KFileInit (&pF->dad,			/* initialize base class */
 			vt,			 	/* VTable for KTeeFile */
+            "KTeeFile", "no-name",
 			read_enabled,			/* read allowed */
 			write_enabled);			/* write disallowed */
 	if (rc == 0)

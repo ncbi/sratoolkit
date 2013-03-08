@@ -29,6 +29,7 @@
 #include <sysalloc.h>
 #include <kapp/main.h>
 #include <kfg/config.h>
+#include <kproc/procmgr.h>
 #include <klib/report.h>
 #include <klib/writer.h>
 #include <klib/log.h>
@@ -355,6 +356,12 @@ void CC NextLogLevelh (int *ip,
  *  to be in the shell-native character set: ASCII or UTF-8
  *  element 0 is expected to be executable identity or path.
  */
+static
+void CC atexit_task ( void )
+{
+    KProcMgrWhack ();
+}
+
 rc_t KMane ( int argc, char *argv [] )
 {
     rc_t rc;
@@ -362,8 +369,18 @@ rc_t KMane ( int argc, char *argv [] )
     /* get application version */
     ver_t vers = KAppVersion ();
 
+    /* initialize cleanup tasks */
+    int status = atexit ( atexit_task );
+    if ( status != 0 )
+        return SILENT_RC ( rcApp, rcNoTarg, rcInitializing, rcFunction, rcNotAvailable );
+
     /* initialize error reporting */
     ReportInit ( argc, argv, vers );
+
+    /* initialize proc mgr */
+    rc = KProcMgrInit ();
+    if ( rc != 0 )
+        return rc;
 
     /* initialize logging */
     rc = KWrtInit(argv[0], vers);

@@ -272,7 +272,7 @@ pthread_cond_broadcast (pthread_cond_t *cv)
 
 /* Destroy
  */
-LIB_EXPORT rc_t CC KConditionDestroy ( KCondition *self )
+rc_t KConditionDestroy ( KCondition *self )
 {
     int status = pthread_cond_destroy ( & self -> cond );
     switch ( status )
@@ -302,7 +302,7 @@ rc_t KConditionWhack ( KCondition *self )
 
 /* Init
  */
-LIB_EXPORT rc_t CC KConditionInit ( KCondition *self )
+rc_t KConditionInit ( KCondition *self )
 {
     int status;
 
@@ -385,7 +385,7 @@ LIB_EXPORT rc_t CC KConditionRelease ( const KCondition *cself )
  *  manipulates reference counter
  *  returns true if last ref
  */
-LIB_EXPORT int CC KConditionDropRef ( const KCondition *cself )
+int KConditionDropRef ( const KCondition *cself )
 {
     assert ( cself != NULL );
     return atomic32_dec_and_test ( & ( ( KCondition* ) cself ) -> refcount );

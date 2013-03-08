@@ -45,9 +45,14 @@
 #include <sysalloc.h>
 #include <bitstr.h>
 
+#include <kproc/timeout.h>
+#include <kproc/lock.h>
+#include <kproc/cond.h>
+
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
+#include <os-native.h>
 
 #include <stdio.h> /* temp for debugging */
 
@@ -370,13 +375,81 @@ static rc_t encode_header_v2(
 }
 
 static
+rc_t PageMapProcessRequestLock(PageMapProcessRequest *self)
+{
+	rc_t rc=RC(rcVDB,rcPagemap, rcConstructing, rcSelf, rcNull);
+	if(self){
+		struct timeout_t tm;
+		TimeoutInit(&tm,0);
+		TimeoutPrepare(&tm);
+		/*** no plans to wait here the thread should be relased by now ****/
+		rc = KLockTimedAcquire(self->lock,&tm);
+		if(rc == 0){
+			if(self->state != ePMPR_STATE_NONE){ /*** thread is not released yet **/
+				assert(0); /** should not happen ***/
+				KLockUnlock(self->lock);
+				rc=RC(rcVDB, rcPagemap, rcConstructing, rcThread, rcBusy);
+			}
+		}
+	}
+	return rc;
+}
+
+static
+void PageMapProcessRequestLaunch(PageMapProcessRequest *self)
+{
+	KLockUnlock(self -> lock);
+	KConditionSignal ( self -> cond );
+}
+
+rc_t PageMapProcessGetPagemap(const PageMapProcessRequest *cself,struct PageMap **pm)
+{
+	rc_t rc=RC(rcVDB,rcPagemap, rcConstructing, rcSelf, rcNull);
+        if(cself){
+	    PageMapProcessRequest *self=(PageMapProcessRequest*)cself;
+	    if(self->lock == NULL){
+		/** NOT LOCKABLE **/
+		rc=0;
+	    } else if((rc = KLockAcquire ( self->lock ))==0){
+CHECK_AGAIN:
+		switch(self->state){
+		 case ePMPR_STATE_DESERIALIZE_REQUESTED:
+			/*fprintf(stderr,"Waiting for pagemap %p\n",cself->lock);*/
+			rc = KConditionWait ( self -> cond, self -> lock );
+                        goto CHECK_AGAIN;
+		 case ePMPR_STATE_DESERIALIZE_DONE:
+			assert(self->pm);
+			/*fprintf(stderr,"Pagemap %p Used R:%6d|DR:%d|LR:%d\n",self->lock, self->pm->row_count,self->pm->data_recs,self->pm->leng_recs);*/
+			*pm=self->pm;
+			self->pm = NULL;
+			KDataBufferWhack(&self->data);
+			self->row_count = 0;
+			self->state = ePMPR_STATE_NONE;
+			KLockUnlock(self -> lock);
+			KConditionSignal(self->cond);
+			break;
+		case ePMPR_STATE_NONE: /* not requested */
+			KLockUnlock(self -> lock);
+		    rc = 0;
+		    break;
+		 default: /** should never happen ***/
+			assert(0);
+			KLockUnlock(self -> lock);
+			return RC(rcVDB, rcPagemap, rcConverting, rcParam, rcInvalid );
+		}
+	    }
+        }
+        return rc;
+}
+
+
+static
 rc_t VBlobCreateFromData_v2(
                             VBlob **lhs,
                             const KDataBuffer *data,
                             int64_t start_id, int64_t stop_id,
-                            uint32_t elem_bits
+                            uint32_t elem_bits, PageMapProcessRequest *pmpr
 ) {
-    const uint8_t *src = data->base;
     uint64_t ssize = data->elem_count;
     uint32_t hsize;
     uint32_t msize;
@@ -385,8 +458,10 @@ rc_t VBlobCreateFromData_v2(
     uint8_t adjust;
     VBlob *y;
     uint32_t data_offset;
+    uint32_t pagemap_offset;
     bitsz_t databits;
     uint32_t elem_count;
+    uint8_t *src = data->base;
     rc_t rc;
     
     rc = decode_header_v2(src, ssize, &hsize, &msize, &offset, &adjust, &byte_order);
@@ -396,8 +471,8 @@ rc_t VBlobCreateFromData_v2(
     if (ssize < offset + hsize + msize)
         return RC(rcVDB, rcBlob, rcConstructing, rcData, rcInsufficient);
     
-    src += offset;
-    data_offset = offset + hsize + msize;
+    pagemap_offset = offset + hsize;
+    data_offset = pagemap_offset + msize;
     assert(data_offset <= ssize);
     ssize -= data_offset;
     databits = (ssize << 3) - adjust;
@@ -408,9 +483,23 @@ rc_t VBlobCreateFromData_v2(
     TRACK_BLOB (VBlobNew, y);
     if (rc == 0) {
         if (hsize)
-            rc = BlobHeadersCreateFromData(&y->headers, src, hsize);
+            rc = BlobHeadersCreateFromData(&y->headers, src+offset , hsize);
         if (rc == 0) {
-            rc = PageMapDeserialize(&y->pm, src + hsize, msize, BlobRowCount(y));
+            if (msize > 0) {
+                if(PageMapProcessRequestLock(pmpr)==0) {
+                    KDataBufferSub(data, &pmpr->data, pagemap_offset, msize);
+                    pmpr->row_count = BlobRowCount(y);
+                    pmpr->state = ePMPR_STATE_DESERIALIZE_REQUESTED;
+                    /*fprintf(stderr,"Pagemap %p Requested R:%6d|SZ:%d|%ld:%ld\n",pmpr->lock, pmpr->row_count,msize,start_id, stop_id);*/
+                    PageMapProcessRequestLaunch(pmpr);
+                }
+                else {
+                    KDataBuffer tdata;
+                    KDataBufferSub(data, &tdata, pagemap_offset, msize);
+                    rc = PageMapDeserialize(&y->pm, tdata.base,tdata.elem_count, BlobRowCount(y));
+                    KDataBufferWhack(&tdata);
+                }
+            }
             if (rc == 0) {
                 KDataBufferSub(data, &y->data, data_offset, ssize);
                 y->data.elem_bits = elem_bits;
@@ -621,7 +710,8 @@ void VBlobPageMapOptimize ( VBlob **vblobp)
 	if(pm->optimized != eBlobPageMapOptimizedNone) return; /* do not optimize previously optimized blobs */
 	pm->optimized = eBlobPageMapOptimizedFailed; /*** prevent future optimization if none of the algorithms succeeds ***/
 
-	if(pm->leng_recs == 1){
+	if(pm->leng_recs == 1)
+    {
 		if( pm->length[0] * sblob->data.elem_bits == 8 /** 1 byte data ***/
 		    &&  pm->data_recs < pm->row_count       /** rle was used ***/
 		    &&  pm->data_recs * 6 > pm->row_count){ /** but not super efficiently **/
@@ -653,7 +743,8 @@ void VBlobPageMapOptimize ( VBlob **vblobp)
 
 	}
 
-	if(pm->row_count > 1024 && (sblob->data.elem_bits & 7) == 0){
+	if(pm->row_count > 1024 && (sblob->data.elem_bits & 7) == 0)
+    {
 		elem_count_t	minlen,maxlen;
 		elem_count_t	elem_sz = sblob->data.elem_bits/8;
 		rc_t rc = PageMapRowLengthRange(pm, &minlen,&maxlen);
@@ -670,8 +761,8 @@ void VBlobPageMapOptimize ( VBlob **vblobp)
 			assert(rc==0);
 /*******************
 * another formula
-* the saving should not be less then the waste on pointers into data vocabulary
-* it is assumed that the data offsets will cost us not more then 2 bytes on disk
+* the savings should not be less than the waste on pointers into data vocabulary
+* it is assumed that the data offsets will cost us not more than 2 bytes on disk
 * the nasty left part is the average number of bytes in a row
 * limit_vocab_size = ((int64_t)sblob->data.elem_count*elem_sz - 2*pm->row_count) * sblob->data.elem_count / pm->data_recs / elem_sz;
 ****************/
@@ -770,6 +861,7 @@ void VBlobPageMapOptimize ( VBlob **vblobp)
 			}
 		}
 	}
+
 }
 
 
@@ -847,7 +939,7 @@ rc_t VBlobSerialize ( const VBlob *self, KDataBuffer *result ) {
 rc_t VBlobCreateFromData ( struct VBlob **lhs,
                          int64_t start_id, int64_t stop_id,
                          const KDataBuffer *src,
-                         uint32_t elem_bits )
+                         uint32_t elem_bits , PageMapProcessRequest const *pmpr)
 {
     VBlob *y = NULL;
     rc_t rc;
@@ -862,7 +954,7 @@ rc_t VBlobCreateFromData ( struct VBlob **lhs,
     if ((((const uint8_t *)src->base)[0] & 0x80) == 0)
         rc = VBlobCreateFromData_v1(&y, src, start_id, stop_id, elem_bits);
     else
-        rc = VBlobCreateFromData_v2(&y, src, start_id, stop_id, elem_bits);
+        rc = VBlobCreateFromData_v2(&y, src, start_id, stop_id, elem_bits, (PageMapProcessRequest*)pmpr);
 
     if (rc == 0)
         *lhs = y;

@@ -89,7 +89,7 @@ ALIGN_EXTERN rc_t CC ReferenceMgr_Compress(const ReferenceMgr* cself, uint32_t o
                                            const char* id, INSDC_coord_zero offset,
                                            const char* seq, INSDC_coord_len seq_len,
                                            const void* cigar, uint32_t cigar_len,
-                                           INSDC_coord_zero allele_offset, const char* allele, INSDC_coord_len allele_len,
+                                           INSDC_coord_zero allele_offset, const char* allele, INSDC_coord_len allele_len,INSDC_coord_zero offset_in_allele,
                                            const void* allele_cigar, uint32_t allele_cigar_len,
                                            TableWriterAlgnData* data);
 
@@ -105,7 +105,7 @@ ALIGN_EXTERN rc_t CC ReferenceSeq_Compress(const ReferenceSeq* cself, uint32_t o
                                            INSDC_coord_zero offset,
                                            const char* seq, INSDC_coord_len seq_len,
                                            const void* cigar, uint32_t cigar_len,
-                                           INSDC_coord_zero allele_offset, const char* allele, INSDC_coord_len allele_len,
+                                           INSDC_coord_zero allele_offset, const char* allele, INSDC_coord_len allele_len,INSDC_coord_zero offset_in_allele,
                                            const void* allele_cigar, uint32_t allele_cigar_len,
                                            TableWriterAlgnData* data);
 

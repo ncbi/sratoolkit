@@ -36,12 +36,17 @@
 extern "C" {
 #endif
 
+/* values used in validating quality lines */
+#define MIN_PHRED_33 33
+#define MAX_PHRED_33 74
+#define MIN_PHRED_64 64
+#define MAX_PHRED_64 127
+
 struct FastqSequence
 {
     Sequence_vt sequence_vt;
     KRefcount   refcount;
 
-    char* tagline;
     /* tagline components: */
     String spotname; /* tag line up to and including coordinates */
     String spotgroup; /* token following '#' */
@@ -57,10 +62,11 @@ struct FastqSequence
 
     char* read;
     bool is_colorspace;
-    int8_t* quality;
-    uint8_t qualityLength;
-    uint8_t qualityBase;
-    int     qualityType;
+    
+    String  quality;
+    uint8_t qualityOffset;
+    
+    bool lowQuality;
 };
 
 struct FastqRecord
@@ -83,34 +89,29 @@ typedef struct FASTQToken
 typedef struct FASTQParseBlock
 {
     void* self;
+    size_t (CC *input)(struct FASTQParseBlock* sb, char* buf, size_t max_size);
+    uint8_t phredOffset;
+    
     void* scanner;
     size_t length; /* input characters consumed for the current record */
     FASTQToken* lastToken;
     struct FastqRecord* record;
     size_t column;
 
-    size_t (CC *input)(struct FASTQParseBlock* sb, char* buf, size_t max_size);
-
     /* temporaries for bison: */
-    struct 
-    {
-        const char* addr;
-        size_t      length;
-    } tagLine;
+    KDataBuffer tagLine;
 
-    struct 
-    {
-        int8_t*  buffer;
-        size_t   bufLen;
-        size_t   curIdx;
-    } quality;
-
-    int64_t  signedNumber;
-
-    const char* tagStart;
+    size_t spotNameLength;
+    bool spotNameDone;
     size_t spotGroupOffset;
     size_t spotGroupLength;
 
+    KDataBuffer quality;
+    size_t expectedQualityLines;
+    
+    uint8_t defaultReadNumber;
+    
+    bool fatalError;
 } FASTQParseBlock;
 
 extern rc_t CC FASTQScan_yylex_init(FASTQParseBlock* context, bool debug);
@@ -124,6 +125,7 @@ extern void CC FASTQ_set_lineno (int line_number, void* scanner);
 
 extern int CC FASTQ_lex(FASTQToken* pb, void * scanner);
 extern void CC FASTQ_unlex(FASTQParseBlock* pb, FASTQToken* token);
+extern void CC FASTQ_qualityContext(FASTQParseBlock* pb);
 
 extern int FASTQ_debug; /* set to 1 to print Bison trace */ 
 

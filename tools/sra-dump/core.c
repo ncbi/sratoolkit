@@ -23,6 +23,10 @@
 * ===========================================================================
 *
 */
+
+#include <vdb/table.h> /* VTableRelease */
+#include <kfg/config.h> /* KConfigDisableUserSettings */
+
 #include <vdb/manager.h> /* VDBManagerRelease */
 #include <vdb/dependencies.h> /* UIError */
 #include <klib/report.h> /* ReportInit */
@@ -609,6 +613,7 @@ static const SRADumperFmt_Arg KMainArgs[] =
                                  "Current/default is warn", NULL}},
     { "v", "verbose", NULL, {"Increase the verbosity level of the program",
                             "Use multiple times for more verbosity", NULL}},
+    { NULL, "no-user-settings", NULL, {"Do not read any settings on startup. Use VDB_CONFIG environment var to set config file", NULL}},
     { NULL, OPTION_REPORT, NULL, {
 "Control program execution environment report generation (if implemented).",
 "One of (never|error|always). Default is error",
@@ -655,8 +660,8 @@ static void CoreUsage( const char* prog, const SRADumperFmt* fmt, bool brief, in
     {
         OUTMSG(( "\n"
                  "Usage:\n"
-                 "  %s [options] [ -A ] <accession>\n"
                  "  %s [options] <path [path...]>\n"
+                 "  %s [options] [ -A ] <accession>\n"
                  "\n", prog, prog));
     }
     else
@@ -823,7 +828,8 @@ bool CC SRADumper_GetArg( const SRADumperFmt* fmt, char const* const abbr, char 
 static bool reportToUser( rc_t rc, char* argv0 )
 {
     assert( argv0 );
-    if ( rc == RC( rcSRA, rcFormatter, rcConstructing, rcData, rcUnsupported ) )
+    if ( rc == SILENT_RC( rcSRA, rcFormatter, rcConstructing,
+        rcData, rcUnsupported ) )
     {
         const char* name = strpbrk( argv0, "/\\" );
         const char* last_name = name;
@@ -892,6 +898,8 @@ rc_t CC KMain ( int argc, char* argv[] )
     char* spot_group[128] = {NULL};
     bool read_filter_on = false;
     SRAReadFilter read_filter = 0xFF;
+
+    bool failed_to_open = false;
 
     /* for the fasta-ouput of fastq-dump: branch out completely of 'common' code */
     if ( fasta_dump_requested( argc, argv ) )
@@ -1112,6 +1120,10 @@ rc_t CC KMain ( int argc, char* argv[] )
         {
             keep_empty = true;
         }
+        else if ( SRADumper_GetArg( &fmt, NULL, "no-user-settings", &i, argc, argv, NULL ) )
+        {
+             KConfigDisableUserSettings ();
+        }
         else if ( fmt.add_arg && fmt.add_arg( &fmt, SRADumper_GetArg, &i, argc, argv ) )
         {
         }
@@ -1247,7 +1259,11 @@ rc_t CC KMain ( int argc, char* argv[] )
                 else
                 {
                     PLOGERR( klogErr, ( klogErr, rc,
-                            "failed to open '$(path)'", "path=%s", table_path[ i ] ) );
+                            "failed to open '$(path)'", "path=%s",
+                            table_path[ i ] ) );
+                    if (GetRCState(rc) == rcNotFound) {
+                        failed_to_open = true;
+                    }
                 }
                 continue;
             }
@@ -1343,6 +1359,7 @@ rc_t CC KMain ( int argc, char* argv[] )
                 {
                     rc = rc2;
                 }
+                VTableRelease( tbl );   /* SRATableGetVTableRead adds Reference to tbl! */
             }
 
             /* test if we have to dump anything... */
@@ -1510,6 +1527,9 @@ Catch:
     OUTMSG(( "Written %lu spots total\n", total_spots ));
 
 
+    if (failed_to_open) {
+        ReportSilence();
+    }
     {
         /* Report execution environment if necessary */
         rc_t rc2 = ReportFinalize( rc );

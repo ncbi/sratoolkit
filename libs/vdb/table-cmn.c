@@ -518,7 +518,7 @@ rc_t list_readable_columns ( const VTable *cself )
     VTable *self = ( VTable* ) cself;
 
     VCursor *curs;
-    rc_t rc = VTableCreateCursorRead ( self, ( const VCursor** ) & curs );
+    rc_t rc = VTableCreateCursorReadInternal ( self, ( const VCursor** ) & curs );
     if (  rc == 0 )
     {
         /* let this private VCursor-function list the columns */
@@ -1146,7 +1146,7 @@ rc_t create_cursor_all_readable_columns(const VTable *self,
     rc_t rc = VTableListReadableColumns(self, &list);
     
     if (rc == 0) {
-        rc = VTableCreateCursorRead(self, curs);
+        rc = VTableCreateCursorReadInternal(self, curs);
         if (rc == 0) {
             uint32_t n;
             

@@ -39,6 +39,8 @@
 extern "C" {
 #endif
 
+struct KDirectory;
+struct KDBManager;
 
 /*
  * This symbol is inserted where the KDB is being tweaked to allow
@@ -56,7 +58,8 @@ extern "C" {
 /* PathType
  *  checks type of path
  */
-int KDBPathType ( const KDirectory *dir, bool *zombies, const char *path );
+int KDBPathTypeDir ( const struct KDirectory *dir, int type,bool *zombies, const char *path );
+int KDBPathType ( const struct KDirectory *dir, bool *zombies, const char *path );
 
 /* OpenPathType
  * Opens a path if it is of the specified type.  Even if it is an archive file
@@ -72,30 +75,36 @@ int KDBPathType ( const KDirectory *dir, bool *zombies, const char *path );
  * archive that is of the requested type.  An archive will have been opened
  * but reshut if dpdir is NULL.
  */ 
-rc_t KDBOpenPathTypeRead ( const KDirectory * dir, const char * path, 
-    const KDirectory ** dpdir, int pathtype, int * realpathtype, bool try_srapath );
+rc_t KDBOpenPathTypeRead ( const struct KDBManager * mgr, const struct KDirectory * dir, const char * path, 
+    const struct KDirectory ** dpdir, int pathtype, int * realpathtype, bool try_srapath );
 
 /* Writable
  *  examines a directory structure for any "lock" files
  *  examines a file for ( any ) write permission
  */
-rc_t KDBWritable ( const KDirectory *dir, const char *path );
+rc_t KDBWritable ( const struct KDirectory *dir, const char *path );
 
 /* GetObjModDate
  *  extract mod date from a path
  */
-rc_t KDBGetObjModDate ( const KDirectory *dir, KTime_t *mtime );
+rc_t KDBGetObjModDate ( const struct KDirectory *dir, KTime_t *mtime );
 
 /* GetPathModDate
  *  extract mod date from a path
  */
-rc_t KDBVGetPathModDate ( const KDirectory *dir,
+rc_t KDBVGetPathModDate ( const struct KDirectory *dir,
     KTime_t *mtime, const char *path, va_list args );
 
+/* KDBMakeSubPath
+ *  adds a namespace to path spec
+ */
+rc_t KDBMakeSubPath ( struct KDirectory const *dir,
+    char *subpath, size_t subpath_max, const char *ns,
+    uint32_t ns_size, const char *path, ... );
 /* VMakeSubPath
  *  adds a namespace to path spec
  */
-rc_t KDBVMakeSubPath ( const KDirectory *dir,
+rc_t KDBVMakeSubPath ( const struct KDirectory *dir,
     char *subpath, size_t subpath_max, const char *ns,
     uint32_t ns_size, const char *path, va_list args );
 

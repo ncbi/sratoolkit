@@ -31,12 +31,12 @@
 #include <klib/defs.h>
 #endif
 
-#ifndef _h_mmarray_
-#include <loader/mmarray.h>
+#ifndef _h_insdc_sra_
+#include <insdc/sra.h>
 #endif
 
-#ifndef _h_insdc_insdc_
-#include <insdc/insdc.h>
+#ifndef _h_mmarray_
+#include <loader/mmarray.h>
 #endif
 
 #ifdef __cplusplus
@@ -68,6 +68,7 @@ enum LoaderModes {
 
 typedef struct CommonWriterSettings
 {
+    unsigned numfiles;
     char const *inpath;
     char const *outpath;
     char const *tmpfs;
@@ -111,13 +112,13 @@ typedef struct CommonWriterSettings
     bool keepMismatchQual;
     bool acceptBadDups; /* accept spots with inconsistent PCR duplicate flags */
     bool acceptNoMatch; /* accept without any matching bases */
-    bool noSpotAssembly;
     uint8_t alignedQualValue;
     bool allUnaligned; /* treat all records as unaligned */
     bool noColorSpace;
     bool noSecondary;
     bool hasTI;
     bool acceptHardClip;
+    INSDC_SRA_platform_id platform;
 } CommonWriterSettings;
 
 /*--------------------------------------------------------------------------
@@ -156,64 +157,7 @@ typedef struct SpotAssembler {
     
 } SpotAssembler;
 
-rc_t SetupContext(const CommonWriterSettings* settings, SpotAssembler *ctx, unsigned numfiles);
-void ContextReleaseMemBank(SpotAssembler *ctx);
-void ContextRelease(SpotAssembler *ctx);
-
-rc_t GetKeyID(CommonWriterSettings* settings, SpotAssembler *const ctx, uint64_t *const rslt, bool *const wasInserted, char const key[], char const name[], unsigned const namelen);
-
-rc_t WriteSoloFragments(const CommonWriterSettings* settings, SpotAssembler *ctx, struct SequenceWriter *seq);
-rc_t AlignmentUpdateSpotInfo(SpotAssembler *ctx, struct AlignmentWriter *align);
-rc_t SequenceUpdateAlignInfo(SpotAssembler *ctx, struct SequenceWriter *seq);
-
-/*--------------------------------------------------------------------------
- * ctx_value_t, FragmentInfo
- */
-typedef struct {
-    uint32_t primaryId[2];
-    uint32_t spotId;
-    uint32_t fragmentId;
-    uint8_t  platform;
-    uint8_t  pId_ext[2];
-    uint8_t  spotId_ext;
-    uint8_t  alignmentCount[2]; /* 0..254; 254: saturated max; 255: special meaning "too many" */
-    uint8_t  unmated: 1,
-             pcr_dup: 1,
-             has_a_read: 1,
-             unaligned_1: 1,
-             unaligned_2: 1;
-} ctx_value_t;
-
-#define CTX_VALUE_SET_P_ID(O,N,V) do { int64_t tv = (V); (O).primaryId[N] = (uint32_t)tv; (O).pId_ext[N] = tv >> 32; } while(0);
-#define CTX_VALUE_GET_P_ID(O,N) ((((int64_t)((O).pId_ext[N])) << 32) | (O).primaryId[N])
-
-#define CTX_VALUE_SET_S_ID(O,V) do { int64_t tv = (V); (O).spotId = (uint32_t)tv; (O).spotId_ext = tv >> 32; } while(0);
-#define CTX_VALUE_GET_S_ID(O) ((((int64_t)(O).spotId_ext) << 32) | (O).spotId)
-
-typedef struct FragmentInfo {
-    uint64_t ti;
-    uint32_t readlen;
-    uint8_t  aligned;
-    uint8_t  is_bad;
-    uint8_t  orientation;
-    uint8_t  otherReadNo;
-    uint8_t  sglen;
-    uint8_t  cskey;
-} FragmentInfo;
-
-rc_t OpenKBTree(const CommonWriterSettings* settings, struct KBTree **const rslt, unsigned n, unsigned max);
-rc_t GetKeyIDOld(const CommonWriterSettings* settings, SpotAssembler* const ctx, uint64_t *const rslt, bool *const wasInserted, char const key[], char const name[], unsigned const namelen);
-
-void COPY_QUAL(uint8_t D[], uint8_t const S[], unsigned const L, bool const R);
-void COPY_READ(INSDC_dna_text D[], INSDC_dna_text const S[], unsigned const L, bool const R);
-
-bool platform_cmp(char const platform[], char const test[]);
-rc_t CheckLimitAndLogError(CommonWriterSettings* settings);
-void RecordNoMatch(const CommonWriterSettings* settings, char const readName[], char const refName[], uint32_t const refPos);
-rc_t LogDupConflict(CommonWriterSettings* settings, char const readName[]);
-rc_t LogNoMatch(CommonWriterSettings* settings, char const readName[], char const refName[], unsigned rpos, unsigned matches);
-void EditAlignedQualities(const CommonWriterSettings* settings, uint8_t qual[], bool const hasMismatch[], unsigned readlen);
-void EditUnalignedQualities(uint8_t qual[], bool const hasMismatch[], unsigned readlen);
+INSDC_SRA_platform_id PlatformToId(const char* name);
 
 /*--------------------------------------------------------------------------
  * CommonWriter
@@ -224,23 +168,18 @@ typedef struct CommonWriter {
     struct Reference* ref;
     struct SequenceWriter* seq;
     struct AlignmentWriter* align;
+    bool had_alignments;
+    bool had_sequences;
+    unsigned err_count;
+    bool commit;
 } CommonWriter;
 
 rc_t CommonWriterInit(CommonWriter* self, struct VDBManager *mgr, struct VDatabase *db, const CommonWriterSettings* settings);
 
-rc_t CommonWriterArchive(CommonWriter* self, const struct ReaderFile *, bool *had_alignments, bool *had_sequences);
+rc_t CommonWriterArchive(CommonWriter* self, const struct ReaderFile *);
+rc_t CommonWriterComplete(CommonWriter* self, bool quitting);
 
-rc_t CommonWriterWhack(CommonWriter* self, bool const commit);
-
-/*TODO"remove*/
-rc_t ArchiveFile(const struct ReaderFile *reader, 
-                 CommonWriterSettings* G,
-                 struct SpotAssembler *ctx, 
-                 struct Reference *ref, 
-                 struct SequenceWriter *seq, 
-                 struct AlignmentWriter *align,
-                 bool *had_alignments, 
-                 bool *had_sequences);
+rc_t CommonWriterWhack(CommonWriter* self);
 
 #ifdef __cplusplus
 }

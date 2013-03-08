@@ -72,7 +72,7 @@ KRYPTO_EXTERN rc_t CC KEncFileMakeWrite (struct KFile ** pself,
  * One difference between update and read mode is the handling of
  * "missing blocks". Open for update will read a missing block as all
  * zero while 
-*/
+ */
 KRYPTO_EXTERN rc_t CC KEncFileMakeUpdate (struct KFile ** pself, 
                                           struct KFile * encrypted,
                                           const struct KKey * key);

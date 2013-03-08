@@ -23,6 +23,7 @@
 * ===========================================================================
 *
 */
+
 #include "vdb-config.vers.h"
 
 #include <kapp/main.h>
@@ -162,8 +163,6 @@ rc_t CC Usage(const Args* args) {
 const char UsageDefaultName[] = "vdb-config";
 
 ver_t CC KAppVersion(void) { return VDB_CONFIG_VERS; }
-
-static rc_t ArgsRelease(Args* self) { return ArgsWhack(self); }
 
 static void Indent(bool xml, int n) {
     if (!xml)
@@ -936,9 +935,12 @@ static rc_t ShowConfig(const KConfig* cfg, Params* prm) {
             }
             else {
                 char *c = memrchr(root, '/', len);
-                if (c != NULL)
-                {   nodeName = c + 1; }
-                else { nodeName = root; }
+                if (c != NULL) {
+                    nodeName = c + 1;
+                }
+                else {
+                    nodeName = root;
+                }
             }
             assert(nodeName && nodeName[0]);
             nodeNameL = strlen(nodeName);
@@ -1020,17 +1022,26 @@ static rc_t ShowConfig(const KConfig* cfg, Params* prm) {
                 }
             }
             if (rc == 0) {
-                if (nodeName[0] != '/')
-                {   VDB_CONGIG_OUTMSG(("</%.*s>\n", nodeNameL, nodeName)); }
-                else { VDB_CONGIG_OUTMSG(("</Config>\n")); }
+                if (nodeName[0] != '/') {
+                    VDB_CONGIG_OUTMSG(("</%.*s>\n", nodeNameL, nodeName));
+                }
+                else {
+                    VDB_CONGIG_OUTMSG(("</Config>\n"));
+                }
             }
         }
 
         RELEASE(KConfigNode, node);
         RELEASE(KNamelist, names);
 
-        if (rc == 0 && hasAny)
-        {   OUTMSG(("\n")); }
+        if (rc == 0) {
+            if (hasAny) {
+                OUTMSG(("\n"));
+            }
+            else if (nodeNameL > 0 && nodeName != NULL) {
+                VDB_CONGIG_OUTMSG(("<%.*s/>\n", nodeNameL, nodeName));
+            }
+        }
 
         if (!hasQuery)
         {   break; }

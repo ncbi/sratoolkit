@@ -39,7 +39,6 @@ SUBDIRS = \
 	sra-dump \
 	sra-load \
 	sra-pileup \
-	sam-dump \
 	bam-loader \
 	srapath \
 	sra-stat \
@@ -47,18 +46,14 @@ SUBDIRS = \
 	sra-dbcc \
 	vdb-config \
 	align-info \
+	prefetch \
 	nenctool \
 	nencvalid \
 	vdb-decrypt \
 	vdb-validate \
 	sra-sort \
+	cg-load \
     fastq-loader
-
-ifneq (win,$(BUILD_OS))
-ifneq (rwin,$(BUILD_OS))
-	SUBDIRS += cg-load
-endif
-endif
 
 default: $(SUBDIRS)
 

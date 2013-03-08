@@ -87,6 +87,7 @@ rc_t CC TableReader_MakeCursor( const TableReader** cself, const VCursor* cursor
         if ( rc == 0 )
         {
             obj->curs = cursor;
+/*            obj->cursor_open = false; */
             obj->cols = cols;
             while ( rc == 0 && cols->name != NULL)
             {
@@ -107,7 +108,7 @@ rc_t CC TableReader_MakeCursor( const TableReader** cself, const VCursor* cursor
                 }
                 cols++;
             }
-            if( rc == 0 )
+            if ( rc == 0 )
             {
                 rc = VCursorOpen( obj->curs );
             }
@@ -138,6 +139,16 @@ void CC TableReader_Whack( const TableReader* cself )
     }
 }
 
+/*
+rc_t CC TableReader_OpenCursor( const TableReader* cself )
+{
+    TableReader * tr = ( TableReader * )cself;
+    VCursor * curs = ( VCursor * )tr->curs;
+    rc_t rc = VCursorOpen( curs );
+    tr->cursor_open = ( rc == 0 );
+    return rc;
+}
+*/
 
 rc_t CC TableReader_ReadRow( const TableReader* cself, int64_t rowid )
 {
@@ -150,41 +161,48 @@ rc_t CC TableReader_ReadRow( const TableReader* cself, int64_t rowid )
     }
     else if ( cself->curr != rowid )
     {
-        rc = VCursorCloseRow( cself->curs );
+/*
+        if ( !cself->cursor_open )
+            rc = TableReader_OpenCursor( cself );
+*/
         if ( rc == 0 )
         {
-            rc = VCursorSetRowId( cself->curs, rowid );
+            rc = VCursorCloseRow( cself->curs );
             if ( rc == 0 )
             {
-                rc = VCursorOpenRow( cself->curs );
+                rc = VCursorSetRowId( cself->curs, rowid );
                 if ( rc == 0 )
                 {
-                    uint32_t boff = 0;
-                    c = ( TableReaderColumn* )( cself->cols );
-                    while ( c->name != NULL )
+                    rc = VCursorOpenRow( cself->curs );
+                    if ( rc == 0 )
                     {
-                        if ( c->idx != 0 )
+                        uint32_t boff = 0;
+                        c = ( TableReaderColumn* )( cself->cols );
+                        while ( c->name != NULL )
                         {
-                            /* TBD - FIX ME
-                               this can be dangerous, since VCursorCellData
-                               can cause cache flushes, invalidating previous
-                               reads. THESE MUST BE FETCHED UPON DEMAND, NOT
-                               PREFETCHED!!
-                            */
-                            rc = VCursorCellData( cself->curs, c->idx, NULL, (const void**)&c->base.var, &boff, &c->len );
-                            if ( rc != 0 )
+                            if ( c->idx != 0 )
                             {
-                                if ( c->flags & ercol_Optional )
-                                    rc = 0;
-                                c->base.var = NULL;
-                                c->len = 0;
+                                /* TBD - FIX ME
+                                   this can be dangerous, since VCursorCellData
+                                   can cause cache flushes, invalidating previous
+                                   reads. THESE MUST BE FETCHED UPON DEMAND, NOT
+                                   PREFETCHED!!
+                                */
+                                rc = VCursorCellData( cself->curs, c->idx, NULL, (const void**)&c->base.var, &boff, &c->len );
+                                if ( rc != 0 )
+                                {
+                                    if ( c->flags & ercol_Optional )
+                                        rc = 0;
+                                    c->base.var = NULL;
+                                    c->len = 0;
+                                }
+                                else if ( boff != 0 )
+                                {
+                                    rc = RC( rcAlign, rcType, rcReading, rcData, rcUnsupported );
+                                }
                             }
-                            else if ( boff != 0 )
-                            {
-                                rc = RC( rcAlign, rcType, rcReading, rcData, rcUnsupported );
-                            }
+                            c++;
                         }
-                        c++;
                     }
                 }
             }
@@ -212,7 +230,12 @@ rc_t CC TableReader_IdRange( const TableReader* cself, int64_t* first, uint64_t*
     }
     else
     {
-        rc = VCursorIdRange( cself->curs, 0, first, count );
+/*
+        if ( !cself->cursor_open )
+            rc = TableReader_OpenCursor( cself );
+        if ( rc == 0 )
+*/
+            rc = VCursorIdRange( cself->curs, 0, first, count );
     }
     return rc;
 }
@@ -228,13 +251,20 @@ rc_t CC TableReader_OpenIndex( const TableReader* cself, const char* name, const
     }
     else
     {
-        const VTable* tbl;
-        rc = VCursorOpenParentRead( cself->curs, &tbl );
+/*
+        if ( !cself->cursor_open )
+            rc = TableReader_OpenCursor( cself );
         if ( rc == 0 )
         {
-            rc = VTableOpenIndexRead( tbl, idx, name );
-            VTableRelease( tbl );
-        }
+*/
+            const VTable* tbl;
+            rc = VCursorOpenParentRead( cself->curs, &tbl );
+            if ( rc == 0 )
+            {
+                rc = VTableOpenIndexRead( tbl, idx, name );
+                VTableRelease( tbl );
+            }
+/*        } */
     }
     return rc;
 }
@@ -249,29 +279,39 @@ rc_t CC TableReader_PageIdRange( const TableReader *cself, int64_t rowid,
     {
         rc = RC( rcAlign, rcType, rcOpening, rcSelf, rcNull );
     }
-    else if ( pfirst != NULL || plast != NULL )
+    else
     {
-        int64_t first = INT64_MAX;
-        int64_t last = INT64_MIN;
-        unsigned i;
-        
-        for ( i = 0; cself->cols[ i ].name != NULL; ++i )
+/*
+        if ( !cself->cursor_open )
+            rc = TableReader_OpenCursor( cself );
+        if ( rc == 0 )
         {
-            if ( cself->cols[i].idx != 0 )
+*/
+            if ( pfirst != NULL || plast != NULL )
             {
-                int64_t tfirst;
-                int64_t tlast;
+                int64_t first = INT64_MAX;
+                int64_t last = INT64_MIN;
+                unsigned i;
                 
-                rc = VCursorPageIdRange( cself->curs, cself->cols[ i ].idx, rowid, &tfirst, &tlast );
-                if ( rc == 0 )
+                for ( i = 0; cself->cols[ i ].name != NULL; ++i )
                 {
-                    if ( first > tfirst ) { first = tfirst; }
-                    if ( last < tlast ) { last = tlast; }
+                    if ( cself->cols[i].idx != 0 )
+                    {
+                        int64_t tfirst;
+                        int64_t tlast;
+                        
+                        rc = VCursorPageIdRange( cself->curs, cself->cols[ i ].idx, rowid, &tfirst, &tlast );
+                        if ( rc == 0 )
+                        {
+                            if ( first > tfirst ) { first = tfirst; }
+                            if ( last < tlast ) { last = tlast; }
+                        }
+                    }
                 }
+                if ( pfirst != NULL ) { *pfirst = first; }
+                if ( plast  != NULL ) { *plast  = last; }
             }
-        }
-        if ( pfirst != NULL ) { *pfirst = first; }
-        if ( plast  != NULL ) { *plast  = last; }
+/*        } */
     }
     return rc;
 }

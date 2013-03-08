@@ -31,6 +31,7 @@
 #include <klib/data-buffer.h>
 #include <klib/container.h>
 #include <klib/checksum.h>
+#include <klib/text.h>
 #include <kfs/mmap.h>
 #include <kfs/file.h>
 #include <kdb/manager.h>
@@ -333,7 +334,7 @@ static
 rc_t ReferenceMgr_AddId(ReferenceMgr *const self, char const ID[],
                         ReferenceSeq const *const obj)
 {
-    char *id = strdup(ID);
+    char *id = string_dup( ID, string_size( ID ) );
     unsigned const last_id = self->refSeqsById.elem_count;
     
     if (id) {
@@ -507,10 +508,12 @@ rc_t ReferenceMgr_ProcessConf(ReferenceMgr *const self, char Data[], unsigned co
         }
         if ((rc = ReferenceMgr_NewReferenceSeq(self, &rs)) != 0) return rc;
         
-        if ((rs->id = strdup(id)) == NULL)
+        rs->id = string_dup( id, string_size( id ) );
+        if ( rs->id == NULL )
             return RC(rcAlign, rcFile, rcReading, rcMemory, rcExhausted);
-        
-        if ((rs->seqId = strdup(seqId)) == NULL)
+
+        rs->seqId = string_dup( seqId, string_size( seqId ) );
+        if ( rs->seqId == NULL )
             return RC(rcAlign, rcFile, rcReading, rcMemory, rcExhausted);
         
         rs->circular = circular;
@@ -626,8 +629,8 @@ rc_t ReferenceMgr_ImportFasta(ReferenceMgr *const self, ReferenceSeq *obj, KData
     if (seqIdLen == 0)
         return RC(rcAlign, rcFile, rcReading, rcData, rcInvalid);
     
-    obj->fastaSeqId = strdup(&data[seqId]);
-    if (obj->fastaSeqId == NULL)
+    obj->fastaSeqId = string_dup( &data[ seqId ], string_size( &data[ seqId ] ) );
+    if ( obj->fastaSeqId == NULL )
         return RC(rcAlign, rcFile, rcReading, rcMemory, rcExhausted);
     
     MD5StateInit(&mds);
@@ -1148,9 +1151,10 @@ rc_t ReferenceMgr_OpenSeq(ReferenceMgr *const self, ReferenceSeq **const rslt,
                 rc = RC(rcAlign, rcFile, rcConstructing, rcId, rcAmbiguous);
             }
         }
-        if (seq->id == NULL) {
-            seq->id = strdup(id);
-            if (seq->id == NULL)
+        if ( seq->id == NULL )
+        {
+            seq->id = string_dup( id, string_size( id ) );
+            if ( seq->id == NULL )
                 return RC(rcAlign, rcFile, rcConstructing, rcMemory, rcExhausted);
         }
         /* finally, associate the id with the object and put it in the index */
@@ -1283,7 +1287,7 @@ static int int64_compare(const void *A, const void *B, void *ignore)
 static uint64_t AlignIdListFlatCopy(AlignIdList *l,int64_t *buf,uint64_t num_elem,bool do_sort)
 {
 	uint64_t res=0;
-	uint32_t i;
+	uint32_t i,j;
 	AlignId32List* cl;
 	assert(l!=0);
 
@@ -1299,10 +1303,10 @@ static uint64_t AlignIdListFlatCopy(AlignIdList *l,int64_t *buf,uint64_t num_ele
 			buf[res] = head->id[i];
 		}
 	}
-	for(i = 1; i< l->sub_list_count && res < num_elem;i++){
-		if((cl = l->sub_list[i])!=NULL){
+	for(j = 1; j< l->sub_list_count && res < num_elem;j++){
+		if((cl = l->sub_list[j])!=NULL){
 			TChunk32* head  = cl->head;
-			uint64_t  hi = ((uint64_t)i) << 32;
+			uint64_t  hi = ((uint64_t)j) << 32;
 			while(head !=  cl->tail){
 				for(i=0;i<ID_CHUNK_SZ && res < num_elem;i++,res++){
 					buf[res] = hi | head->id[i];
@@ -1491,7 +1495,7 @@ rc_t ReferenceMgr_ReCover(const ReferenceMgr* cself, uint64_t ref_rows)
         
         ALIGN_R_DBG("covering REFERENCE with %s", tbls[i].nm);
         if( (rc = VDatabaseOpenTableRead(cself->db, &table, tbls[i].nm)) != 0 ) {
-            if( GetRCObject(rc) == rcTable && GetRCState(rc) == rcNotFound ) {
+            if( GetRCState(rc) == rcNotFound ) {
                 ALIGN_R_DBG("table %s was not found, ignored", tbls[i].nm);
                 rc = 0;
                 continue;
@@ -2150,6 +2154,8 @@ rc_t cigar2offset(const uint32_t options, const void* cigar, uint32_t cigar_len,
         case 'N':
             if( last_match < out_sz ) {
                 out[last_match] += op_len;
+            } else if (last_match == out_sz && last_match > 0 ){ /*** delete at the end ***/
+                out[last_match-1] += op_len;
             } else {
                 rc = RC(rcAlign, rcFile, rcProcessing, rcData, rcInconsistent);
             }
@@ -2213,7 +2219,7 @@ LIB_EXPORT rc_t CC ReferenceMgr_Compress(const ReferenceMgr* cself, uint32_t opt
                                          const char* id, INSDC_coord_zero offset,
                                          const char* seq, INSDC_coord_len seq_len,
                                          const void* cigar, uint32_t cigar_len,
-                                         INSDC_coord_zero allele_offset, const char* allele, INSDC_coord_len allele_len,
+                                         INSDC_coord_zero allele_offset, const char* allele, INSDC_coord_len allele_len,INSDC_coord_zero offset_in_allele,
                                          const void* allele_cigar, uint32_t allele_cigar_len,
                                          TableWriterAlgnData* data)
 {
@@ -2224,7 +2230,8 @@ LIB_EXPORT rc_t CC ReferenceMgr_Compress(const ReferenceMgr* cself, uint32_t opt
         rc = RC(rcAlign, rcFile, rcProcessing, rcParam, rcNull);
     } else if( (rc = ReferenceMgr_GetSeq(cself, &refseq, id)) == 0 ) {
         rc = ReferenceSeq_Compress(refseq, options, offset, seq, seq_len, cigar, cigar_len,
-                                   allele_offset, allele, allele_len, allele_cigar, allele_cigar_len, data);
+                                   allele_offset, allele, allele_len,offset_in_allele,
+				   allele_cigar, allele_cigar_len, data);
         ReferenceSeq_Release(refseq);
     }
     ALIGN_C_DBGERR(rc);
@@ -2234,7 +2241,9 @@ LIB_EXPORT rc_t CC ReferenceMgr_Compress(const ReferenceMgr* cself, uint32_t opt
 LIB_EXPORT rc_t CC ReferenceSeq_Compress(const ReferenceSeq* cself, const uint32_t options, INSDC_coord_zero offset,
                                          const char* seq, INSDC_coord_len seq_len,
                                          const void* cigar, uint32_t cigar_len,
-                                         INSDC_coord_zero allele_offset, const char* allele, INSDC_coord_len allele_len,
+                                         INSDC_coord_zero allele_offset, const char* allele,
+					 INSDC_coord_len allele_len,
+					 INSDC_coord_zero offset_in_allele,
                                          const void* allele_cigar, uint32_t allele_cigar_len,
                                          TableWriterAlgnData* data)
 {
@@ -2259,6 +2268,7 @@ LIB_EXPORT rc_t CC ReferenceSeq_Compress(const ReferenceSeq* cself, const uint32
         uint8_t sref_buf[64 * 1024];
         void *href_buf = NULL;
         uint8_t *ref_buf = sref_buf;
+	int32_t  allele_off_buf[1024];
 #if _DEBUGGING
         uint64_t i_ref_offset_elements, i_mismatch_elements;
         char x[4096];
@@ -2293,7 +2303,7 @@ LIB_EXPORT rc_t CC ReferenceSeq_Compress(const ReferenceSeq* cself, const uint32
             ALIGN_C_DBG("apply allele %.*s[%u] at %i w/cigar below",
                         allele_len, allele, allele_len, allele_offset);
             rc = cigar2offset(options, allele_cigar, allele_cigar_len,
-                    (int32_t*)(cself->mgr->compress.base), cself->mgr->compress.elem_count / 2,
+                    allele_off_buf, sizeof(allele_off_buf)/sizeof(*allele_off_buf)/2,
                     allele_len, &seq_pos, &allele_ref_end, &max_rl);
             /* where allele ends on reference */
             allele_ref_end += allele_offset;
@@ -2352,16 +2362,11 @@ LIB_EXPORT rc_t CC ReferenceSeq_Compress(const ReferenceSeq* cself, const uint32
 
                 if( allele != NULL ) {
                     /* subst allele in reference */
-                    if( allele_offset < offset ) {
+                    if( allele_offset <= offset ) {
                         /* move allele start inside referenced chunk */
-                        if( allele_len < offset - allele_offset ) {
-                            /* shouldnt happen, there is a check + warning above */
-                            rc = RC(rcAlign, rcFile, rcProcessing, rcSize, rcInsufficient);
-                        } else {
-                            allele += offset - allele_offset;
-                            allele_len -= offset - allele_offset;
+			    allele     += offset_in_allele;
+			    allele_len -= offset_in_allele;
                             rl = 0;
-                        }
                     } else {
                         /* fetch portion of reference which comes before allele */
                         rl = allele_offset - offset;

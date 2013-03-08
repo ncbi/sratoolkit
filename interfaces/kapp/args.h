@@ -83,6 +83,7 @@ extern OptDef StandardOptions [];
 #if USE_OPTFILE
 #define OPTION_OPTFILE   "option-file"
 #endif
+#define OPTION_NO_USER_SETTINGS "no-user-settings"
 #define ALIAS_DEBUG     "+"
 #define ALIAS_LOG_LEVEL "L"
 #define ALIAS_HELP      "h?"
@@ -115,6 +116,9 @@ rc_t CC ArgsMake ( Args ** pself );
  */
 rc_t CC ArgsWhack ( Args * self );
 
+#ifndef ArgsRelease
+#define ArgsRelease(self) ArgsWhack(self)
+#endif
 
 /* AddOptionArray
  *  helper function to call the ArgsAddOption() multiple times

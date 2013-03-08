@@ -57,6 +57,9 @@ extern "C" {
 
 #include "blob-priv.h"
 
+#define MTCURSOR_DBG( msg ) DBGMSG ( DBG_VDB, DBG_FLAG ( DBG_VDB_MTCURSOR ), msg )
+
+
 
 #define VCURSOR_WRITE_MODES_SUPPORTED 0
 
@@ -164,9 +167,14 @@ struct VCursor
     struct STable SKONST *stbl;
 
     /* background flush thread objects */
+    int64_t   launch_cnt;
     struct KThread *flush_thread;
     struct KLock *flush_lock;
     struct KCondition *flush_cond;
+
+    /* background pagemap conversion objects */
+    struct KThread *pagemap_thread;
+    PageMapProcessRequest pmpr;
 
     /* user data */
     void *user;
@@ -174,6 +182,8 @@ struct VCursor
 
     /* external named cursor parameters */    
     BSTree named_params;
+    /* linked cursors */
+    BSTree linked_cursors;
 
     /* read-only blob cache */
     VBlobMRUCache *blob_mru_cache;
@@ -252,6 +262,11 @@ rc_t VCursorSetRowIdRead ( struct VCursor *self, int64_t row_id );
 /* Open
  */
 rc_t VCursorOpenRead ( struct VCursor *self, struct KDlset const *libs );
+/**
+*** VTableCreateCursorReadInternal is only visible in vdb and needed for schema resolutions
+****/
+rc_t  VTableCreateCursorReadInternal(const struct VTable *self, const struct VCursor **cursp);
+
 
 /* ListReadableColumns
  *  performs an insert of '*' to cursor
@@ -281,6 +296,11 @@ rc_t VCursorPostOpenAddRead ( struct VCursor *self, struct VColumn *col );
  */
 rc_t VCursorOpenRowRead ( struct VCursor *self );
 rc_t VCursorCloseRowRead ( struct VCursor *self );
+
+
+/** pagemap supporting thread **/
+rc_t VCursorLaunchPagemapThread(struct VCursor *self);
+rc_t VCursorTerminatePagemapThread(struct VCursor *self);
 
 
 #ifdef __cplusplus

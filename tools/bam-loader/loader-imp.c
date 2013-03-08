@@ -1192,8 +1192,12 @@ static rc_t ProcessBAM(char const bamFile[], context_t *ctx, VDatabase *db,
                     goto LOOP_END;
                 }
             }
+            else if (refSeqId < 0) {
+                (void)PLOGMSG(klogWarn, (klogWarn, "Spot '$(name)' was marked aligned, but reference id = $(id) is invalid", "name=%.*s,id=%i", namelen, name, refSeqId));
+                if ((rc = CheckLimitAndLogError()) != 0) goto LOOP_END;
+            }
             else {
-                (void)PLOGMSG(klogWarn, (klogWarn, "Spot '$(name)' was marked aligned, but reference id = $(id) and reference position = $(pos) are invalid", "name=%.*s,id=%i,pos=%i", namelen, name, refSeqId, rpos));
+                (void)PLOGMSG(klogWarn, (klogWarn, "Spot '$(name)' was marked aligned, but reference position = $(pos) is invalid", "name=%.*s,pos=%i", namelen, name, rpos));
                 if ((rc = CheckLimitAndLogError()) != 0) goto LOOP_END;
             }
 
@@ -1387,7 +1391,7 @@ static rc_t ProcessBAM(char const bamFile[], context_t *ctx, VDatabase *db,
         }
         if (mated) {
             if (isPrimary || !originally_aligned) {
-                if (value->spotId != 0) {
+                if (CTX_VALUE_GET_S_ID(*value) != 0) {
                     (void)PLOGMSG(klogWarn, (klogWarn, "Spot '$(name)' has already been assigned a spot id", "name=%.*s", namelen, name));
                 }
                 else if (!value->has_a_read) {
@@ -1990,27 +1994,21 @@ rc_t OpenPath(char const path[], KDirectory **dir)
     return rc;
 }
 
-rc_t ConvertDatabaseToUnmapped(char const path[])
+static
+rc_t ConvertDatabaseToUnmapped(VDatabase *db)
 {
-    KDirectory *dir;
-    rc_t rc = OpenPath(path, &dir);
-    
-    if (rc == 0) {
-        KDirectory *tbl;
-        
-        rc = KDirectoryOpenDirUpdate(dir, &tbl, 0, "tbl/SEQUENCE");
-        if (rc == 0) {
-            KDirectoryRename(tbl, true, "col/CMP_ALTREAD", "col/ALTREAD");
-            KDirectoryRename(tbl, true, "col/CMP_READ", "col/READ");
-            KDirectoryRename(tbl, true, "col/CMP_ALTCSREAD", "col/ALTCSREAD");
-            KDirectoryRename(tbl, true, "col/CMP_CSREAD", "col/CSREAD");
-            KDirectoryRelease(tbl);
-        }
-        KDirectoryRelease(dir);
+    VTable* tbl;
+    rc_t rc = VDatabaseOpenTableUpdate(db, &tbl, "SEQUENCE");
+    if (rc == 0) 
+    {
+        VTableRenameColumn(tbl, false, "CMP_ALTREAD", "ALTREAD");
+        VTableRenameColumn(tbl, false, "CMP_READ", "READ");
+        VTableRenameColumn(tbl, false, "CMP_ALTCSREAD", "ALTCSREAD");
+        VTableRenameColumn(tbl, false, "CMP_CSREAD", "CSREAD");
+        rc = VTableRelease(tbl);
     }
     return rc;
 }
-
 rc_t run(char const progName[],
          unsigned bamFiles, char const *bamFile[],
          unsigned seqFiles, char const *seqFile[])
@@ -2055,15 +2053,15 @@ rc_t run(char const progName[],
                         rc = rc2;
                     if (rc == 0) {
                         rc = ArchiveBAM(mgr, db, bamFiles, bamFile, seqFiles, seqFile, &has_alignments);
+                        if (rc == 0 && !has_alignments) {
+                            rc = ConvertDatabaseToUnmapped(db);
+                        }
+                        
                         rc2 = VDatabaseRelease(db);
                         if (rc2)
                             (void)LOGERR(klogWarn, rc2, "Failed to close database");
                         if (rc == 0)
                             rc = rc2;
-                        
-                        if (rc == 0 && !has_alignments) {
-                            rc = ConvertDatabaseToUnmapped(G.outpath);
-                        }
                         
                         if (rc == 0) {
                             KMetadata *meta;

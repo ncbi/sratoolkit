@@ -24,11 +24,17 @@
 *
 */
 
+struct KRemoveLockFileTask;
+#define KTASK_IMPL struct KRemoveLockFileTask
+
 #include <kfs/extern.h>
 #include <kfs/lockfile.h>
 #include <kfs/impl.h>
 #include <kfs/file.h>
 #include <kfs/directory.h>
+#include <kproc/task.h>
+#include <kproc/impl.h>
+#include <kproc/procmgr.h>
 #include <klib/text.h>
 #include <klib/refcount.h>
 #include <klib/rc.h>
@@ -37,6 +43,73 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
+
+#if _DEBUGGING
+#define CRIPPLE_CLEANUP 0
+#define DISABLE_CLEANUP 0
+#endif
+
+/*--------------------------------------------------------------------------
+ * KRemoveLockFileTask
+ */
+typedef struct KRemoveLockFileTask KRemoveLockFileTask;
+struct KRemoveLockFileTask
+{
+    KTask dad;
+    KDirectory *dir;
+    char path [ 1 ];
+};
+
+static
+rc_t CC KRemoveLockFileTaskWhack ( KRemoveLockFileTask *self )
+{
+    rc_t rc = KDirectoryRelease ( self -> dir );
+    KTaskDestroy ( & self -> dad, "KRemoveLockFileTask" );
+    free ( self );
+    return rc;
+}
+
+static
+rc_t CC KRemoveLockFileTaskExecute ( KRemoveLockFileTask *self )
+{
+    return KDirectoryRemove ( self -> dir, true, self -> path );
+}
+
+static
+KTask_vt_v1 KRemoveLockFileTask_vt =
+{
+    1, 0,
+    KRemoveLockFileTaskWhack,
+    KRemoveLockFileTaskExecute
+};
+
+static
+rc_t KRemoveLockFileTaskMake ( KTask **task, KDirectory *dir, const char *path )
+{
+    rc_t rc;
+    size_t path_size = string_size ( path );
+    KRemoveLockFileTask *t = malloc ( sizeof * t + path_size );
+    if ( t == NULL )
+        rc = RC ( rcFS, rcLock, rcConstructing, rcMemory, rcExhausted );
+    else
+    {
+        rc = KTaskInit ( & t -> dad, ( const KTask_vt* ) & KRemoveLockFileTask_vt, "KRemoveLockFileTask", path );
+        if ( rc == 0 )
+        {
+            rc = KDirectoryAddRef ( t -> dir = dir );
+            if ( rc == 0 )
+            {
+                strcpy ( t -> path, path );
+                * task = & t -> dad;
+                return 0;
+            }
+        }
+
+        free ( t );
+    }
+
+    return rc;
+}
 
 
 /*--------------------------------------------------------------------------
@@ -49,20 +122,30 @@
  */
 struct KLockFile
 {
-    KDirectory *dir;
+    KProcMgr *pmgr;
+    KTask *cleanup;
+    KTaskTicket ticket;
     KRefcount refcount;
-    char path [ 1 ];
 };
 
 static
 rc_t KLockFileWhack ( KLockFile *self )
 {
-    /* remove the lock file from file system */
-    rc_t rc = KDirectoryRemove ( self -> dir, true, self -> path );
-    if ( rc != 0 )
-        return rc;
+    rc_t rc;
 
-    KDirectoryRelease ( self -> dir );
+    /* remove task from cleanup queue */
+    if ( self -> pmgr != NULL )
+    {
+        rc = KProcMgrRemoveCleanupTask ( self -> pmgr, & self -> ticket );
+        KProcMgrRelease ( self -> pmgr );
+    }
+
+#if ! CRIPPLE_CLEANUP && ! DISABLE_CLEANUP
+    /* remove the lock file from file system */
+    rc = KTaskExecute ( self -> cleanup );
+#endif
+    KTaskRelease ( self -> cleanup );
+
     free ( self );
     return 0;
 }
@@ -106,19 +189,38 @@ static
 rc_t KLockFileMake ( KLockFile **lock, KDirectory *dir, const char *path )
 {
     rc_t rc;
-    size_t path_size = string_size ( path );
-    KLockFile *f = malloc ( sizeof * f + path_size );
+    KLockFile *f = malloc ( sizeof * f );
     if ( f == NULL )
         rc = RC ( rcFS, rcLock, rcConstructing, rcMemory, rcExhausted );
     else
     {
-        rc = KDirectoryAddRef ( f -> dir = dir );
+        rc = KRemoveLockFileTaskMake ( & f -> cleanup, dir, path );
         if ( rc == 0 )
         {
-            strcpy ( f -> path, path );
-            KRefcountInit ( & f -> refcount, 1, "KLockFile", "make", path );
-            * lock = f;
-            return 0;
+#if ! DISABLE_CLEANUP
+            /* register cleanup task with proc mgr */
+            rc = KProcMgrMakeSingleton ( & f -> pmgr );
+            if ( rc == 0 )
+                rc = KProcMgrAddCleanupTask ( f -> pmgr, & f -> ticket, f -> cleanup );
+            else
+#else
+            f -> pmgr = NULL;
+#endif
+            {
+                /* this is allowed to fail if mgr has not been initialized */
+                memset ( & f -> ticket, 0, sizeof f -> ticket );
+                rc = 0;
+            }
+
+            if ( rc == 0 )
+            {
+                KRefcountInit ( & f -> refcount, 1, "KLockFile", "make", path );
+                * lock = f;
+                return 0;
+            }
+
+            if ( f -> pmgr != NULL )
+                KProcMgrRelease ( f -> pmgr );
         }
 
         free ( f );
@@ -164,7 +266,7 @@ LIB_EXPORT rc_t CC KDirectoryVCreateLockFile ( KDirectory *self,
             if ( rc == 0 )
             {
                 KFile *lock_file;
-                rc = KDirectoryCreateFile ( self, & lock_file, false, 0200, kcmCreate | kcmParents, full );
+                rc = KDirectoryCreateFile ( self, & lock_file, false, 0600, kcmCreate | kcmParents, full );
                 if ( rc == 0 )
                 {
                     rc_t rc2;

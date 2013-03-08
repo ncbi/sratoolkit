@@ -213,12 +213,17 @@ rc_t CC SequenceGetCSQuality(const Sequence *self, const int8_t **quality, uint8
  */ 
 bool CC SequenceWasPaired     ( const Sequence *self ); 
 
-/* SelfIsReverse
+enum ReadOrientation {
+    ReadOrientationUnknown,
+    ReadOrientationForward,
+    ReadOrientationReverse
+};
+/* SequenceGetOrientationSelf
  */ 
-bool CC SequenceSelfIsReverse( const Sequence *self ); 
-/* MateIsReverse
+int CC SequenceGetOrientationSelf( const Sequence *self ); 
+/* SequenceGetOrientationMate
  */ 
-bool CC SequenceMateIsReverse( const Sequence *self ); /* false for fastq for now */
+int CC SequenceGetOrientationMate( const Sequence *self ); 
 
 /* IsFirst
  * fastq: read number is present and equal to 1
@@ -413,8 +418,9 @@ rc_t CC RejectedRelease ( const Rejected *self );
  *  "text" [ OUT ] - NUL-terminated error message, held internally
  *  "line" [ OUT ] - 1-based line # in the source (0 for binary formats)
  *  "column" [ OUT ] - 1-based column # in the source (offset from the start of the file for binary formats)
+ *  "fatal" [ OUT ] - no further parsing should be done (likely an unsupported format)
  */
-rc_t CC RejectedGetError( const Rejected* self, const char** text, uint64_t* line, uint64_t* column );
+rc_t CC RejectedGetError( const Rejected* self, const char** text, uint64_t* line, uint64_t* column, bool* fatal );
 
 /* GetData
  *  "data" [ OUT ] - raw input representing the rejected record. held internally

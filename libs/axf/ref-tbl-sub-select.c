@@ -103,13 +103,10 @@ rc_t CC REFERENCE_TABLE_sub_select(RefTableSubSelect* self, int64_t ref_row_id,
             int64_t stop_id;
         } *out;
 
-        VCursorCloseRow(self->curs);
-        if( (rc = VCursorSetRowId(self->curs, ref_row_id)) == 0 &&
-            (rc = VCursorOpenRow(self->curs)) == 0 &&
-            (rc = VCursorCellData(self->curs, self->u.ref.name_idx, NULL, (const void**)&n, NULL, &n_len)) == 0 &&
+        if( (rc = VCursorCellDataDirect(self->curs, ref_row_id, self->u.ref.name_idx, NULL, (const void**)&n, NULL, &n_len)) == 0 &&
             /* use i_name to find current ref rowid range */
             (rc = VCursorParamsSet((const struct VCursorParams *)(self->curs), "QUERY_SEQ_NAME", "%.*s", n_len, n)) == 0 &&
-            (rc = VCursorCellData(self->curs, self->u.ref.name_range_idx, NULL, (const void**)&out, NULL, NULL)) == 0 ) {
+            (rc = VCursorCellDataDirect(self->curs, ref_row_id, self->u.ref.name_range_idx, NULL, (const void**)&out, NULL, NULL)) == 0 ) {
 
             if( self->u.ref.name_len < n_len ) {
                 void* p = realloc(self->u.ref.name, n_len);
@@ -128,12 +125,9 @@ rc_t CC REFERENCE_TABLE_sub_select(RefTableSubSelect* self, int64_t ref_row_id,
                 self->u.ref.name_len = n_len;
                 self->u.ref.start_id = out->start_id;
                 self->u.ref.stop_id = out->stop_id;
-                if( (rc = VCursorCloseRow(self->curs)) == 0 &&
-                    (rc = VCursorSetRowId(self->curs, self->u.ref.stop_id)) == 0 &&
-                    (rc = VCursorOpenRow(self->curs)) == 0 &&
-                    (rc = VCursorCellData(self->curs, self->u.ref.circular_idx, NULL, (const void**)&c, NULL, NULL)) == 0 &&
-                    (rc = VCursorCellData(self->curs, self->u.ref.seq_len_idx, NULL, (const void**)&sl, NULL, NULL)) == 0 &&
-                    (rc = VCursorCellData(self->curs, self->u.ref.max_seq_len_idx, NULL, (const void**)&m, NULL, NULL)) == 0 ) {
+                if( (rc = VCursorCellDataDirect(self->curs, self->u.ref.stop_id, self->u.ref.circular_idx, NULL, (const void**)&c, NULL, NULL)) == 0 &&
+                    (rc = VCursorCellDataDirect(self->curs, self->u.ref.stop_id, self->u.ref.seq_len_idx, NULL, (const void**)&sl, NULL, NULL)) == 0 &&
+                    (rc = VCursorCellDataDirect(self->curs, self->u.ref.stop_id, self->u.ref.max_seq_len_idx, NULL, (const void**)&m, NULL, NULL)) == 0 ) {
                     
                     self->u.ref.circular = c[0];
                     self->u.ref.seq_len = m[0] * (self->u.ref.stop_id - self->u.ref.start_id) + sl[0];
@@ -160,14 +154,12 @@ rc_t CC REFERENCE_TABLE_sub_select(RefTableSubSelect* self, int64_t ref_row_id,
     }
     /* read the data */
     for(num_read = 0; rc == 0 && num_read < ref_len && ref_row_id <= self->u.ref.stop_id; offset = 0) {
-        VCursorCloseRow(self->curs);
-        if( (rc = VCursorSetRowId(self->curs, ref_row_id)) == 0 && (rc = VCursorOpenRow(self->curs)) == 0 ) {
             uint32_t bits;
             const void* output;
             uint32_t boff;
             uint32_t row_len;
 
-            if( (rc = VCursorCellData(self->curs, self->out_idx, &bits, &output, &boff, &row_len)) == 0 ) {
+            if( (rc = VCursorCellDataDirect(self->curs, ref_row_id,self->out_idx, &bits, &output, &boff, &row_len)) == 0 ) {
                 /* row_len MUST be > offset */
                 if( row_len <= offset ) {
                     rc = RC(rcXF, rcFunction, rcSelecting, rcData, rcCorrupt);
@@ -185,7 +177,6 @@ rc_t CC REFERENCE_TABLE_sub_select(RefTableSubSelect* self, int64_t ref_row_id,
                     }
                 }
             }
-        }
     }
     /* detect incomplete read */
     if( rc == 0 && num_read == 0 ) {
@@ -199,17 +190,14 @@ rc_t CC ALIGN_CMN_TABLE_sub_select(RefTableSubSelect* self, int64_t ref_row_id,
                                    INSDC_coord_zero offset, INSDC_coord_len ref_len,
                                    uint32_t ref_ploidy, VRowResult* rslt)
 {
-    rc_t rc;
-
-    VCursorCloseRow(self->curs);
-    if( (rc = VCursorSetRowId(self->curs, ref_row_id)) == 0 && (rc = VCursorOpenRow(self->curs)) == 0 ) {
+	rc_t rc=0;
         INSDC_coord_len num_read = 0;
         const int64_t* al_ref_id = NULL;
         const INSDC_coord_zero* al_ref_start = NULL;
 
         if( offset < 0 ) {
-            if( (rc = VCursorCellData(self->curs, self->u.mod.ref_id_idx, NULL, (void const **)&al_ref_id, NULL, NULL)) == 0 &&
-                (rc = VCursorCellData(self->curs, self->u.mod.ref_start_idx, NULL, (void const **)&al_ref_start, NULL, NULL)) == 0 ) {
+            if( (rc = VCursorCellDataDirect(self->curs, ref_row_id, self->u.mod.ref_id_idx, NULL, (void const **)&al_ref_id, NULL, NULL)) == 0 &&
+                (rc = VCursorCellDataDirect(self->curs, ref_row_id,self->u.mod.ref_start_idx, NULL, (void const **)&al_ref_start, NULL, NULL)) == 0 ) {
                 if( -offset > ref_len ) {
                     /* requested chunk is to the left and is not using allele data */
                     rc = RC(rcXF, rcFunction, rcSelecting, rcData, rcCorrupt);
@@ -228,9 +216,9 @@ rc_t CC ALIGN_CMN_TABLE_sub_select(RefTableSubSelect* self, int64_t ref_row_id,
             const INSDC_coord_zero* rs;
             const INSDC_coord_len* rl;
 
-            if( (rc = VCursorCellData(self->curs, self->out_idx, &bits, &output, &boff, NULL)) == 0 &&
-                (rc = VCursorCellData(self->curs, self->u.mod.read_start_idx, NULL, (void const **)&rs, NULL, &rs_len)) == 0 &&
-                (rc = VCursorCellData(self->curs, self->u.mod.read_len_idx, NULL, (void const **)&rl, NULL, &rl_len)) == 0 ) {
+            if( (rc = VCursorCellDataDirect(self->curs, ref_row_id, self->out_idx, &bits, &output, &boff, NULL)) == 0 &&
+                (rc = VCursorCellDataDirect(self->curs, ref_row_id, self->u.mod.read_start_idx, NULL, (void const **)&rs, NULL, &rs_len)) == 0 &&
+                (rc = VCursorCellDataDirect(self->curs, ref_row_id, self->u.mod.read_len_idx, NULL, (void const **)&rl, NULL, &rl_len)) == 0 ) {
                 assert(rs_len == rl_len);
                 assert(ref_ploidy > 0 && ref_ploidy <= rl_len);
                 if( offset > rl[ref_ploidy - 1] ) {
@@ -251,19 +239,18 @@ rc_t CC ALIGN_CMN_TABLE_sub_select(RefTableSubSelect* self, int64_t ref_row_id,
             const INSDC_coord_len* al_ref_len;
             /* copy right portion of underlying reference */
             if( al_ref_id == NULL || al_ref_start == NULL ) {
-                if( (rc = VCursorCellData(self->curs, self->u.mod.ref_id_idx, NULL, (void const **)&al_ref_id, NULL, NULL)) == 0 ) {
-                    rc = VCursorCellData(self->curs, self->u.mod.ref_start_idx, NULL, (void const **)&al_ref_start, NULL, NULL);
+                if( (rc = VCursorCellDataDirect(self->curs, ref_row_id, self->u.mod.ref_id_idx, NULL, (void const **)&al_ref_id, NULL, NULL)) == 0 ) {
+                     rc = VCursorCellDataDirect(self->curs, ref_row_id, self->u.mod.ref_start_idx, NULL, (void const **)&al_ref_start, NULL, NULL);
                 }
             }
             if( rc == 0 ) {
-                rc = VCursorCellData(self->curs, self->u.mod.ref_len_idx, NULL, (void const **)&al_ref_len, NULL, NULL);
+                rc = VCursorCellDataDirect(self->curs, ref_row_id, self->u.mod.ref_len_idx, NULL, (void const **)&al_ref_len, NULL, NULL);
             }
             if( rc == 0 &&
                 (rc = self->u.mod.parent->func(self->u.mod.parent, al_ref_id[0], al_ref_start[0] + al_ref_len[0],
                                  ref_len - num_read, ref_ploidy, rslt)) == 0 ) {
             }
         }
-    }
     return rc;
 }
 
@@ -287,7 +274,7 @@ void CC RefTableSubSelect_Whack ( void *obj )
                            (GetRCObject(rc) == rcColumn && GetRCState(rc) == rcExists))
 
 static
-rc_t RefTableSubSelect_Make( RefTableSubSelect **objp, const VTable *tbl, const char* out_col_name )
+rc_t RefTableSubSelect_Make( RefTableSubSelect **objp, const VTable *tbl, const VCursor *native_curs, const char* out_col_name )
 {
     rc_t rc;
 
@@ -296,13 +283,9 @@ rc_t RefTableSubSelect_Make( RefTableSubSelect **objp, const VTable *tbl, const 
     if( obj == NULL ) {
         rc = RC(rcXF, rcFunction, rcConstructing, rcMemory, rcExhausted);
     } else {
-        /* open the reference table */
-        const VTable *reftbl;
-        if( (rc = AlignRefTable(tbl, &reftbl)) == 0 ) {
-            /* create a cursor */
-            rc = VTableCreateCachedCursorRead(reftbl, &obj->curs, 4*1024*1024);
-            VTableRelease ( reftbl );
-            if( rc == 0 && (rc = VCursorOpen(obj->curs)) == 0 ) {
+	const VTable *reftbl=NULL;
+        /* open the reference table cursor*/
+        if( (rc = AlignRefTableCursor(tbl, native_curs, &obj->curs,&reftbl)) == 0 ) {
                 /* add columns to cursor */
                 if( IS_ADDED(obj->curs, &obj->u.ref.circular_idx, "CIRCULAR") ) {
                     /* normal REFERENCE table */
@@ -315,7 +298,7 @@ rc_t RefTableSubSelect_Make( RefTableSubSelect **objp, const VTable *tbl, const 
                     }
                 } else if( GetRCObject(rc) == rcColumn && GetRCState(rc) == rcNotFound ) {
                     /* try as align_cmn */
-                    if( (rc = RefTableSubSelect_Make(&obj->u.mod.parent, reftbl, out_col_name)) == 0 &&
+                    if( (rc = RefTableSubSelect_Make(&obj->u.mod.parent, reftbl, native_curs, out_col_name)) ==0 &&
                         IS_ADDED(obj->curs, &obj->u.mod.ref_id_idx, "REF_ID") &&
                         IS_ADDED(obj->curs, &obj->u.mod.ref_start_idx, "REF_START") &&
                         IS_ADDED(obj->curs, &obj->u.mod.ref_len_idx, "REF_LEN") &&
@@ -326,15 +309,16 @@ rc_t RefTableSubSelect_Make( RefTableSubSelect **objp, const VTable *tbl, const 
                     }
                 }
                 if( rc == 0 && IS_ADDED(obj->curs, &obj->out_idx,  out_col_name) ) {
-                    rc = VCursorOpen(obj->curs);
+                    rc = 0;
                 }
                 if( rc == 0 ) {
                     *objp = obj;
+		    VTableRelease(reftbl);
                     return 0;
                 }
                 VCursorRelease(obj->curs);
-            }
         }
+	VTableRelease(reftbl);
         free(obj);
     }
     return rc;
@@ -380,13 +364,13 @@ VTRANSFACT_IMPL ( ALIGN_ref_sub_select, 1, 0, 0 ) ( const void *self, const VXfa
     VFuncDesc *rslt, const VFactoryParams *cp, const VFunctionParams *dp )
 {
     RefTableSubSelect *fself;
-    rc_t rc = RefTableSubSelect_Make ( & fself, info -> tbl, "(INSDC:4na:bin)READ" );
+    rc_t rc = RefTableSubSelect_Make ( & fself, info -> tbl, (const VCursor*)info->parms ,"(INSDC:4na:bin)READ" );
     if ( rc == 0 )
     {
         rslt -> self = fself;
         rslt -> whack = RefTableSubSelect_Whack;
         rslt -> u . ndf = reftbl_sub_select;
-        rslt -> variant = vftNonDetRow;
+        rslt -> variant = vftRow;
     }
 
     return rc;
@@ -396,13 +380,13 @@ VTRANSFACT_IMPL ( NCBI_align_ref_sub_select_preserve_qual, 1, 0, 0 ) ( const voi
                                                    VFuncDesc *rslt, const VFactoryParams *cp, const VFunctionParams *dp )
 {
     RefTableSubSelect *fself;
-    rc_t rc = RefTableSubSelect_Make( & fself, info -> tbl, "(bool)PRESERVE_QUAL" );
+    rc_t rc = RefTableSubSelect_Make( & fself, info -> tbl, (const VCursor*)info->parms , "(bool)PRESERVE_QUAL" );
     if ( rc == 0 )
     {
         rslt -> self = fself;
         rslt -> whack = RefTableSubSelect_Whack;
         rslt -> u . ndf = reftbl_sub_select;
-        rslt -> variant = vftNonDetRow;
+        rslt -> variant = vftRow;
     }
     
     return rc;

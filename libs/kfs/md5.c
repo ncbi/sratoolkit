@@ -1498,7 +1498,7 @@ LIB_EXPORT rc_t CC KFileMakeMD5Read ( const KFile **fp,
             else
             {
                 rc = KFileInit ( & f -> dad,
-				     ( const KFile_vt* ) & KMD5FileRead_vt, true, false );
+				     ( const KFile_vt* ) & KMD5FileRead_vt, "KMD5File", "no-name", true, false );
                 if ( rc == 0 )
                 {
                     f -> position = 0;
@@ -1592,7 +1592,7 @@ LIB_EXPORT rc_t CC KMD5FileMakeWrite ( KMD5File **fp,
             else
             {
                 rc = KFileInit ( & f -> dad,
-                    ( const KFile_vt* ) & sKMD5FileWrite_vt, out -> read_enabled, true );
+                    ( const KFile_vt* ) & sKMD5FileWrite_vt, "KMD5File", path, out -> read_enabled, true );
                 if ( rc == 0 )
                 {
                     f -> position = 0;
@@ -1702,7 +1702,7 @@ LIB_EXPORT rc_t CC KMD5FileMakeAppend ( KMD5File **fp, KFile *out, KMD5SumFmt *m
             else
             {
                 rc = KFileInit ( & f -> dad,
-                    ( const KFile_vt* ) & sKMD5FileAppend_vt, out -> read_enabled, true );
+                    ( const KFile_vt* ) & sKMD5FileAppend_vt, "KMD5File", path, out -> read_enabled, true );
                 if ( rc == 0 )
                 {
                     MD5StateInit ( & f -> md5 );
@@ -1855,14 +1855,14 @@ LIB_EXPORT rc_t CC KFileMakeNewMD5Read ( const KFile **fp,
             rc = RC ( rcFS, rcFile, rcConstructing, rcPath, rcEmpty );
         else
         {
-            KMD5File *f = malloc ( sizeof * f - sizeof f -> u +
-                sizeof f -> u . wr + strlen ( path ) );
+            size_t path_size = string_size ( path );
+            KMD5File *f = malloc ( sizeof * f + path_size );
             if ( f == NULL )
                 rc = RC ( rcFS, rcFile, rcConstructing, rcMemory, rcExhausted );
             else
             {
                 rc = KFileInit ( & f -> dad,
-                    ( const KFile_vt* ) & sKMD5FileReadCreate_vt, in -> read_enabled, false );
+                    ( const KFile_vt* ) & sKMD5FileReadCreate_vt, "KMD5File", path, in -> read_enabled, false );
                 if ( rc == 0 )
                 {
                     f -> position = 0;
@@ -1871,7 +1871,7 @@ LIB_EXPORT rc_t CC KFileMakeNewMD5Read ( const KFile **fp,
                     f -> fmt = md5;
 		    f -> type = KMD5FileTypeWrite;
                     memset ( & f -> u . wr, 0, sizeof f -> u . wr );
-                    strcpy ( f -> u . wr . path, path );
+                    string_copy ( f -> u . wr . path, path_size + 1, path, path_size );
 #if 0
 /* KFileSize can't always be used */
                     rc = KFileSize ( in, & f -> u . wr . max_position );

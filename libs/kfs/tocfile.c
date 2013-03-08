@@ -531,7 +531,7 @@ LIB_EXPORT rc_t CC KTocFileMake ( const KFile ** pself,
     }
     else
     {
-	rc = KFileInit (&self->dad, (const KFile_vt*)&vtKTocFile, true, false);
+	rc = KFileInit (&self->dad, (const KFile_vt*)&vtKTocFile, "KTocFile", "no-name", true, false);
 	if (rc != 0)
 	{
 	    LOGERR (klogErr, rc, "Init failure in KTocFileMake");

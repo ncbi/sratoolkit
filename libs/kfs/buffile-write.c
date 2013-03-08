@@ -284,7 +284,7 @@ rc_t KBufWriteFileMake ( KBufWriteFile ** bp, const KFile *f, size_t bsize,
     else
     {
         memset ( buf, 0, sizeof * buf );
-        rc = KFileInit ( & buf -> dad, vt, read_enabled, write_enabled );
+        rc = KFileInit ( & buf -> dad, vt, "KBufWriteFile", "no-name", read_enabled, write_enabled );
         if ( rc == 0 )
         {
             rc = KFileAddRef ( f );

@@ -26,6 +26,7 @@
 
 #include <vfs/manager-priv.h> /* VFSManagerOpenFileReadDecrypt */
 #include <vfs/manager.h> /* VFSManagerMake */
+#include <vfs/resolver.h> /* VResolver */
 #include <vfs/path.h> /* VPathMake */
 
 #include <kapp/main.h>
@@ -77,6 +78,9 @@
 #include <assert.h>
 
 #include "vdb-validate.vers.h"
+
+#define RELEASE(type, obj) do { rc_t rc2 = type##Release(obj); \
+    if (rc2 != 0 && rc == 0) { rc = rc2; } obj = NULL; } while (false)
 
 static bool exhaustive;
 static bool md5_required;
@@ -1664,13 +1668,44 @@ rc_t CC vdb_validate_dir ( const KDirectory *dir, uint32_t type, const char *nam
     return 0;
 }
 
+static rc_t disableRemoteResolution() {
+    rc_t rc = 0;
+
+    VFSManager *mgr = NULL;
+    VResolver *resolver = NULL;
+
+    rc = VFSManagerMake(&mgr);
+    if (rc != 0) {
+        LOGERR(klogInt, rc, "Cannot VFSManagerMake");
+        return rc;
+    }
+
+    rc = VFSManagerGetResolver(mgr, &resolver);
+    if (rc != 0) {
+        LOGERR(klogInt, rc, "Cannot VFSManagerGetResolver");
+    }
+    else {
+        VResolverRemoteEnable(resolver, vrAlwaysDisable);
+    }
+
+    RELEASE(VResolver, resolver);
+    RELEASE(VFSManager, mgr);
+
+    return rc;
+}
+
 static
 rc_t vdb_validate ( const vdb_validate_params *pb, const char *path )
 {
-    rc_t rc;
+    KPathType pt = kptNotFound;
+
+    rc_t rc = disableRemoteResolution();
+    if (rc != 0) {
+        return rc;
+    }
 
     /* what type of thing is this path? */
-    KPathType pt = KDirectoryPathType ( pb -> wd, path );
+    pt = KDirectoryPathType ( pb -> wd, path );
     switch ( pt & ~ kptAlias )
     {
     case kptNotFound:
@@ -1694,7 +1729,8 @@ rc_t vdb_validate ( const vdb_validate_params *pb, const char *path )
             rc = RC ( rcExe, rcPath, rcValidating, rcType, rcUnsupported );
             break;
         default:
-            return KDirectoryVisit ( pb -> wd, false, vdb_validate_dir, ( void* ) pb, path );
+            return KDirectoryVisit ( pb -> wd, false,
+                vdb_validate_dir, ( void* ) pb, path );
         }
         break;
 
@@ -1702,7 +1738,8 @@ rc_t vdb_validate ( const vdb_validate_params *pb, const char *path )
         return 0;
     }
 
-    PLOGMSG ( klogWarn, ( klogWarn, "Path '$(fname)' could not be validated", "fname=%s", path ) );
+    PLOGMSG ( klogWarn, ( klogWarn,
+        "Path '$(fname)' could not be validated", "fname=%s", path ) );
 
     return 0;
 }

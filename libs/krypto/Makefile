@@ -248,7 +248,7 @@ ALL_LIB_SRC += \
 LIB_SRC += \
 	no-null-ncbi.vec
 TEST_LIB_SRC += \
-	null-ncbi.vec
+	no-null-ncbi.vec
 endif
 
 ifeq ($(VECREG_SUPPORTED),true)
@@ -265,7 +265,7 @@ ALL_LIB_SRC += \
 LIB_SRC += \
 	no-null-ncbi.vecreg
 TEST_LIB_SRC += \
-	null-ncbi.vecreg
+	no-null-ncbi.vecreg
 endif
 
 ifeq ($(AESNI_SUPPORTED),true)
@@ -275,14 +275,14 @@ ALL_LIB_SRC += \
 LIB_SRC += \
 	no-null-ncbi.aes-ni
 TEST_LIB_SRC += \
-	null-ncbi.aes-ni
+	no-null-ncbi.aes-ni
 else
 ALL_LIB_SRC += \
 	cipher-no-vec.aes-ni
 LIB_SRC += \
 	no-null-ncbi.aes-ni
 TEST_LIB_SRC += \
-	null-ncbi.aes-ni
+	no-null-ncbi.aes-ni
 endif
 
 
@@ -334,7 +334,6 @@ $(ILIBDIR)/libkryptotest.$(LIBX): $(KRYPTOTEST_OBJ)
 
 libkryptotest_tag:
 	@ $(TOP)/build/tag-module.sh $(MODULE) libkryptotest $(KRYPTOTEST_OBJ)
-
 
 
 

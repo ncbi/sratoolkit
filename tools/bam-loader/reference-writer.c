@@ -228,6 +228,8 @@ rc_t ReferenceSetFile(Reference *self, const char id[],
     self->curPos = self->endPos = 0;
     self->length = length;
     self->lastOffset = 0;
+    KDataBufferResize(&self->pri_overlap, 0);
+    KDataBufferResize(&self->sec_overlap, 0);
 
     if(!self->out_of_order) (void)PLOGMSG(klogInfo, (klogInfo, "Processing Reference '$(id)'", "id=%s", id));
     
@@ -363,7 +365,7 @@ rc_t ReferenceRead(Reference *self, AlignmentRecord *data, uint64_t const pos,
 {
     *matches = 0;
     BAIL_ON_FAIL(ReferenceSeq_Compress(self->rseq, (G.acceptHardClip ? ewrefmgr_co_AcceptHardClip : 0) + ewrefmgr_cmp_Binary, pos,
-        seqDNA, seqLen, rawCigar, cigCount, 0, NULL, 0, NULL, 0, &data->data));
+        seqDNA, seqLen, rawCigar, cigCount, 0, NULL, 0, 0, NULL, 0, &data->data));
 
     if (!G.acceptNoMatch && data->data.ref_len == 0)
         return RC(rcApp, rcFile, rcReading, rcConstraint, rcViolated);

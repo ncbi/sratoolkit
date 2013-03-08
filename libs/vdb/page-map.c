@@ -76,6 +76,8 @@ elem_count_t PageMapLastLength(const PageMap *cself) {
     return cself->leng_recs > 0 ? cself->length[cself->leng_recs - 1] : 0;
 }
 
+
+
 static rc_t PageMapRegionExpand(PageMap *self,pm_expand_region_type_t TYPE,row_count_t numrows,elem_count_t length,elem_count_t data_offset)
 {
 	rc_t rc;
@@ -152,7 +154,57 @@ static rc_t PageMapRegionExpand(PageMap *self,pm_expand_region_type_t TYPE,row_c
 	return 0;
 }
 
-static rc_t PageMapExpand(const PageMap *cself, row_count_t upto)
+rc_t PageMapPreExpandFull(const PageMap *cself, row_count_t upto) /*** mostly for use as a temporary pagemap ***/
+{
+	rc_t    rc=0;
+	if(upto > 0){
+		PageMap *self = (PageMap *)cself;
+		assert(self->exp_rgn_last == 0);
+		rc = KDataBufferResize(&self->istorage, 1); /** one and only one pagemap **/
+		if(rc) return rc;
+		
+		self->exp_rgn_last = (PageMapRegion *)self->istorage.base + self->exp_rgn_cnt;
+		self->exp_rgn_cnt = ++self->exp_dr_last;
+
+		self->exp_rgn_last->data_offset = 0;
+		rc=KDataBufferResize(&self->dstorage, upto*2);
+		if(rc) return rc;
+		self->exp_rgn_last->start_row   = 0;
+		self->exp_rgn_last->numrows = 0;
+		self->exp_rgn_last->type = PM_REGION_EXPAND_FULL;
+		self->exp_rgn_last->expanded = true;
+		self->pre_exp_row_count = upto;
+	}
+	return rc;
+}
+
+rc_t PageMapExpandFull(const PageMap *cself)
+{
+	rc_t rc;
+	PageMap *self = (PageMap *)cself;
+	if(self->leng_recs == 1){ 
+		if(   self->data_recs == 1  /* static */
+                   || self->random_access ){ 
+			return 0;
+		} else if(self->data_recs == self->row_count && !self->random_access){ /** equidistant **/
+			rc=PageMapRegionExpand(self,PM_REGION_EXPAND_EQUIDISTANT,self->row_count,self->length[0],0);
+			if(rc) return rc;
+			self->exp_data_offset_last += self->row_count*self->length[0];
+			self->exp_row_last = self->row_count ;
+			self->exp_dr_last =  self->row_count;
+			self->exp_lr_last =  1;
+			self->exp_lr_used =  self->row_count;
+			return  0;
+		}
+        }
+	return 0;
+/*** OTHER VARIANTS  ***
+	return PageMapExpand(cself, cself->row_count);
+	return PageMapExpand(cself, cself->row_count < 1024?cself->row_count:1024);
+******************/
+}
+
+rc_t PageMapExpand(const PageMap *cself, row_count_t upto)
 {
 	rc_t	rc;
         PageMap *self = (PageMap *)cself;
@@ -160,6 +212,7 @@ static rc_t PageMapExpand(const PageMap *cself, row_count_t upto)
 #define DATA_RUN_TRIGGER 8
 #define EQUI_RUN_TRIGGER 8
 	if( self->leng_recs == 1 && self->row_count > self->data_recs*12/10 && !self->random_access){ /*** Shortcut to make tight loop ***/
+
 		if(self->exp_rgn_last == 0){
 			rc = KDataBufferResize(&self->istorage, self->data_recs);
 			if(rc) return rc;
@@ -280,10 +333,12 @@ static rc_t PageMapFindRegion(const PageMap *cself,uint64_t row,PageMapRegion **
 	/*** in PageMap rows are 0-based **/
 	rc_t	rc;
 	pm_size_t left,right,i_rgn;
-	if(row >= cself->row_count) return  RC (rcVDB, rcPagemap, rcSearching, rcRow, rcNotFound );
-
-	rc=PageMapExpand(cself,row);
-	if(rc) return rc;
+	if(row >= cself->row_count )
+		return  RC (rcVDB, rcPagemap, rcSearching, rcRow, rcNotFound );
+	if(cself -> exp_row_last <= row){
+		rc=PageMapExpand(cself,row);
+		if(rc) return rc;
+	}
 
 	if(cself->exp_rgn_cnt > 1){
 		i_rgn = cself->i_rgn_last;
@@ -375,8 +430,8 @@ static rc_t PageMapRegionGetData(const PageMapRegion *cself,const elem_count_t *
 /*** This is a heavy-weight function which gets data by integration all the time - useful for debugging ****/
 static rc_t PageMapGetData_HW(const PageMap *cself,uint64_t row,uint32_t * data_offset,uint32_t * data_length,uint32_t * repeat_count)
 {
-	if(row >= cself->row_count) return  RC (rcVDB, rcPagemap, rcSearching, rcRow, rcNotFound );
-
+	if(row >= cself->row_count)
+		return  RC (rcVDB, rcPagemap, rcSearching, rcRow, rcNotFound );
 	if(data_offset != NULL || data_length != NULL || repeat_count != NULL){
 		uint64_t i,j,r;
 		uint32_t dto,dtl,dtr;
@@ -420,6 +475,24 @@ rc_t PageMapFindRow(const PageMap *cself,uint64_t row,uint32_t * data_offset,uin
 	rc_t	rc=0;
 	PageMapRegion *pmr;
 
+	if(cself->data_recs == 1){ /** static **/
+		if(repeat_count) *repeat_count = UINT32_MAX;
+		if(data_offset)  *data_offset = 0;
+		if(data_length)  *data_length = cself->length[0];
+		return 0;
+        }
+	if(cself->random_access && cself->leng_recs == 1){
+		if(row >= cself->data_recs)
+			return RC(rcVDB, rcPagemap, rcAccessing, rcRow, rcOutofrange);
+		if(data_length)  *data_length = cself->length[0];
+		if(data_offset)  *data_offset =  cself->data_offset[row];
+		if(repeat_count){
+			uint64_t i;
+			for( i=row+1, repeat_count[0]=1; i < cself->data_recs &&  cself->data_offset[i] == cself->data_offset[row]; i++, repeat_count[0]++ ){}
+		}
+		return 0;
+	}
+
 	rc = PageMapFindRegion(cself,row,&pmr);
 	if(rc) return rc;
 
@@ -462,8 +535,21 @@ rc_t PageMapNewIterator(const PageMap *self, PageMapIterator *lhs, uint64_t firs
 
     lhs->last_row = first_row + num_rows;
     lhs->cur_row = first_row;
-    rc = PageMapExpand(self,lhs->last_row-1);
-    if(rc) return rc;
+    if(self->data_recs == 1){
+	lhs->repeat_count  = (num_rows < UINT32_MAX)?num_rows:UINT32_MAX;
+	lhs->static_datalen = self->length[0];
+	return 0;
+    }
+    if(self->random_access && self->leng_recs == 1 && first_row < self->row_count){ /** simple random access - no explosion needed **/
+	lhs->static_datalen = self->length[0];
+	lhs->exp_base = &self->data_offset;
+	if(lhs->last_row > self->row_count) lhs->last_row = self->row_count;
+	return 0;
+    }
+    if( self->exp_row_last < lhs->last_row){
+	    rc = PageMapExpand(self,lhs->last_row-1);
+	    if(rc) return rc;
+    }
     rc = PageMapFindRow(self,first_row,NULL,NULL,NULL);
     if(rc) return rc;
     lhs->rgns    = (PageMapRegion**) &self->istorage.base;
@@ -475,6 +561,7 @@ rc_t PageMapNewIterator(const PageMap *self, PageMapIterator *lhs, uint64_t firs
 }
 
 static PageMap *new_PageMap(void) {
+
     PageMap *y;
     y = malloc(sizeof(*y));
     if (y) {
@@ -642,7 +729,7 @@ rc_t PageMapToRandomAccess(PageMap **rslt, PageMap * src,uint32_t *data_offset) 
 				} else {
 					uint32_t i,j;
 					for(i=j=0;i<src->data_recs;i++){
-						row_count_t data_len=src->data_run[i];
+						elem_count_t data_len=src->data_run[i];
 						while(data_len > 0){
 							assert(j < src->row_count);
 							dst->data_offset[j++] = data_offset[i];
@@ -818,6 +905,28 @@ rc_t PageMapAppendRows(PageMap *self, uint64_t row_length, uint64_t run_length, 
                 return rc;
         }
         self->data_run[data_cur] = run_length;
+    }
+    if(self->row_count < self->pre_exp_row_count){
+	int i;
+	elem_count_t *exp_base = self->dstorage.base;
+	elem_count_t data_offset;
+	if(same_data){
+		if(self->row_count == 0){
+			data_offset = 0;
+		} else {
+			data_offset = exp_base[2*self->row_count-1];
+		}
+	} else {
+		data_offset = self->exp_data_offset_last;
+		self->exp_data_offset_last += row_length;
+	}
+	for(i=self->row_count;i<run_length+self->row_count;i++){
+		exp_base[2*i]  =  row_length;
+		exp_base[2*i+1]=  data_offset;
+	}
+	self->exp_row_last += run_length;
+	self->exp_rgn_last->numrows += run_length;
+	
     }
     self->row_count += run_length;
     return 0;

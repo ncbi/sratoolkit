@@ -36,6 +36,7 @@
 
 #include <kdb/table.h>
 #include <kdb/column.h>
+#include <kdb/manager.h>
 
 #include <kfs/directory.h>
 
@@ -72,6 +73,9 @@
 #include "vdb-dump-row-context.h"
 #include "vdb-dump-formats.h"
 
+
+#define CURSOR_CACHE_SIZE 256*1024*1024
+
 static const char * row_id_on_usage[] = { "print row id", NULL };
 static const char * line_feed_usage[] = { "line-feed's inbetween rows", NULL };
 static const char * colname_off_usage[] = { "do not print column-names", NULL };
@@ -99,6 +103,7 @@ static const char * numelem_usage[] = { "print only element-count", NULL };
 static const char * numelemsum_usage[] = { "sum element-count", NULL };
 static const char * show_blobbing_usage[] = { "show blobbing", NULL };
 static const char * enum_phys_usage[] = { "enumerate physical columns", NULL };
+static const char * objtype_usage[] = { "report type of object", NULL };
 
 OptDef DumpOptions[] =
 {
@@ -129,7 +134,8 @@ OptDef DumpOptions[] =
     { OPTION_NUMELEMSUM, ALIAS_NUMELEMSUM, NULL, numelemsum_usage, 1, false, false },
     { OPTION_SHOW_BLOBBING, NULL, NULL, show_blobbing_usage, 1, false, false },
     { OPTION_ENUM_PHYS, NULL, NULL, enum_phys_usage, 1, false, false },
-    { OPTION_OBJVER, ALIAS_OBJVER, NULL, objver_usage, 1, false, false }
+    { OPTION_OBJVER, ALIAS_OBJVER, NULL, objver_usage, 1, false, false },
+    { OPTION_OBJTYPE, ALIAS_OBJTYPE, NULL, objtype_usage, 1, false, false }
 };
 
 const char UsageDefaultName[] = "vdb-dump";
@@ -184,6 +190,7 @@ rc_t CC Usage ( const Args * args )
     HelpOptionLine ( ALIAS_EXCLUDED_COLUMNS, OPTION_EXCLUDED_COLUMNS, NULL, excluded_columns_usage );
     HelpOptionLine ( ALIAS_BOOLEAN, OPTION_BOOLEAN, NULL, boolean_usage );
     HelpOptionLine ( ALIAS_OBJVER, OPTION_OBJVER, NULL, objver_usage );
+    HelpOptionLine ( ALIAS_OBJTYPE, OPTION_OBJTYPE, NULL, objtype_usage );
     HelpOptionLine ( ALIAS_NUMELEM, OPTION_NUMELEM, NULL, numelem_usage );
     HelpOptionLine ( ALIAS_NUMELEMSUM, OPTION_NUMELEMSUM, NULL, numelemsum_usage );
     HelpOptionLine ( NULL, OPTION_SHOW_BLOBBING, NULL, show_blobbing_usage );
@@ -500,7 +507,7 @@ my_table  [IN] ... open table needed for vdb-calls
 static rc_t vdm_dump_opened_table( const p_dump_context ctx, const VTable *my_table )
 {
     row_context r_ctx;
-    rc_t rc = VTableCreateCachedCursorRead( my_table, &(r_ctx.cursor), 256*1024*1024 );
+    rc_t rc = VTableCreateCachedCursorRead( my_table, &(r_ctx.cursor), CURSOR_CACHE_SIZE );
     DISP_RC( rc, "VTableCreateCursorRead() failed" );
     if ( rc == 0 )
     {
@@ -666,7 +673,7 @@ my_database [IN] ... open database needed for vdb-calls
 static rc_t vdm_enum_tables( const p_dump_context ctx,
                              const VDatabase *my_database )
 {
-    rc_t rc = KOutMsg( ">>> enumerating the tables of database >%s<\n", ctx->path );
+    rc_t rc = KOutMsg( "enumerating the tables of database '%s'\n", ctx->path );
     if ( rc == 0 )
     {
         KNamelist *tbl_names;
@@ -1280,7 +1287,7 @@ static rc_t vdm_check_accession( const p_dump_context ctx, const KDirectory *my_
                 char *buf = vdm_translate_accession( my_sra_path, ctx->path, 64 );
                 if ( buf != NULL )
                 {
-                    DBGMSG ( DBG_APP, 0,  ( "sra-accession found! >%s<\n", buf ) );
+                    DBGMSG ( DBG_APP, 0,  ( "sra-accession found! '%s'<\n", buf ) );
                     free( (char*)ctx->path );
                     ctx->path = buf;
                 }
@@ -1293,6 +1300,7 @@ static rc_t vdm_check_accession( const p_dump_context ctx, const KDirectory *my_
 }
 #endif
 
+
 static rc_t vdm_print_objver( const p_dump_context ctx, const VDBManager *mgr )
 {
     ver_t version;
@@ -1304,11 +1312,98 @@ static rc_t vdm_print_objver( const p_dump_context ctx, const VDBManager *mgr )
 }
 
 
+static void vdm_print_objtype( const VDBManager *mgr, const char * acc_or_path )
+{
+    int path_type = ( VDBManagerPathType ( mgr, acc_or_path ) & ~ kptAlias );
+    switch ( path_type )
+    {
+    case kptDatabase    :   KOutMsg( "Database\n" ); break;
+    case kptTable       :   KOutMsg( "Table\n" ); break;
+    case kptColumn      :   KOutMsg( "Column\n" ); break;
+    case kptIndex       :   KOutMsg( "Index\n" ); break;
+    case kptNotFound    :   KOutMsg( "not found\n" ); break;
+    case kptBadPath     :   KOutMsg( "bad path\n" ); break;
+    case kptFile        :   KOutMsg( "File\n" ); break;
+    case kptDir         :   KOutMsg( "Dir\n" ); break;
+    case kptCharDev     :   KOutMsg( "CharDev\n" ); break;
+    case kptBlockDev    :   KOutMsg( "BlockDev\n" ); break;
+    case kptFIFO        :   KOutMsg( "FIFO\n" ); break;
+    case kptZombieFile  :   KOutMsg( "ZombieFile\n" ); break;
+    case kptDataset     :   KOutMsg( "Dataset\n" ); break;
+    case kptDatatype    :   KOutMsg( "Datatype\n" ); break;
+    default             :   KOutMsg( "value = '%i'\n", path_type ); break;
+    }
+}
+
+
+#define USE_PATHTYPE_TO_DETECT_DB_OR_TAB 1
+
+static rc_t vdb_main_one_obj_by_pathtype( const p_dump_context ctx,
+                                          const VDBManager *mgr,
+                                          const char * acc_or_path )
+{
+    rc_t rc;
+    int path_type = ( VDBManagerPathType ( mgr, acc_or_path ) & ~ kptAlias );
+    switch ( path_type )
+    {
+    case kptDatabase    :   rc = vdm_dump_database( ctx, mgr );
+                            DISP_RC( rc, "dump_database() failed" );
+                            break;
+
+    case kptPrereleaseTbl:
+    case kptTable       :   rc = vdm_dump_table( ctx, mgr );
+                            DISP_RC( rc, "dump_table() failed" );
+                            break;
+
+    default             :   rc = RC( rcVDB, rcNoTarg, rcConstructing, rcItem, rcNotFound );
+                            PLOGERR( klogInt, ( klogInt, rc,
+                                "the path '$(p)' cannot be opened as vdb-database or vdb-table",
+                                "p=%s", ctx->path ) );
+                            if ( vdco_schema_count( ctx ) == 0 )
+                            {
+                            LOGERR( klogInt, rc, "Maybe it is a legacy table. If so, specify a schema with the -S option" );
+                            }
+                            break;
+    }
+    return rc;
+}
+
+
+static rc_t vdb_main_one_obj_by_probing( const p_dump_context ctx,
+                                         const VDBManager *mgr,
+                                         const char * acc_or_path )
+{
+    rc_t rc;
+    if ( vdh_is_path_database( mgr, ctx->path, &(ctx->schema_list) ) )
+    {
+        rc = vdm_dump_database( ctx, mgr );
+        DISP_RC( rc, "dump_database() failed" );
+    }
+    else if ( vdh_is_path_table( mgr, ctx->path, &(ctx->schema_list) ) )
+    {
+        rc = vdm_dump_table( ctx, mgr );
+        DISP_RC( rc, "dump_table() failed" );
+    }
+    else
+    {
+        rc = RC( rcVDB, rcNoTarg, rcConstructing, rcItem, rcNotFound );
+        PLOGERR( klogInt, ( klogInt, rc,
+                 "the path '$(p)' cannot be opened as vdb-database or vdb-table",
+                 "p=%s", ctx->path ) );
+        if ( vdco_schema_count( ctx ) == 0 )
+        {
+            LOGERR( klogInt, rc, "Maybe it is a legacy table. If so, specify a schema with the -S option" );
+        }
+    }
+    return rc;
+}
+
+
 static rc_t vdm_main_one_obj( const p_dump_context ctx,
                         KDirectory *dir, const VDBManager *mgr,
                         const char * acc_or_path )
 {
-    rc_t rc;
+    rc_t rc = 0;
 
     ctx->path = string_dup_measure ( acc_or_path, NULL );
 
@@ -1325,26 +1420,19 @@ static rc_t vdm_main_one_obj( const p_dump_context ctx,
     {
         rc = vdm_print_objver( ctx, mgr );
     }
+    else if ( ctx->objtype_requested )
+    {
+        vdm_print_objtype( mgr, acc_or_path );
+    }
     else
     {
-        /* if the path is a database-path... (from vdb-dump-helper.c) */
-        if ( vdh_is_path_database( mgr, ctx->path, &(ctx->schema_list) ) )
+        if ( USE_PATHTYPE_TO_DETECT_DB_OR_TAB )
         {
-            rc = vdm_dump_database( ctx, mgr );
-            DISP_RC( rc, "dump_database() failed" );
-        }
-        /* if the path is a table-path... (from vdb-dump-helper.c) */
-        else if ( vdh_is_path_table( mgr, ctx->path, &(ctx->schema_list) ) )
-        {
-            rc = vdm_dump_table( ctx, mgr );
-            DISP_RC( rc, "dump_table() failed" );
+            rc = vdb_main_one_obj_by_pathtype( ctx, mgr, acc_or_path );
         }
         else
         {
-            KOutMsg( "\nthe path >%s< cannot be opened as vdb-database or vdb-table !!!\n", ctx->path );
-            if ( vdco_schema_count( ctx ) == 0 )
-                KOutMsg( "Maybe it is a legacy table. If so, specify a schema with the -S option\n" );
-            rc = RC( rcVDB, rcNoTarg, rcConstructing, rcItem, rcNotFound );
+            rc = vdb_main_one_obj_by_probing( ctx, mgr, acc_or_path );
         }
     }
 
@@ -1387,8 +1475,8 @@ static rc_t vdm_main( const p_dump_context ctx, Args * args )
             /* show manager is independend form db or tab */
             if ( ctx->version_requested )
             {
-                rc1 = vdh_show_manager_version( mgr );
-                DISP_RC( rc1, "show_manager_version() failed" );
+                rc = vdh_show_manager_version( mgr );
+                DISP_RC( rc, "show_manager_version() failed" );
             }
             else
             {

@@ -26,6 +26,7 @@
 #include <klib/rc.h>
 #include <klib/log.h>
 #include <klib/printf.h>
+#include <klib/text.h>
 #include <kdb/meta.h>
 #include <kapp/main.h>
 #include <vdb/table.h>
@@ -71,11 +72,11 @@ rc_t TableWriter_Init(TableWriter** self, const char* table, const char* table_p
     } else if( (*self = calloc(1, sizeof(**self))) == NULL ) {
         rc = RC(rcAlign, rcType, rcConstructing, rcMemory, rcExhausted);
     } else {
-        (*self)->table = strdup(table);
+        (*self)->table = string_dup( table, string_size( table ) );
         if( (*self)->table == NULL ) {
             rc = RC(rcAlign, rcType, rcConstructing, rcMemory, rcExhausted);
         } else if( table_path != NULL ) {
-            (*self)->table_path = strdup(table_path);
+            (*self)->table_path = string_dup( table_path, string_size( table_path ) );
             if( (*self)->table_path == NULL ) {
                 rc = RC(rcAlign, rcType, rcConstructing, rcMemory, rcExhausted);
             }

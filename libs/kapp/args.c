@@ -37,6 +37,7 @@
 #include <klib/out.h>
 #include <klib/status.h>
 #include <klib/debug.h>
+#include <kfg/config.h>
 #include <kapp/main.h>
 #include <kapp/args.h>
 
@@ -1183,7 +1184,7 @@ rc_t CC ArgsArgvValue (const Args * self, uint32_t iteration, const char ** valu
 #define USAGE_MAX_SIZE 81
 static
 const char * verbose_usage[] = 
-{ "Increase the verbosity level of the program.",
+{ "Increase the verbosity of the program status messages.",
   "Use multiple times for more verbosity.", NULL };
 static
 const char * debug_usage[] = 
@@ -1191,7 +1192,7 @@ const char * debug_usage[] =
   "All flags if not specified.", NULL };
 static
 const char * help_usage[] = 
-{ "Output a brief explantion for the program.", NULL };
+{ "Output a brief explanation for the program.", NULL };
 static
 const char * report_usage[] = 
 { "Control program execution environment report generation (if implemented).",
@@ -1201,7 +1202,7 @@ const char * version_usage[] =
 { "Display the version of the program then quit.", NULL };
 static
 const char * optfile_usage[] = 
-{ "Read file for more options and parameters,", NULL};
+{ "Read more options and parameters from the file.", NULL};
 static 
 char log0 [USAGE_MAX_SIZE];
 static 
@@ -1209,6 +1210,9 @@ char log1 [USAGE_MAX_SIZE];
 static
 const char * log_usage[] = 
 { "Logging level as number or enum string.", log0, log1, NULL };
+static
+const char * no_user_settings_usage[] = 
+{ "Turn off user-specific configuration.", NULL };
 
 static
 void CC gen_log_usage (const char ** _buffers)
@@ -1317,6 +1321,11 @@ OptDef StandardOptions[]  =
         OPTION_DEBUG, ALIAS_DEBUG, NULL,
         debug_usage, 
         OPT_UNLIM, true, false
+    },
+    {
+        OPTION_NO_USER_SETTINGS, NULL, NULL,
+        no_user_settings_usage,
+        OPT_UNLIM, false, false
     }
 };
 OptDef ReportOptions[]  =
@@ -1439,6 +1448,15 @@ rc_t CC ArgsHandleStatusLevel (const Args * self)
     return rc;
 }
 
+rc_t CC ArgsHandleNoUserSettings (const Args * self)
+{
+    uint32_t count = 0;
+    rc_t rc = ArgsOptionCount (self, OPTION_NO_USER_SETTINGS, &count);
+    if (rc == 0 && count != 0)
+        KConfigDisableUserSettings ();
+    return rc;
+}
+
 
 #if USE_OPTFILE
 rc_t CC ArgsHandleOptfile (Args * self)
@@ -1497,6 +1515,10 @@ rc_t CC ArgsHandleStandardOptions (Args * self)
             break;
 
         rc = ArgsHandleStatusLevel (self);
+        if (rc)
+            break;
+
+        rc = ArgsHandleNoUserSettings (self);
         if (rc)
             break;
 

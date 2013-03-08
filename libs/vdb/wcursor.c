@@ -68,8 +68,6 @@
 #include <string.h>
 #include <assert.h>
 
-#define MTCURSOR_DBG( msg ) \
-    DBGMSG ( DBG_VDB, DBG_FLAG ( DBG_VDB_MTCURSOR ), msg )
 
 /*--------------------------------------------------------------------------
  * VCursor
@@ -112,6 +110,7 @@ rc_t VCursorWhack ( VCursor *self )
     KConditionRelease ( self -> flush_cond );
     KLockRelease ( self -> flush_lock );
 #endif
+    VCursorTerminatePagemapThread(self);
     return VCursorDestroy ( self );
 }
 
@@ -172,6 +171,8 @@ rc_t VTableCreateCursorWriteInt ( VTable *self, VCursor **cursp, KCreateMode mod
                         rc = KThreadMake ( & curs -> flush_thread, run_flush_thread, curs );
                 }
 #endif
+		if(rc == 0)
+			rc = VCursorLaunchPagemapThread(curs);
                 if ( rc == 0 )
                 {
                     * cursp = curs;

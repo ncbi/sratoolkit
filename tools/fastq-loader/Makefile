@@ -24,17 +24,22 @@
 
 default: std
 
-TOP ?= $(shell ../../build/abspath.sh ../..)
+TOP ?= $(abspath ../..)
 MODULE = tools/fastq-loader
 
 INT_LIBS = \
 	libfastqloader
 
-EXT_LIBS = \
-
 ALL_LIBS = \
 	$(INT_LIBS) \
 	$(EXT_LIBS)
+
+EXT_TOOLS = \
+    latf-load
+
+ALL_TOOLS = \
+	$(INT_TOOLS) \
+	$(EXT_TOOLS)    
 
 TEST_TOOLS = \
 	wb-test-fastq
@@ -44,16 +49,20 @@ include $(TOP)/build/Makefile.env
 #-------------------------------------------------------------------------------
 # outer targets
 #
-all std: makedirs 
+all std: vers-includes 
 	@ $(MAKE_CMD) $(TARGDIR)/std
 
-$(INT_LIBS): makedirs
+$(INT_LIBS): vers-includes
 	@ $(MAKE_CMD) $(ILIBDIR)/$@
 
-$(EXT_LIBS): makedirs
-	@ $(MAKE_CMD) $(LIBDIR)/$@
+$(EXT_TOOLS): vers-includes
+	@ $(MAKE_CMD) $(BINDIR)/$@    
 
-$(TEST_TOOLS): std makedirs
+ALL_TOOLS = \
+	$(INT_TOOLS) \
+	$(EXT_TOOLS)
+
+$(TEST_TOOLS): std 
 	@ $(MAKE_CMD) $(TEST_BINDIR)/$@
 
 valgrind: $(TEST_TOOLS)
@@ -68,9 +77,17 @@ valgrind: $(TEST_TOOLS)
 #
 $(TARGDIR)/std: \
 	$(addprefix $(ILIBDIR)/,$(INT_LIBS)) \
-	$(addprefix $(LIBDIR)/,$(EXT_LIBS))
+	$(addprefix $(LIBDIR)/,$(EXT_LIBS)) \
+	$(addprefix $(BINDIR)/,$(ALL_TOOLS))
 
 .PHONY: $(TARGDIR)/std
+
+#-------------------------------------------------------------------------------
+# vers-includes
+#
+$(TARGDIR)/vers-includes: $(addsuffix .vers.h,$(ALL_TOOLS))
+
+.PHONY: $(TARGDIR)/vers-includes
 
 #-------------------------------------------------------------------------------
 # clean
@@ -88,6 +105,14 @@ clean: stdclean
 .PRECIOUS: $(INTERM_SRC)
 
 #-------------------------------------------------------------------------------
+# tag
+#
+tag: \
+	$(addsuffix _tag,$(ALL_LIBS))
+
+.PHONY: tag $(addsuffix _tag,$(ALL_LIBS))
+
+#-------------------------------------------------------------------------------
 # fastq
 #
 $(ILIBDIR)/libfastqloader: $(ILIBDIR)/libfastqloader.$(LIBX)
@@ -98,7 +123,7 @@ FASTQ_SRC = \
 	fastq-lex
 
 $(SRCDIR)/fastq-grammar.c $(SRCDIR)/fastq-tokens.h: $(SRCDIR)/fastq-grammar.y
-	$(YACC) -o $(SRCDIR)/fastq-grammar.c --defines=$(SRCDIR)/fastq-tokens.h $^
+	$(YACC) -o $(SRCDIR)/fastq-grammar.c --defines=$(SRCDIR)/fastq-tokens.h -v $^
 
 FASTQ_OBJ = \
 	$(addsuffix .$(LOBX),$(FASTQ_SRC))
@@ -119,6 +144,48 @@ $(ILIBDIR)/libfastqloader.$(SHLX): $(INTERM_SRC) $(FASTQ_OBJ)
 $(ILIBDIR)/libfastqloader.$(LIBX): $(INTERM_SRC) $(FASTQ_OBJ)
 	$(LD) --slib -o $@ $^ $(FASTQ_LIB)
 
+libfastqloader_tag:
+	@ $(TOP)/build/tag-module.sh $(MODULE) libfastqloader $(FASTQ_OBJ)
+
+#------------------------------------------------------------------------------
+# fastq-load.3
+#
+FASTQ_LOAD_SRC = \
+	fastq-loader \
+    loader-imp
+
+FASTQ_LOAD_OBJ = \
+	$(addsuffix .$(OBJX),$(FASTQ_LOAD_SRC))
+
+ifneq (win, $(OS))
+    QLIB = -skq
+endif
+FASTQ_LOADER_LIB = \
+    -dwvxf \
+	-dwaxf \
+	-dwsraxf \
+	-sfastqloader \
+	-sloader \
+	-salign-writer \
+	-skapp \
+    -sload \
+    -svfs \
+    -swvdb \
+    -swkdb \
+    -skfg \
+    -skrypto \
+	-lksrch \
+	-lz    \
+    $(QLIB) \
+    -skproc \
+    -skfs \
+	-sklib \
+    -lm
+
+
+$(BINDIR)/latf-load: $(FASTQ_LOAD_OBJ)
+	$(LD) --exe --vers $(SRCDIR)/latf-load.vers -o $@ $^ $(FASTQ_LOADER_LIB)
+
 #-------------------------------------------------------------------------------
 # white-box test
 #
@@ -138,9 +205,9 @@ FASTQ_TEST_LIB = \
 	-sktst \
 	-skapp \
     -sload \
-    -svfs \
     -swvdb \
     -swkdb \
+    -svfs \
     -skfg \
     -skrypto \
     $(QLIB) \
@@ -148,8 +215,5 @@ FASTQ_TEST_LIB = \
     -skfs \
 	-sklib
 
-
 $(TEST_BINDIR)/wb-test-fastq: $(FASTQ_TEST_OBJ)
 	$(LP) --exe -o $@ $^ $(FASTQ_TEST_LIB)
-
-

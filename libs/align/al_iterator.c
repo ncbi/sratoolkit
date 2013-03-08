@@ -162,18 +162,21 @@ LIB_EXPORT rc_t CC AlignIteratorRecordPopulate ( void *obj,
     {
         rc = get_idx_and_read( curs, COL_READ, placement->id, &base, &data_len );
         /* copy READ into place, point the header-value to it, advance */
-        memcpy( ptr, base, data_len );
-        iter->read = ( INSDC_4na_bin * )ptr;
-        iter->read_len = data_len;
-        iter->abs_ref_start = placement->pos;
-        iter->ref_len = placement->len;
-        iter->rel_ref_pos = 0;
-        iter->seq_pos = 0;
-        ptr += data_len;
-        iter->pos_ofs = (pos_offset *)ptr;
-        iter->ref_window_start = ref_window_start;
-        iter->ref_window_len = ref_window_len;
-        iter->free_on_whack = false;
+        if ( rc == 0 )
+        {
+            memcpy( ptr, base, data_len );
+            iter->read = ( INSDC_4na_bin * )ptr;
+            iter->read_len = data_len;
+            iter->abs_ref_start = placement->pos;
+            iter->ref_len = placement->len;
+            iter->rel_ref_pos = 0;
+            iter->seq_pos = 0;
+            ptr += data_len;
+            iter->pos_ofs = (pos_offset *)ptr;
+            iter->ref_window_start = ref_window_start;
+            iter->ref_window_len = ref_window_len;
+            iter->free_on_whack = false;
+        }
     }
 
     if ( rc == 0 )
@@ -217,9 +220,8 @@ LIB_EXPORT rc_t CC AlignIteratorRecordPopulate ( void *obj,
 }
 
 
-LIB_EXPORT size_t CC AlignIteratorRecordSize ( struct VCursor const *curs, int64_t row_id, void *data )
+LIB_EXPORT rc_t CC AlignIteratorRecordSize ( struct VCursor const *curs, int64_t row_id, size_t *size, void *data )
 {
-    size_t res = 0;
     uint32_t ref_offset_len, read_len;
 
     rc_t rc = get_idx_and_read( curs, COL_REF_OFFSET, row_id, NULL, &ref_offset_len );
@@ -230,10 +232,10 @@ LIB_EXPORT size_t CC AlignIteratorRecordSize ( struct VCursor const *curs, int64
     {
         AlignmentIterator * ali = NULL;
         size_t po_size = ( ( sizeof *(ali->pos_ofs) ) * ( ref_offset_len ) );
-        res = ( ( sizeof *ali ) + ( read_len * 2 ) + po_size );
+        *size = ( ( sizeof *ali ) + ( read_len * 2 ) + po_size );
     }
 
-    return res;
+    return rc;
 }
 
 

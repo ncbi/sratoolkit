@@ -1991,6 +1991,7 @@ static void FastqReadSplitterFactory_Release( const SRASplitterFactory* cself )
         FastqReadSplitterFactory* self = ( FastqReadSplitterFactory* )cself;
         FastqReaderWhack( self->reader );
         free( FastqReadSplitter_key_buf );
+        FastqReadSplitter_key_buf = NULL;
     }
 }
 

@@ -91,7 +91,7 @@ rc_t ReferenceInit(Reference *self,
                            ewrefmgr_co_Coverage,
                            refXRefPath, inpath,
                            maxSeqLen, cache, open_count);
-    if (rc == 0) {
+    if (rc == 0 && refFiles != NULL) {
         unsigned i;
         
         for (i = 0; refFiles[i]; ++i) {
@@ -377,7 +377,7 @@ rc_t ReferenceRead(Reference *self, AlignmentRecord *data, uint64_t const pos,
     BAIL_ON_FAIL(ReferenceSeq_Compress(self->rseq, 
                                        (self->acceptHardClip ? ewrefmgr_co_AcceptHardClip : 0) + ewrefmgr_cmp_Binary, 
                                        pos,
-                                       seqDNA, seqLen, rawCigar, cigCount, 0, NULL, 0, NULL, 0, &data->data));
+                                       seqDNA, seqLen, rawCigar, cigCount, 0, NULL, 0, 0, NULL, 0, &data->data));
 
     if (!acceptNoMatch && data->data.ref_len == 0)
         return RC(rcApp, rcFile, rcReading, rcConstraint, rcViolated);

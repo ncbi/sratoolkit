@@ -49,13 +49,16 @@ struct KSysFile
     KFile dad;
     HANDLE handle;
     uint64_t pos;
+    bool failed_set_sparse;
+    bool is_sparse; /* throws off size dang it */
+    
 };
 
 /* KSysFileMake
  *  create a new file object
  *  from file descriptor
  */
-rc_t KSysFileMake ( KSysFile **fp, HANDLE fd, bool read_enabled, bool write_enabled );
+rc_t KSysFileMake ( KSysFile **fp, HANDLE fd, const char *path, bool read_enabled, bool write_enabled );
 
 
 #ifdef __cplusplus

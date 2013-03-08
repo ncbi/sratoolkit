@@ -94,8 +94,11 @@ LIB_EXPORT rc_t CC SRAMgrVCreateTable ( SRAMgr *self, SRATable **rslt,
             rc = RC ( rcSRA, rcTable, rcConstructing, rcString, rcEmpty );
         else
         {
-            char path [ 4096 ];
-            rc = ResolveTablePath ( self, path, sizeof path, spec, args );
+            char path [ 4097 ];
+            size_t act_size = 0;
+            
+            rc = string_vprintf(path, 4097, &act_size, spec, args);
+            path[act_size] = '\0';
             if ( rc == 0 )
             {
                 VTable *vtbl;

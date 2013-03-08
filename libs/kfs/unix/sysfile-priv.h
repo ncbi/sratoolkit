@@ -65,7 +65,7 @@ struct KSysFile
  *  create a new file object
  *  from file descriptor
  */
-rc_t KSysFileMake ( KSysFile **fp, int fd, bool read_enabled, bool write_enabled );
+rc_t KSysFileMake ( KSysFile **fp, int fd, const char *path, bool read_enabled, bool write_enabled );
 
 
 #ifdef __cplusplus

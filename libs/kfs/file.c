@@ -82,7 +82,17 @@ LIB_EXPORT struct KSysFile* CC KFileGetSysFile ( const KFile *self, uint64_t *of
 LIB_EXPORT rc_t CC KFileAddRef ( const KFile *self )
 {
     if ( self != NULL )
-        atomic32_inc ( & ( ( KFile* ) self ) -> refcount );
+    {
+        switch ( KRefcountAdd ( & self -> refcount, "KFile" ) )
+        {
+        case krefLimit:
+            return RC ( rcFS, rcFile, rcAttaching, rcRange, rcExcessive );
+        case krefNegative:
+            return RC ( rcFS, rcFile, rcAttaching, rcSelf, rcInvalid );
+        default:
+            break;
+        }
+    }
     return 0;
 }
 
@@ -90,25 +100,23 @@ LIB_EXPORT rc_t CC KFileAddRef ( const KFile *self )
  *  discard reference to file
  *  ignores NULL references
  */
-LIB_EXPORT rc_t CC KFileRelease ( const KFile *cself )
+LIB_EXPORT rc_t CC KFileRelease ( const KFile *self )
 {
-    KFile *self = ( KFile* ) cself;
-    if ( cself != NULL )
+    if ( self != NULL )
     {
-        if ( atomic32_dec_and_test ( & self -> refcount ) )
+        switch ( KRefcountDrop ( & self -> refcount, "KFile" ) )
         {
-            rc_t rc;
-
+        case krefWhack:
             if ( self -> dir != NULL )
-                rc = KDirectoryDestroyFile ( self -> dir, self );
-            else
-                rc = KFileDestroy ( self );
-
-            if ( rc != 0 )
-                atomic32_set ( & self -> refcount, 1 );
-            return rc;
+                return KDirectoryDestroyFile ( self -> dir, ( KFile* ) self );
+            return KFileDestroy ( ( KFile* ) self );
+        case krefLimit:
+            return RC ( rcFS, rcFile, rcReleasing, rcRange, rcExcessive );
+        default:
+            break;
         }
     }
+
     return 0;
 }
 
@@ -399,6 +407,7 @@ LIB_EXPORT rc_t CC KFileWriteAll ( KFile *self, uint64_t pos,
  *  initialize a newly allocated file object
  */
 LIB_EXPORT rc_t CC KFileInit ( KFile *self, const KFile_vt *vt,
+    const char *classname, const char *fname,
     bool read_enabled, bool write_enabled )
 {
     if ( self == NULL )
@@ -443,7 +452,7 @@ LIB_EXPORT rc_t CC KFileInit ( KFile *self, const KFile_vt *vt,
 
     self -> vt = vt;
     self -> dir = NULL;
-    atomic32_set ( & self -> refcount, 1 );
+    KRefcountInit ( & self -> refcount, 1, classname, "init", fname );
     self -> read_enabled = ( uint8_t ) ( read_enabled != 0 );
     self -> write_enabled = ( uint8_t ) ( write_enabled != 0 );
 

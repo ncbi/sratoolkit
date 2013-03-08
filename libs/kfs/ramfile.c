@@ -133,7 +133,9 @@ rc_t CC KRamFileSize (const KRamFile *self, uint64_t *size)
     assert (self != NULL);
     assert (size != NULL);
 
-    return RC ( rcFS, rcFile, rcAccessing, rcFunction, rcUnsupported );
+/*     return RC ( rcFS, rcFile, rcAccessing, rcFunction, rcUnsupported ); */
+    *size = self->max_pos;
+    return 0;
 }
 
 /* ----------------------------------------------------------------------
@@ -145,7 +147,9 @@ rc_t CC KRamFileSize (const KRamFile *self, uint64_t *size)
 static
 rc_t CC KRamFileSetSize (KRamFile *self, uint64_t size)
 {
-    return RC (rcFS, rcFile, rcUpdating, rcSelf, rcUnsupported);
+/*     return RC (rcFS, rcFile, rcUpdating, rcSelf, rcUnsupported); */
+    self->max_pos = size;
+    return 0;
 }
 
 /* ----------------------------------------------------------------------
@@ -373,6 +377,7 @@ rc_t KRamFileMake (KRamFile ** pself, char * buffer, size_t buffer_size, bool r,
     {
 	rc = KFileInit (&self->dad,			/* initialize base class */
 			(const KFile_vt*)&vtKRamFile, 	/* VTable for KRamFile */
+            "KRamFile", "ram",
                         r,w);
 	if (rc == 0)
 	{
@@ -402,7 +407,7 @@ LIB_EXPORT rc_t CC KRamFileMakeWrite (KFile ** self, char * buffer, size_t buffe
 
 LIB_EXPORT rc_t CC KRamFileMakeUpdate (KFile ** self, char * buffer, size_t buffer_size)
 {
-    return KRamFileMake ((KRamFile **)self, buffer, buffer_size, false, true);
+    return KRamFileMake ((KRamFile **)self, buffer, buffer_size, true, true);
 }
 
 

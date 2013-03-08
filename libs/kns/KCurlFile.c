@@ -44,6 +44,7 @@ struct KCurlFile;
 #include <stdlib.h>
 #include <string.h>
 
+#define HTTP_RESPONSE_CODE_0_VALID false
 
 /*--------------------------------------------------------------------------
  * KCurFile
@@ -193,7 +194,7 @@ static rc_t check_response_code( struct KNSManager *kns_mgr, CURL *curl,  const 
     CURLcode rcc = kns_mgr->curl_easy_getinfo_fkt( curl, CURLINFO_RESPONSE_CODE, &response_code );
     if ( rcc != CURLE_OK )
     {
-        rc = RC( rcFS, rcFile, rcConstructing, rcFileDesc, rcInvalid );
+        rc = RC( rcFS, rcFile, rcAccessing, rcFileDesc, rcInvalid );
         (void)PLOGERR( klogErr, ( klogErr, rc, 
         "curl_easy_getinfo( $(a) ) failed with curl-error $(c)",
         "a=%s,c=%d", action, rcc ) );
@@ -202,16 +203,23 @@ static rc_t check_response_code( struct KNSManager *kns_mgr, CURL *curl,  const 
     {
         switch ( response_code )
         {
-            case 0   :          /* no response code available */
-            case 200 :          /* OK */
-            case 206 :          /* Partial Content */
-            case 416 : break;   /* Requested Range Not Satisfiable */
 
-            case 404 : rc = RC( rcFS, rcFile, rcConstructing, rcFileDesc, rcNotFound );
-                       break;
+            case 0    : if ( !HTTP_RESPONSE_CODE_0_VALID )  /* no response code available */
+                        {
+                            rc = RC( rcFS, rcFile, rcAccessing, rcFileDesc, rcInvalid );
+                            (void)PLOGERR( klogErr, ( klogErr, rc, "invalid response-code $(c)", "c=%d", response_code ) );
+                        }
+                        break;
 
-            default : rc = RC( rcFS, rcFile, rcConstructing, rcFileDesc, rcInvalid );
-                      (void)PLOGERR( klogErr, ( klogErr, rc, "invalid response-code $(c)", "c=%d", response_code ) );
+            case 200  :          /* OK */
+            case 206  :          /* Partial Content */
+            case 416  : break;   /* Requested Range Not Satisfiable */
+
+            case 404  : rc = RC( rcFS, rcFile, rcAccessing, rcFileDesc, rcNotFound );
+                        break;
+
+            default   : rc = RC( rcFS, rcFile, rcAccessing, rcFileDesc, rcInvalid );
+                        (void)PLOGERR( klogErr, ( klogErr, rc, "invalid response-code $(c)", "c=%d", response_code ) );
         }
     }
     return rc;
@@ -271,7 +279,9 @@ static rc_t get_content_length( struct KNSManager *kns_mgr, CURL *curl, uint64_t
         LOGERR( klogErr, rc, "curl_easy_getinfo( CURLINFO_CONTENT_LENGTH_DOWNLOAD ) failed" );
     }
     else
+    {
         *size = double_size;
+    }
     return rc;
 }
 
@@ -285,6 +295,9 @@ static rc_t DiscoverFileSize_HTTP( const KCurlFile *cself, ReadContext *ctx, uin
 
     if ( rc == 0 )
         rc = set_curl_void_ptr( cself->kns_mgr, ctx->curl_handle, CURLOPT_WRITEDATA, ctx, "CURLOPT_WRITEDATA" );
+
+    if ( rc == 0 )
+        rc = set_curl_long_option( cself->kns_mgr, ctx->curl_handle, CURLOPT_FOLLOWLOCATION, 1, "CURLOPT_FOLLOWLOCATION" );
 
     if ( rc == 0 )
         rc = perform( cself->kns_mgr, ctx->curl_handle, "filesize http", 0, 0 );
@@ -304,6 +317,9 @@ static rc_t DiscoverFileSize_FTP( const KCurlFile *cself, ReadContext *ctx, uint
 
     if ( rc == 0 )
         rc = set_curl_long_option( cself->kns_mgr, ctx->curl_handle, CURLOPT_FILETIME, 1, "CURLOPT_FILETIME" );
+
+    if ( rc == 0 )
+        rc = set_curl_long_option( cself->kns_mgr, ctx->curl_handle, CURLOPT_FOLLOWLOCATION, 1, "CURLOPT_FOLLOWLOCATION" );
 
     if ( rc == 0 )
     {
@@ -327,6 +343,7 @@ static rc_t DiscoverFileSize_FTP( const KCurlFile *cself, ReadContext *ctx, uint
     return rc;
 }
 
+
 static rc_t KCurlFileDiscoverSize( const KCurlFile *cself, uint64_t *size )
 {
     ReadContext ctx;
@@ -334,23 +351,25 @@ static rc_t KCurlFileDiscoverSize( const KCurlFile *cself, uint64_t *size )
 
     memset( &ctx, 0, sizeof ctx );
     rc = prepare_curl( cself, &ctx );
-
-    if ( cself->is_ftp )
-        rc = DiscoverFileSize_FTP( cself, &ctx, size );
-    else
-        rc = DiscoverFileSize_HTTP( cself, &ctx, size );
-
     if ( rc == 0 )
     {
-        KCurlFile *self = ( KCurlFile * )cself;
+        if ( cself->is_ftp )
+            rc = DiscoverFileSize_FTP( cself, &ctx, size );
+        else
+            rc = DiscoverFileSize_HTTP( cself, &ctx, size );
 
-        self->file_size = *size;
-        self->file_size_valid = true;
-/*        OUTMSG(( ">>>>>>>>>>>>>> and the file size is: %lu\n", self->file_size )); */
+        if ( rc == 0 )
+        {
+            KCurlFile *self = ( KCurlFile * )cself;
+
+            self->file_size = *size;
+            self->file_size_valid = true;
+    /*        OUTMSG(( ">>>>>>>>>>>>>> and the file size is: %lu\n", self->file_size )); */
+        }
+
+        if ( ctx.curl_handle_prepared )
+            cself->kns_mgr->curl_easy_cleanup_fkt( ctx.curl_handle );
     }
-
-    if ( ctx.curl_handle_prepared )
-        cself->kns_mgr->curl_easy_cleanup_fkt( ctx.curl_handle );
     return rc;
 }
 
@@ -378,6 +397,22 @@ static rc_t KCurlFileRead( const KCurlFile *cself, uint64_t pos,
     ReadContext ctx;
     rc_t rc;
 
+    if ( cself->file_size_valid && cself->file_size > 0 )
+    {
+        /* we know the size of the remote file */
+        if ( pos >= cself->file_size )
+        {
+            /* the caller requested to read beyond the end of the file */
+            *num_read = 0;
+            return 0;
+        }
+        else if ( pos + bsize > cself->file_size )
+        {
+            /* the caller requested to start reading inside the file, but bsize reaches beyond the end of the file */
+            bsize = ( cself->file_size - pos );
+        }
+    }
+
     ctx.curl_handle = cself->curl_handle;
     ctx.curl_handle_prepared = true;
     rc = prepare_curl( cself, &ctx );
@@ -403,68 +438,87 @@ static rc_t KCurlFileRead( const KCurlFile *cself, uint64_t pos,
             rcc = cself->kns_mgr->curl_easy_setopt_fkt( cself->curl_handle, CURLOPT_WRITEDATA, (void *)&ctx );
             if ( rcc != CURLE_OK )
             {
-                rc = RC( rcFS, rcFile, rcConstructing, rcFileDesc, rcInvalid );
+                rc = RC( rcFS, rcFile, rcReading, rcFileDesc, rcInvalid );
                 LOGERR( klogErr, rc, "curl_easy_setopt( CURLOPT_WRITEDATA ) failed" );
             }
-            else
+
+            if ( rc == 0 )
+                rc = set_curl_long_option( cself->kns_mgr, cself->curl_handle, CURLOPT_CONNECTTIMEOUT, 10, "CURLOPT_CONNECTTIMEOUT" );
+            if ( rc == 0 )
+                rc = set_curl_long_option( cself->kns_mgr, cself->curl_handle, CURLOPT_TIMEOUT, 10, "CURLOPT_TIMEOUT" );
+            if ( rc == 0 )
+                rc = set_curl_long_option( cself->kns_mgr, cself->curl_handle, CURLOPT_FOLLOWLOCATION, 1, "CURLOPT_FOLLOWLOCATION" );
+
+            if ( rc == 0 )
             {
                 rcc = cself->kns_mgr->curl_easy_setopt_fkt( cself->curl_handle, CURLOPT_RANGE, (void*)s_range );
                 if ( rcc != CURLE_OK )
                 {
-                    rc = RC( rcFS, rcFile, rcConstructing, rcFileDesc, rcInvalid );
+                    rc = RC( rcFS, rcFile, rcReading, rcFileDesc, rcInvalid );
                     LOGERR( klogErr, rc, "curl_easy_setopt( CURLOPT_RANGE ) failed" );
-                }
-                else
-                {
-                    rc = perform( cself->kns_mgr, cself->curl_handle, "FileRead", pos, bsize );
-
-                    if ( rc == 0 )
-                    {
-                        long response_code;
-                        rcc = cself->kns_mgr->curl_easy_getinfo_fkt( cself->curl_handle, CURLINFO_RESPONSE_CODE, &response_code );
-                        if ( rcc != CURLE_OK )
-                        {
-                            rc = RC( rcFS, rcFile, rcConstructing, rcFileDesc, rcInvalid );
-                            LOGERR( klogErr, rc, "curl_easy_getinfo( RESPONSE_CODE ) failed" );
-                        }
-                        else
-                        {
-                            if ( cself->is_ftp )
-                            {
-                                switch ( response_code )
-                                {
-                                    case 0   :          /* no response code available */
-                                    case 226 :
-                                    case 213 :
-                                    case 450 :          /* Transfer aborted */
-                                    case 451 : break;
-
-                                    default : rc = RC( rcFS, rcFile, rcConstructing, rcFileDesc, rcInvalid );
-                                              (void)PLOGERR( klogErr, ( klogErr, rc, "invalid response-code $(c)", "c=%d", response_code ) );
-                                }
-                            }
-                            else
-                            {
-                                switch ( response_code )
-                                {
-                                    case 0   :          /* no response code available */
-                                    case 200 :          /* OK */
-                                    case 206 :          /* Partial Content */
-                                    case 416 : break;   /* Requested Range Not Satisfiable */
-
-                                    case 404 : rc = RC( rcFS, rcFile, rcConstructing, rcFileDesc, rcNotFound );
-                                               break;
-
-                                    default : rc = RC( rcFS, rcFile, rcConstructing, rcFileDesc, rcInvalid );
-                                              (void)PLOGERR( klogErr, ( klogErr, rc, "invalid response-code $(c)", "c=%d", response_code ) );
-                                }
-                            }
-                        }
-                    }
-
                 }
             }
 
+            if ( rc == 0 )
+                rc = perform( cself->kns_mgr, cself->curl_handle, "FileRead", pos, bsize );
+
+            if ( rc == 0 )
+            {
+                long response_code;
+                rcc = cself->kns_mgr->curl_easy_getinfo_fkt( cself->curl_handle, CURLINFO_RESPONSE_CODE, &response_code );
+                if ( rcc != CURLE_OK )
+                {
+                    rc = RC( rcFS, rcFile, rcReading, rcFileDesc, rcInvalid );
+                    LOGERR( klogErr, rc, "curl_easy_getinfo( RESPONSE_CODE ) failed" );
+                }
+                else
+                {
+                    if ( cself->is_ftp )
+                    {
+                        switch ( response_code )
+                        {
+                            case 0    : if ( !HTTP_RESPONSE_CODE_0_VALID )  /* no response code available */
+                                        {
+                                            rc = RC( rcFS, rcFile, rcReading, rcFileDesc, rcInvalid );
+                                            (void)PLOGERR( klogErr, ( klogErr, rc, "invalid response-code $(c)", "c=%d", response_code ) );
+                                        }
+                                        break;
+
+                            case 226  :
+                            case 213  :
+                            case 450  :          /* Transfer aborted */
+                            case 451  : break;
+
+                            default : rc = RC( rcFS, rcFile, rcReading, rcFileDesc, rcInvalid );
+                                      (void)PLOGERR( klogErr, ( klogErr, rc, "invalid response-code $(c)", "c=%d", response_code ) );
+                        }
+                    }
+                    else
+                    {
+                        switch ( response_code )
+                        {
+                            case 0    : if ( !HTTP_RESPONSE_CODE_0_VALID )  /* no response code available */
+                                        {
+                                            rc = RC( rcFS, rcFile, rcReading, rcFileDesc, rcInvalid );
+                                            (void)PLOGERR( klogErr, ( klogErr, rc, "invalid response-code $(c)", "c=%d", response_code ) );
+                                        }
+                                        break;
+
+                            case 416 :          /* Requested Range Not Satisfiable */
+                                       ctx.num_read = 0;
+                            case 200 :          /* OK */
+                            case 206 :          /* Partial Content */
+                                       break;
+
+                            case 404 : rc = RC( rcFS, rcFile, rcReading, rcFileDesc, rcNotFound );
+                                       break;
+
+                            default : rc = RC( rcFS, rcFile, rcReading, rcFileDesc, rcInvalid );
+                                      (void)PLOGERR( klogErr, ( klogErr, rc, "invalid response-code $(c)", "c=%d", response_code ) );
+                        }
+                    }
+                }
+            }
             if ( rc == 0 )
                 *num_read = ctx.num_read;
         }
@@ -524,7 +578,7 @@ LIB_EXPORT rc_t CC KCurlFileMake( const KFile **fp, const char * url, bool verbo
                 rc = KNSManagerAvail( f->kns_mgr );
                 if ( rc == 0 )
                 {
-                    rc = KFileInit( &f ->dad, (const union KFile_vt *)&vtKCurlFile, true, false );
+                    rc = KFileInit( &f ->dad, (const union KFile_vt *)&vtKCurlFile, "KCurlFile", url, true, false );
                     if ( rc == 0 )
                     {
                         ReadContext ctx;

@@ -124,6 +124,7 @@ struct params_s
     bool fasta;
     bool fastq;
     bool spot_group_in_name;
+    bool cg_friendly_names;
     bool reverse_unaligned;
     bool unaligned_spots;
     
@@ -357,7 +358,8 @@ static
 SCol const gSeqCol[] =
 {
     { "READ", 0, {NULL}, 0, false },
-    { "(INSDC:quality:text:phred_33)QUALITY", 0, {NULL}, 0, false },
+/*    { "(INSDC:quality:text:phred_33)QUALITY", 0, {NULL}, 0, false }, */
+    { "(INSDC:quality:phred)QUALITY", 0, {NULL}, 0, false }, /* changed Jan 29 2013, because some runs don't have the phred_33-type in schema */
     { "SPOT_GROUP", 0, {NULL}, 0, true },
     { "READ_START", 0, {NULL}, 0, true },
     { "READ_LEN", 0, {NULL}, 0, true },
@@ -1193,17 +1195,23 @@ static rc_t Cursor_ReadAlign( SCurs const *curs, int64_t row_id, SCol* cols, uin
 
 
 static void DumpName( char const *name, size_t name_len,
-                      const char spot_group_sep, char const *spot_group, size_t spot_group_len )
+                      const char spot_group_sep, char const *spot_group,
+                     size_t spot_group_len, int64_t spot_id )
 {
-    if ( param->name_prefix != NULL )
-    {
-        KOutMsg( "%s.", param->name_prefix );
+    if ( param->cg_friendly_names ) {
+        KOutMsg("%.*s-1:%lu", spot_group_len, spot_group, spot_id);
     }
-    BufferedWriter( NULL, name, name_len, NULL );
-    if ( param->spot_group_in_name && spot_group_len > 0 )
-    {
-        BufferedWriter( NULL, &spot_group_sep, 1, NULL );
-        BufferedWriter( NULL, spot_group, spot_group_len, NULL );
+    else {
+        if ( param->name_prefix != NULL )
+        {
+            KOutMsg( "%s.", param->name_prefix );
+        }
+        BufferedWriter( NULL, name, name_len, NULL );
+        if ( param->spot_group_in_name && spot_group_len > 0 )
+        {
+            BufferedWriter( NULL, &spot_group_sep, 1, NULL );
+            BufferedWriter( NULL, spot_group, spot_group_len, NULL );
+        }
     }
 }
 
@@ -1228,8 +1236,48 @@ static void DumpQuality( char const quality[], unsigned const count, bool const 
         for ( i = 0; i < count; ++i )
         {
             char const qual = quality[ reverse ? ( count - i - 1 ) : i ];
-            char const newValue = quantize ? param->qualQuant[ qual - 33 ] + 33 : qual;
 
+            /* changed Jan 29 2013, because some runs dont have the phred_33 - type */
+            /* char const newValue = quantize ? param->qualQuant[ qual - 33 ] + 33 : qual; */
+            char const newValue = ( quantize ? param->qualQuant[ (unsigned int)qual ] : qual ) + 33 ;
+            BufferedWriter( NULL, &newValue, 1, NULL );
+        }
+    }
+    else
+    {
+        /* changed Jan 29 2013, because some runs dont have the phred_33 - type */
+        /* BufferedWriter( NULL, quality, count, NULL ); */
+        unsigned i;
+        for ( i = 0; i < count; ++i )
+        {
+            char const qual = quality[ i ] + 33;
+            BufferedWriter( NULL, &qual, 1, NULL );
+        }
+    }
+}
+
+
+static void DumpQuality_33( char const quality[], unsigned const count, bool const reverse, bool const quantize )
+{
+    if ( quality == NULL )
+    {
+        unsigned i;
+
+        for ( i = 0; i < count; ++i )
+        {
+            char const newValue = ((param->qualQuant && param->qualQuantSingle)?param->qualQuantSingle:30) + 33;
+
+            BufferedWriter( NULL, &newValue, 1, NULL );
+        }
+    }
+    else if ( reverse || quantize )
+    {
+        unsigned i;
+
+        for ( i = 0; i < count; ++i )
+        {
+            char const qual = quality[ reverse ? ( count - i - 1 ) : i ];
+            char const newValue = quantize ? param->qualQuant[ qual - 33 ] + 33 : qual;
             BufferedWriter( NULL, &newValue, 1, NULL );
         }
     }
@@ -1240,7 +1288,7 @@ static void DumpQuality( char const quality[], unsigned const count, bool const 
 }
 
 
-static void DumpUnalignedFastX( const SCol cols[], uint32_t read_id, INSDC_coord_zero readStart, INSDC_coord_len readLen )
+static void DumpUnalignedFastX( const SCol cols[], uint32_t read_id, INSDC_coord_zero readStart, INSDC_coord_len readLen, int64_t row_id )
 {
     /* fast[AQ] represnted in SAM fields:
        [@|>]QNAME unaligned
@@ -1252,7 +1300,7 @@ static void DumpUnalignedFastX( const SCol cols[], uint32_t read_id, INSDC_coord
 
     /* QNAME: [PFX.]SEQUENCE:NAME[#SPOT_GROUP] */
     DumpName( cols[ seq_NAME ].base.str, cols[ seq_NAME ].len, '#',
-              cols[ seq_SPOT_GROUP ].base.str, cols[ seq_SPOT_GROUP ].len );
+              cols[ seq_SPOT_GROUP ].base.str, cols[ seq_SPOT_GROUP ].len, row_id );
     if ( read_id > 0 )
     {
         KOutMsg( "/%u", read_id );
@@ -1282,6 +1330,7 @@ static void DumpAlignedFastX( const SCol cols[], int64_t const alignId, uint32_t
         char const *qname = cols[ alg_SEQ_NAME ].base.str;
         size_t qname_len = cols[ alg_SEQ_NAME ].len;
         char synth_qname[ 40 ];
+	int64_t const spot_id = cols[alg_SEQ_SPOT_ID].len > 0 ? cols[alg_SEQ_SPOT_ID].base.i64[0] : 0;
         char const *const read = cols[ alg_READ ].base.str + cols[ alg_READ_START ].base.coord0[ readId ];
         char const *const qual = cols[ alg_SAM_QUALITY ].base.v
                                ? cols[ alg_SAM_QUALITY ].base.str + cols[ alg_READ_START ].base.coord0[ readId ]
@@ -1302,7 +1351,7 @@ static void DumpAlignedFastX( const SCol cols[], int64_t const alignId, uint32_t
             qname = synth_qname;
         }
         nm = cols[ alg_SPOT_GROUP ].len ? alg_SPOT_GROUP : alg_SEQ_SPOT_GROUP;
-        DumpName( qname, qname_len, '.', cols[ nm ].base.str, cols[ nm ].len );
+        DumpName( qname, qname_len, '.', cols[ nm ].base.str, cols[ nm ].len, spot_id);
 
         if ( read_id > 0 )
         {
@@ -1338,7 +1387,7 @@ static void DumpAlignedFastX( const SCol cols[], int64_t const alignId, uint32_t
         {
             /* QUAL: SAM_QUALITY */
             BufferedWriter( NULL, "\n+\n", 3, NULL );
-            DumpQuality( qual, readlen, false, param->quantizeQual );
+            DumpQuality_33( qual, readlen, false, param->quantizeQual );
         }
         BufferedWriter( NULL, "\n", 1, NULL );
     }
@@ -1347,13 +1396,13 @@ static void DumpAlignedFastX( const SCol cols[], int64_t const alignId, uint32_t
 
 static
 void DumpUnalignedSAM( const SCol cols[], uint32_t flags, INSDC_coord_zero readStart, INSDC_coord_len readLen,
-                      char const *rnext, uint32_t rnext_len, INSDC_coord_zero pnext, char const readGroup[] )
+                      char const *rnext, uint32_t rnext_len, INSDC_coord_zero pnext, char const readGroup[], int64_t row_id )
 {
     unsigned i;
 
     /* QNAME: [PFX.]NAME[.SPOT_GROUP] */
     DumpName( cols[ seq_NAME ].base.str, cols[ seq_NAME ].len, '.',
-              cols[ seq_SPOT_GROUP ].base.str, cols[ seq_SPOT_GROUP ].len );
+              cols[ seq_SPOT_GROUP ].base.str, cols[ seq_SPOT_GROUP ].len, row_id );
 
     /* all these fields are const text for now */
     KOutMsg( "\t%u\t*\t0\t0\t*\t%.*s\t%u\t0\t",
@@ -1444,7 +1493,7 @@ void DumpAlignedSAM(SAM_dump_ctx_t *const ctx,
             qname = synth_qname;
         }
         nm = cols[ alg_SPOT_GROUP ].len ? alg_SPOT_GROUP : alg_SEQ_SPOT_GROUP;
-        DumpName( qname, qname_len, '.', cols[ nm ].base.str, cols[ nm ].len );
+        DumpName( qname, qname_len, '.', cols[ nm ].base.str, cols[ nm ].len, spot_id );
 
         /* FLAG: SAM_FLAGS */
         if (ds->type == edstt_EvidenceAlignment) {
@@ -1521,7 +1570,7 @@ void DumpAlignedSAM(SAM_dump_ctx_t *const ctx,
         BufferedWriter( NULL, read, readlen, NULL );
         BufferedWriter( NULL, "\t", 1, NULL );
         /* QUAL: SAM_QUALITY */
-        DumpQuality( qual, readlen, false, param->quantizeQual );
+        DumpQuality_33( qual, readlen, false, param->quantizeQual );
     
         /* optional fields: */
         if ( ds->type == edstt_EvidenceInterval )
@@ -1670,7 +1719,7 @@ static rc_t DumpUnalignedReads( SAM_dump_ctx_t *const ctx, SCol const calg_col[]
                                 0;
                 if ( param->fasta || param->fastq )
                 {
-                    DumpUnalignedFastX( ctx->seq.cols, nreads > 1 ? i + 1 : 0, readStart, readLen );
+                    DumpUnalignedFastX( ctx->seq.cols, nreads > 1 ? i + 1 : 0, readStart, readLen, row_id );
                 }
                 else
                 {
@@ -1701,7 +1750,7 @@ static rc_t DumpUnalignedReads( SAM_dump_ctx_t *const ctx, SCol const calg_col[]
                     {
                         DumpUnalignedSAM( ctx->seq.cols, cflags |
                                           ( non_empty_reads > 1 ? ( 0x1 | 0x8 | ( i == 0 ? 0x40 : 0x00 ) | ( i == nreads - 1 ? 0x80 : 0x00 ) ) : 0x00 ),
-                                          readStart, readLen, NULL, 0, 0, ctx->readGroup );
+                                          readStart, readLen, NULL, 0, 0, ctx->readGroup, row_id );
                     }
                     else
                     {
@@ -1711,7 +1760,7 @@ static rc_t DumpUnalignedReads( SAM_dump_ctx_t *const ctx, SCol const calg_col[]
                                          ( ( calg_col[ alg_SAM_FLAGS ].base.u32[ 0 ] & 0x40 ) ? 0x80 : 0x40 );
                         DumpUnalignedSAM( ctx->seq.cols, flags, readStart, readLen,
                                           calg_col[ c ].base.str, calg_col[ c ].len,
-                                          calg_col[ alg_REF_POS ].base.coord0[ 0 ] + 1, ctx->readGroup );
+                                          calg_col[ alg_REF_POS ].base.coord0[ 0 ] + 1, ctx->readGroup, row_id );
                     }
                 }
                 *rcount = *rcount + 1;
@@ -2837,7 +2886,23 @@ static rc_t DumpCGSAM( SAM_dump_ctx_t *const ctx, TAlignedRegion const *const rg
                                             ctx->eva.cols[ alg_CIGAR ].base.str = cigbuf;
                                             ctx->eva.cols[ alg_REF_POS ].base.v = &refPos;
                                             refPos += ctx->evi.cols[ alg_REF_POS ].base.coord0[ 0 ] ;
-                                            
+			  		    if(refPos < 0){
+						ReferenceObj const *r = NULL;
+    						rc = ReferenceList_Find( gRefList, &r,
+									ctx->evi.cols[ alg_REF_NAME ].base.str,
+									ctx->evi.cols[ alg_REF_NAME ].len );
+						if(rc == 0){
+							bool circular=false;
+							rc=ReferenceObj_Circular(r, &circular);
+							if(rc == 0 && circular){
+								INSDC_coord_len len;
+								rc=ReferenceObj_SeqLength(r,&len);
+								if(rc == 0)
+									refPos += len;
+							}
+							ReferenceObj_Release(r);
+						}
+					    }
                                             DumpAlignedSAM(ctx, &ctx->eva, rowAlign, ctx->readGroup, 1);
                                             ++*rows;
                                         }
@@ -3153,6 +3218,7 @@ static rc_t DumpUnaligned( SAM_dump_ctx_t *const ctx, bool const aligned )
                     }
                     if ( min_prim_id == 0 )
                     {
+                        /* fully unaligned spot */
                         rc = DumpUnalignedReads( ctx, NULL, start, &rcount );
                     }
                     else if ( has_unaligned && !param->unaligned_spots )
@@ -3825,7 +3891,7 @@ static rc_t ProcessPath( VDBManager const *mgr, char const Path[] )
                 
                 if ( ch == '/' || ch == '\\' )
                 {
-                    accession = &path[ i + i ];
+                    accession = &path[ i + 1 ];
                     break;
                 }
             }
@@ -4003,6 +4069,7 @@ char const *comment_usage[] = {"Add comment to header. Use multiple times for se
 char const *XI_usage[] = {"Output cSRA alignment id in XI column", NULL};
 char const *qual_quant_usage[] = {"Quality scores quantization level",
                                   "a string like '1:10,10:20,20:30,30:-'", NULL};
+char const *CG_names[] = { "Generate CG friendly read names", NULL};
 
 char const *usage_params[] =
 {
@@ -4034,7 +4101,8 @@ char const *usage_params[] =
     NULL,                       /* CG-evidence */
     NULL,                       /* CG-ev-dnb */
     NULL,                       /* CG-mappings */
-    NULL                        /* CG-SAM */
+    NULL,                       /* CG-SAM */
+    NULL                        /* CG-names */
 };
 
 enum eArgs
@@ -4066,13 +4134,14 @@ enum eArgs
     earg_CG_evidence,           /* CG-evidence */
     earg_CG_ev_dnb,             /* CG-ev-dnb */
     earg_CG_mappings,           /* CG-mappings */
-    earg_CG_SAM                 /* CG-SAM */
+    earg_CG_SAM,                /* CG-SAM */
+    earg_CG_names               /* CG-names */
 };
 
 OptDef DumpArgs[] =
 {
     { "unaligned", "u", NULL, unaligned_usage, 0, false, false },           /* unaligned */
-    { "unaligned-only", "U", NULL, unaligned_usage, 0, false, false },      /* unaligned-only */
+    { "unaligned-only", "U", NULL, unaligned_only_usage, 0, false, false }, /* unaligned-only */
     { "primary", "1", NULL, primaryonly_usage, 0, false, false },           /* primaryonly */
     { "cigar-long", "c", NULL, cigartype_usage, 0, false, false },          /* cigartype */
     { "cigar-CG", NULL, NULL, cigarCG_usage, 0, false, false },             /* cigarCG */
@@ -4098,7 +4167,8 @@ OptDef DumpArgs[] =
     { "CG-evidence", NULL, NULL, CG_evidence, 0, false, false },            /* CG-evidence */
     { "CG-ev-dnb"  , NULL, NULL, CG_ev_dnb  , 0, false, false },            /* CG-ev-dnb */
     { "CG-mappings", NULL, NULL, CG_mappings, 0, false, false },            /* CG-mappings */
-    { "CG-SAM", NULL, NULL, CG_SAM, 0, false, false }                       /* CG-SAM */
+    { "CG-SAM", NULL, NULL, CG_SAM, 0, false, false },                      /* CG-SAM */
+    { "CG-names", NULL, NULL, CG_names, 0, false, false }                   /* CG-names */
 };
 
 
@@ -4215,6 +4285,7 @@ static rc_t CountArgs( Args const *const args, unsigned count[],
     COUNT_ARG( earg_prefix );
     COUNT_ARG( earg_qname );
     COUNT_ARG( earg_seq_id );
+    COUNT_ARG( earg_CG_names );
     
     COUNT_ARG( earg_cigartype );
     COUNT_ARG( earg_cigarCG );
@@ -4230,6 +4301,7 @@ static rc_t CountArgs( Args const *const args, unsigned count[],
     
     COUNT_ARG( earg_mate_row_gap_cachable );
     
+    /* debug options */
     COUNT_ARG( earg_XI );
     COUNT_ARG( earg_test_rows );
 #undef COUNT_ARG
@@ -4618,6 +4690,7 @@ static rc_t GetArgs( Args const *const args, unsigned const count[],
     parms.fasta = ( count[ earg_fasta ] != 0 );
     parms.fastq = ( count[ earg_fastq ] != 0 );
     parms.reverse_unaligned = ( count[ earg_reverse ] != 0 );
+    parms.cg_friendly_names = count[ earg_CG_names ] != 0;
     parms.spot_group_in_name = ( count[ earg_qname ] != 0 || multipass );
     parms.noheader = ( ( count[ earg_noheader ] != 0 ) || parms.fasta || parms.fastq || multipass );
     parms.reheader = ( ( count[ earg_header ] != 0 ) && !parms.noheader );

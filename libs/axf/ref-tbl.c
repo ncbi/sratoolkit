@@ -25,39 +25,59 @@
 */
 #include <vdb/database.h>
 #include <vdb/table.h>
+#include <vdb/vdb-priv.h>
+#include <vdb/cursor.h>
 #include <kdb/meta.h>
 #include <klib/rc.h>
 
 #include "ref-tbl.h"
 #include <string.h>
 
-rc_t AlignRefTable(const VTable* table, const VTable** ref_table)
+rc_t AlignRefTableCursor(const VTable* table, const VCursor *native_curs, const VCursor** ref_cursor,const VTable **reftbl)
 {
-    rc_t rc = 0;
-    const VDatabase *db = NULL;
+	rc_t rc = 0;
+	char ref_tbl_name[512] =  "REFERENCE";
+	const KMetadata* meta;
+	const VCursor *curs;
 
-    if( (rc = VTableOpenParentRead(table, &db)) != 0 ) {
-        rc = ResetRCContext(rc, rcXF, GetRCTarget(rc), GetRCContext(rc));
-    } else if( db == NULL ) {
-        rc = RC(rcXF, rcDatabase, rcAccessing, rcItem, rcNull);
-    } else {
-        char ref_tbl_name[512];
-        const KMetadata* meta;
-        if( (rc = VTableOpenMetadataRead(table, &meta)) == 0 ) {
-            const KMDataNode* node;
+	if( (rc = VTableOpenMetadataRead(table, &meta)) == 0 ) {
+	    const KMDataNode* node;
             if( (rc = KMetadataOpenNodeRead(meta, &node, "CONFIG/REF_TABLE")) == 0 ) {
                 size_t sz;
                 rc = KMDataNodeReadCString(node, ref_tbl_name, sizeof(ref_tbl_name), &sz);
                 ref_tbl_name[sz] = '\0';
                 KMDataNodeRelease(node);
-            } 
+            }
             KMetadataRelease(meta);
         }
-        if( rc != 0 ) {
-            strcpy(ref_tbl_name, "REFERENCE");
-        }
-        rc = VDatabaseOpenTableRead(db, ref_table, ref_tbl_name);
-    }
-    VDatabaseRelease(db);
-    return rc;
+	rc = VCursorLinkedCursorGet(native_curs,ref_tbl_name,&curs);
+	if(rc != 0){
+		const VDatabase *db;
+                const VTable *tbl;
+                /* get at the parent database */
+                rc = VTableOpenParentRead ( table, & db );
+                if(rc != 0) return rc;
+                /* open the table */
+                rc = VDatabaseOpenTableRead ( db, &tbl, ref_tbl_name);
+                VDatabaseRelease ( db );
+                if(rc != 0) return rc;
+                /* create a cursor */
+                rc = VTableCreateCachedCursorRead(tbl, &curs,256*1024*1024);
+		if(reftbl){
+			*reftbl = tbl;
+                } else {
+			VTableRelease(tbl);
+		}
+                if(rc != 0) return rc;
+                rc = VCursorPermitPostOpenAdd( curs );
+                if(rc != 0) return rc;
+                rc = VCursorOpen( curs );
+                if(rc != 0) return rc;
+                rc = VCursorLinkedCursorSet(native_curs,ref_tbl_name,curs);
+                if(rc != 0) return rc;
+	} else {
+		VCursorAddRef(curs);
+	}
+	*ref_cursor = curs;
+	return 0;
 }

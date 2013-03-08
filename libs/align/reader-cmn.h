@@ -64,7 +64,9 @@ typedef struct TableReader TableReader;
 
 rc_t CC TableReader_Make(const TableReader** cself, const VTable* table, TableReaderColumn* cols, size_t cache);
 
-rc_t CC TableReader_MakeCursor(const TableReader** cself, const VCursor* cursor, TableReaderColumn* cols);
+rc_t CC TableReader_MakeCursor(const TableReader** cself, const VCursor* cursor, TableReaderColumn* cols );
+
+rc_t CC TableReader_OpenCursor( const TableReader* cself );
 
 void CC TableReader_Whack(const TableReader* cself);
 

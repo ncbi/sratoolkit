@@ -95,6 +95,7 @@ KFG_SRC = \
 	config-grammar \
 	config-lex \
 	config \
+	repository \
 	report 
 
 KFG_OBJ = \
@@ -123,11 +124,11 @@ TEST_OBJ = \
 	$(addsuffix .$(OBJX),$(TEST_SRC))
 
 TEST_LIB = \
-    -skapp \
-    -skfg \
-    -svdb \
+	-skapp \
+	-skfg \
+	-svdb \
 	-svfs \
-    -skdb \
+	-skdb \
 	-skfs \
 	-skrypto \
 	-skproc \

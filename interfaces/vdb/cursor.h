@@ -429,6 +429,11 @@ VDB_EXTERN rc_t CC VCursorSetUserData ( const VCursor *self,
     void *data, void ( CC * destroy ) ( void *data ) );
 
 
+VDB_EXTERN rc_t CC VCursorLinkedCursorGet(const VCursor *cself,const char *tbl,VCursor const **curs);
+VDB_EXTERN rc_t CC VCursorLinkedCursorSet(const VCursor *cself,const char *tbl,VCursor const *curs);
+
+
+
 #ifdef __cplusplus
 }
 #endif

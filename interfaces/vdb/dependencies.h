@@ -60,11 +60,12 @@ struct VTable;
 typedef struct VDBDependencies VDBDependencies;
 
 
-/* Release
- *  ignores NULL references
- */
+/* AddRef
+ * Release
+ *  all objects are reference counted
+ *  NULL references are ignored */
+VDB_EXTERN rc_t CC VDBDependenciesAddRef ( const VDBDependencies *self );
 VDB_EXTERN rc_t CC VDBDependenciesRelease ( const VDBDependencies *self );
-
 
 /* ListDependencies
  *  create a dependencies object: list all dependencies
@@ -145,7 +146,7 @@ VDB_EXTERN rc_t CC VDBDependenciesCircular ( const VDBDependencies *self,
 
 
 /* Path
- *  returns path for resolved dependency,
+ *  returns [Local] path for resolved dependency,
  *  returns NULL for local and missing dependency.
  *
  *  "path" [ OUT ] - returned pointer should not be freed.
@@ -154,6 +155,30 @@ VDB_EXTERN rc_t CC VDBDependenciesCircular ( const VDBDependencies *self,
  *  "idx" [ IN ] - zero-based index of dependency
  */
 VDB_EXTERN rc_t CC VDBDependenciesPath ( const VDBDependencies *self,
+    const char **path, uint32_t idx );
+
+/* PathRemote
+ *  returns Remote path for dependency,
+ *  returns NULL for not found dependency.
+ *
+ *  "path" [ OUT ] - returned pointer should not be freed.
+ *   it becomes invalid after VDBDependenciesRelease
+ *
+ *  "idx" [ IN ] - zero-based index of dependency
+ */
+VDB_EXTERN rc_t CC VDBDependenciesPathRemote ( const VDBDependencies *self,
+    const char **path, uint32_t idx );
+
+/* PathCache
+ *  returns Cache path for dependency,
+ *  returns NULL for not found dependency.
+ *
+ *  "path" [ OUT ] - returned pointer should not be freed.
+ *   it becomes invalid after VDBDependenciesRelease
+ *
+ *  "idx" [ IN ] - zero-based index of dependency
+ */
+VDB_EXTERN rc_t CC VDBDependenciesPathCache ( const VDBDependencies *self,
     const char **path, uint32_t idx );
 
 /* Error

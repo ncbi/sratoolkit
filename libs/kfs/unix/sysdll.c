@@ -847,7 +847,8 @@ rc_t KDlsetWhack ( KDlset *self )
     return 0;
 }
 
-
+#define STRINGIZE(s) #s
+#define LIBNAME(pref, name, suff) STRINGIZE(pref) name STRINGIZE(suff)
 /* MakeSet
  *  load a dynamic library
  *
@@ -855,7 +856,7 @@ rc_t KDlsetWhack ( KDlset *self )
  */
 LIB_EXPORT rc_t CC KDyldMakeSet ( const KDyld *self, KDlset **setp )
 {
-    rc_t rc;
+    rc_t rc = 0;
 
     if ( setp == NULL )
         rc = RC ( rcFS, rcDylib, rcConstructing, rcParam, rcNull );
@@ -875,8 +876,20 @@ LIB_EXPORT rc_t CC KDyldMakeSet ( const KDyld *self, KDlset **setp )
                 VectorInit ( & set -> ord, 0, 16 );
                 KRefcountInit ( & set -> refcount, 1, "KDlset", "make", "dlset" );
 #if ! ALWAYS_ADD_EXE
-                * setp = set;
-                return 0;
+                {   
+                    KDylib *jni;
+                    const char* libname = LIBNAME(LIBPREFIX, "vdb_jni.", SHLIBEXT);
+                    if ( KDyldLoadLib ( ( KDyld* ) self, & jni, libname ) == 0 )
+                    {
+                        rc = KDlsetAddLib ( set, jni );
+                        KDylibRelease ( jni );
+                    }
+                    if (rc == 0)
+                    {
+                        * setp = set;
+                        return 0;
+                    }
+                }
 #else
                 {
                     KDylib *exe;
@@ -892,9 +905,8 @@ LIB_EXPORT rc_t CC KDyldMakeSet ( const KDyld *self, KDlset **setp )
                         }
                     }
                 }
-
-                KDlsetRelease ( set );
 #endif
+                KDlsetRelease ( set );
             }
         }
 

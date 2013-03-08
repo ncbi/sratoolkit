@@ -136,6 +136,10 @@ VDB_EXTERN rc_t CC VTableOpenKTableUpdate ( struct VTable *self, struct KTable *
 VDB_EXTERN rc_t CC VTableDropColumn ( struct VTable *self, const char *name, ... );
 VDB_EXTERN rc_t CC VTableVDropColumn ( struct VTable *self, const char *name, va_list args );
 
+/* RenameColumn
+ */
+VDB_EXTERN rc_t CC VTableRenameColumn ( struct VTable *self, bool force,
+    const char *from, const char *to );
 
 /* ListPhysColumns
  * ListSeededWritableColumns
@@ -227,6 +231,8 @@ VDB_EXTERN rc_t CC VCursorPageIdRange ( struct VCursor const *self,
     uint32_t idx, int64_t id, int64_t *first, int64_t *last );
 
 
+VDB_EXTERN rc_t CC VCursorLinkedCursorGet(const struct VCursor *cself,const char *tbl, struct VCursor const **curs);
+VDB_EXTERN rc_t CC VCursorLinkedCursorSet(const struct VCursor *cself,const char *tbl, struct VCursor const *curs);
 
 
 /*--------------------------------------------------------------------------

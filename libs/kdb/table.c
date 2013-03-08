@@ -42,6 +42,7 @@
 
 #include <limits.h>
 #include <stdlib.h>
+#include <stdio.h>
 #include <string.h>
 #include <assert.h>
 
@@ -213,23 +214,24 @@ rc_t KDBManagerVOpenTableReadInt ( const KDBManager *self,
     const char *path, va_list args )
 {
     rc_t rc;
-    char tblpath [ 4096 ];
-    size_t z;
 
-/*    rc = KDirectoryVResolvePath ( wd, 1,
-        tblpath, sizeof tblpath, path, args ); */
-    rc = string_vprintf( tblpath, sizeof tblpath, &z, path, args );
-    if ( rc == 0 )
+    char tblpath [ 4096 ];
+    int z = ( args == NULL ) ?
+        snprintf ( tblpath, sizeof tblpath, path ):
+        vsnprintf ( tblpath, sizeof tblpath, path, args );
+    if ( z < 0 || ( size_t ) z >= sizeof tblpath )
+        rc = RC ( rcDB, rcMgr, rcOpening, rcPath, rcExcessive );
+    else
     {
         KTable *tbl;
         const KDirectory *dir;
         bool prerelease = false;
 
-        rc = KDBOpenPathTypeRead ( wd, tblpath, &dir, kptTable, NULL, try_srapath );
+        rc = KDBOpenPathTypeRead ( self, wd, tblpath, &dir, kptTable, NULL, try_srapath );
         if ( rc != 0 )
         {
             prerelease = true;
-            rc = KDBOpenPathTypeRead ( wd, tblpath, &dir, kptPrereleaseTbl, NULL, try_srapath );
+            rc = KDBOpenPathTypeRead ( self, wd, tblpath, &dir, kptPrereleaseTbl, NULL, try_srapath );
         }
 
         if ( rc == 0 )
@@ -431,7 +433,7 @@ LIB_EXPORT bool CC KTableIsAlias ( const KTable *self, uint32_t type,
             return false;
         }
 
-        rc = KDBVMakeSubPath ( self -> dir, path, sizeof path, ns, 3, name, NULL );
+        rc = KDBMakeSubPath ( self -> dir, path, sizeof path, ns, 3, name );
         if ( rc == 0 )
         {
             switch ( KDirectoryPathType ( self -> dir, path ) )
@@ -634,18 +636,30 @@ LIB_EXPORT rc_t CC KTableModDate ( const KTable *self, KTime_t *mtime )
 /* List
  *  create table listings
  */
-static
-bool CC KDatabaseListFilter ( const KDirectory *dir, const char *name, void *data )
+struct FilterData
 {
-    return KDBOpenPathTypeRead(dir, name, NULL, (intptr_t)data, NULL, false) == 0;
+    const KDBManager * mgr;
+    int type;
+};
+
+static
+bool CC KDatabaseListFilter ( const KDirectory *dir, const char *name, void *data_ )
+{
+    struct FilterData * data = data_;
+    return ( KDBOpenPathTypeRead ( data->mgr, dir, name, NULL, data->type, NULL, false ) == 0 );
 }
 
 LIB_EXPORT rc_t CC KTableListCol ( const KTable *self, KNamelist **names )
 {
     if ( self != NULL )
     {
+        struct FilterData data;
+
+        data.mgr = self->mgr;
+        data.type = kptColumn;
+
         return KDirectoryVList ( self -> dir,
-            names, KDatabaseListFilter, ( void* ) kptColumn, "col", NULL );
+            names, KDatabaseListFilter, &data, "col", NULL );
     }
 
     if ( names != NULL )

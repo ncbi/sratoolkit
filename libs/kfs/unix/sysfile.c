@@ -530,7 +530,7 @@ static KFile_vt_v1 vtKSysFile =
 
 static
 rc_t KSysFileMakeVT ( KSysFile **fp, int fd, const KFile_vt *vt,
-    bool read_enabled, bool write_enabled )
+    const char *path, bool read_enabled, bool write_enabled )
 {
     rc_t rc;
     KSysFile *f;
@@ -564,7 +564,7 @@ rc_t KSysFileMakeVT ( KSysFile **fp, int fd, const KFile_vt *vt,
         }
 #endif
 
-        rc = KFileInit ( & f -> dad, vt, read_enabled, write_enabled );
+        rc = KFileInit ( & f -> dad, vt, "KSysFile", path, read_enabled, write_enabled );
         if ( rc == 0 )
         {
             f -> fd = fd;
@@ -577,10 +577,10 @@ rc_t KSysFileMakeVT ( KSysFile **fp, int fd, const KFile_vt *vt,
     return rc;
 }
 
-LIB_EXPORT rc_t CC KSysFileMake ( KSysFile **fp, int fd, bool read_enabled, bool write_enabled )
+LIB_EXPORT rc_t CC KSysFileMake ( KSysFile **fp, int fd, const char *path, bool read_enabled, bool write_enabled )
 {
     return KSysFileMakeVT ( fp, fd, ( const KFile_vt* ) & vtKSysFile,
-        read_enabled, write_enabled );
+        path, read_enabled, write_enabled );
 }
 
 /*--------------------------------------------------------------------------
@@ -917,7 +917,7 @@ rc_t KStdIOFileMake ( KFile **fp, int fd,
     if ( seekable )
     {
         return KSysFileMakeVT ( ( KSysFile** ) fp, fd,
-            ( const KFile_vt* ) & vtKStdIOFile, read_enabled, write_enabled );
+            ( const KFile_vt* ) & vtKStdIOFile, "stdio-file", read_enabled, write_enabled );
     }
 
     if ( fd < 0 )
@@ -955,7 +955,7 @@ rc_t KStdIOFileMake ( KFile **fp, int fd,
             }
 #endif
             rc = KFileInit ( &f->dad.dad, (const KFile_vt*) &vtKStdIOStream,
-                             read_enabled, write_enabled );
+                             "KStdIOFile", "fd", read_enabled, write_enabled );
             if ( rc == 0 )
             {
                 f -> dad . fd = fd;

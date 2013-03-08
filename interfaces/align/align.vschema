@@ -686,6 +686,7 @@ table NCBI:align:tbl:align_cmn #2
         | < INSDC:SRA:platform_id > simple_sub_select < 'SEQUENCE','PLATFORM'> (.SEQ_SPOT_ID)
         | < INSDC:SRA:platform_id > echo < SRA_PLATFORM_UNDEFINED > ();
 
+    U8 out_alignment_count = <U8> NCBI:align:project_from_sequence < 'ALIGNMENT_COUNT' > ( .SEQ_SPOT_ID, .SEQ_READ_ID );
 
     /* out_read_type
      *  set to SRA_READ_TYPE_FORWARD + SRA_READ_TYPE_BIOLOGICAL
@@ -720,6 +721,7 @@ table NCBI:align:tbl:align_cmn #2
     extern column bool MATE_REF_ORIENTATION = out_mate_ref_orientation;
     readonly column ascii MATE_REF_NAME = NCBI:align:ref_name ( out_mate_ref_id );
     readonly column ascii MATE_REF_SEQ_ID = NCBI:align:ref_seq_id( out_mate_ref_id );
+    readonly column U8 ALIGNMENT_COUNT  = out_alignment_count;
 
 
 /********************************
@@ -1064,7 +1066,7 @@ table NCBI:align:tbl:seq #1.0.0 =
 };
 
 
-table NCBI:align:tbl:cs_seq #1
+table NCBI:align:tbl:cs_seq #1.1
 {
     /* writable columns */
     extern column INSDC:color:text CMP_CSREAD
@@ -1120,15 +1122,31 @@ table NCBI:align:tbl:cs_seq #1
     INSDC:x2cs:bin phys_cmp_alt_x2cs_bin
         = .CMP_ALTCSREAD
         ;
+    INSDC:2cs:packed phys_2cs_packed
+        = .CSREAD
+        ;
+    INSDC:x2cs:bin phys_alt_x2cs_bin
+        = .ALTCSREAD
+        ;
     INSDC:2cs:bin out_cmp_2cs_bin
         = ( INSDC:2cs:bin ) unpack ( phys_cmp_2cs_packed )
+        ;
+    INSDC:2cs:bin out_2cs_bin
+        = ( INSDC:2cs:bin ) unpack ( phys_2cs_packed )
         ;
     INSDC:x2cs:bin out_cmp_x2cs_bin
         = ( INSDC:x2cs:bin ) < U8 > bit_or < ALIGN_RIGHT > ( out_cmp_2cs_bin, phys_cmp_alt_x2cs_bin )
         | ( INSDC:x2cs:bin ) out_cmp_2cs_bin
         ;
+    INSDC:x2cs:bin out_x2cs_bin
+        = ( INSDC:x2cs:bin ) < U8 > bit_or < ALIGN_RIGHT > ( out_2cs_bin, phys_alt_x2cs_bin )
+        | ( INSDC:x2cs:bin ) out_2cs_bin
+        ;
      INSDC:color:text out_cmp_color_text
         = < INSDC:x2cs:bin, INSDC:color:text > map <  INSDC:x2cs:map:BINSET, INSDC:x2cs:map:CHARSET > ( out_cmp_x2cs_bin )
+        ;
+     INSDC:color:text out_color_text
+        = < INSDC:x2cs:bin, INSDC:color:text > map <  INSDC:x2cs:map:BINSET, INSDC:x2cs:map:CHARSET > ( out_x2cs_bin )
         ;
 
     /* triggers from stats */
@@ -1153,20 +1171,24 @@ table NCBI:align:tbl:cs_seq #1
         ;
 };
 
-table NCBI:align:view:cs_seq #1 = NCBI:align:tbl:cs_seq #1
+table NCBI:align:view:cs_seq #1.1 = NCBI:align:tbl:cs_seq #1.1
 {
     // various READ columns
     default readonly column INSDC:dna:text READ
         = < INSDC:4na:bin, INSDC:dna:text > map < INSDC:4na:map:BINSET, INSDC:4na:map:CHARSET > ( out_dcmp_4na_bin )
+        | < INSDC:4na:bin, INSDC:dna:text > map < INSDC:4na:map:BINSET, INSDC:4na:map:CHARSET > ( out_4na_bin )
         ;
-    readonly column INSDC:4na:bin READ = out_dcmp_4na_bin;
-    readonly column INSDC:4na:packed READ = pack ( out_dcmp_4na_bin );
-    readonly column INSDC:x2na:bin READ = out_dcmp_x2na_bin;
-    readonly column INSDC:2na:bin READ = out_dcmp_2na_bin;
+    readonly column INSDC:4na:bin READ = out_dcmp_4na_bin | out_4na_bin;
+    readonly column INSDC:4na:packed READ = pack ( out_dcmp_4na_bin ) | pack ( out_4na_bin );
+    readonly column INSDC:x2na:bin READ = out_dcmp_x2na_bin | out_x2na_bin;
+    readonly column INSDC:2na:bin READ = out_dcmp_2na_bin | out_2na_bin;
     INSDC:2na:bin out_dcmp_2na_bin
         = < INSDC:x2na:bin, INSDC:2na:bin > map < INSDC:x2na:map:BINSET, [ 0, 1, 2, 3, 0 ] > ( out_dcmp_x2na_bin )
         ;
-    readonly column INSDC:2na:packed READ = pack ( out_dcmp_2na_bin );
+    INSDC:2na:bin out_2na_bin
+        = < INSDC:x2na:bin, INSDC:2na:bin > map < INSDC:x2na:map:BINSET, [ 0, 1, 2, 3, 0 ] > ( out_x2na_bin )
+        ;
+    readonly column INSDC:2na:packed READ = pack ( out_dcmp_2na_bin ) | pack ( out_2na_bin );
 
     // decompression in base space
     INSDC:coord:len cmp_read_len
@@ -1178,8 +1200,14 @@ table NCBI:align:view:cs_seq #1 = NCBI:align:tbl:cs_seq #1
     INSDC:x2na:bin out_cmp_x2na_bin
         = NCBI:dna_from_color #1 ( out_cmp_x2cs_bin, cmp_read_start, cmp_read_len, .CS_KEY, color_matrix )
         ;
+    INSDC:x2na:bin out_x2na_bin
+        = NCBI:dna_from_color #1 ( out_x2cs_bin, .READ_START, .READ_LEN, .CS_KEY, color_matrix )
+        ;
     INSDC:4na:bin out_cmp_4na_bin
         = < INSDC:x2na:bin, INSDC:4na:bin > map < INSDC:x2na:map:BINSET, [ 1, 2, 4, 8, 15 ] > ( out_cmp_x2na_bin )
+        ;
+    INSDC:4na:bin out_4na_bin
+        = < INSDC:x2na:bin, INSDC:4na:bin > map < INSDC:x2na:map:BINSET, [ 1, 2, 4, 8, 15 ] > ( out_x2na_bin )
         ;
     INSDC:4na:bin out_dcmp_4na_bin
         = NCBI:align:seq_restore_read ( out_cmp_4na_bin, .PRIMARY_ALIGNMENT_ID, .READ_LEN, .READ_TYPE )
@@ -1189,13 +1217,13 @@ table NCBI:align:view:cs_seq #1 = NCBI:align:tbl:cs_seq #1
     // various CSREAD columns
     default readonly column INSDC:color:text CSREAD
         = < INSDC:x2cs:bin, INSDC:color:text > map <  INSDC:x2cs:map:BINSET, INSDC:x2cs:map:CHARSET > ( out_dcmp_x2cs_bin )
-        ;
-    readonly column INSDC:x2cs:bin CSREAD = out_dcmp_x2cs_bin;
-    readonly column INSDC:2cs:bin CSREAD = out_dcmp_2cs_bin;
+        | out_color_text;
+    readonly column INSDC:x2cs:bin CSREAD = out_dcmp_x2cs_bin | out_x2cs_bin;
+    readonly column INSDC:2cs:bin CSREAD = out_dcmp_2cs_bin | out_2cs_bin;
     INSDC:2cs:bin out_dcmp_2cs_bin
         = < INSDC:x2cs:bin, INSDC:2cs:bin > map < INSDC:x2cs:map:BINSET, [ 0, 1, 2, 3, 0 ] > ( out_dcmp_x2cs_bin )
         ;
-    readonly column INSDC:2cs:packed CSREAD = pack ( out_dcmp_2cs_bin );
+    readonly column INSDC:2cs:packed CSREAD = pack ( out_dcmp_2cs_bin ) | out_2cs_bin;
 
 
     // decompression in color space
@@ -1414,27 +1442,27 @@ table NCBI:align:tbl:reference #2 =
 }
 
 // THE DATABASES
-database NCBI:align:db:alignment_sorted #1.2
+database NCBI:align:db:alignment_sorted #1.2.1
 {
     table NCBI:align:tbl:reference #2 REFERENCE;
     table NCBI:align:tbl:align_sorted #1.1 PRIMARY_ALIGNMENT;
     table NCBI:align:tbl:align_mate_sorted #1.0 SECONDARY_ALIGNMENT;
     table NCBI:align:tbl:seq #1.0 SEQUENCE;
-    table NCBI:align:view:cs_seq #1.0 CS_SEQUENCE;
+    table NCBI:align:view:cs_seq #1.1 CS_SEQUENCE;
     table NCBI:align:tbl:qstat #1.0 QUAL_STAT;
 };
 
-database NCBI:align:db:alignment_unsorted #1.2
+database NCBI:align:db:alignment_unsorted #1.2.1
 {
     table NCBI:align:tbl:reference #2 REFERENCE;
     table NCBI:align:tbl:align_unsorted #1.1 PRIMARY_ALIGNMENT;
     table NCBI:align:tbl:align_mate_unsorted #1.0 SECONDARY_ALIGNMENT;
     table NCBI:align:tbl:seq #1.0 SEQUENCE;
-    table NCBI:align:view:cs_seq #1.0 CS_SEQUENCE;
+    table NCBI:align:view:cs_seq #1.1 CS_SEQUENCE;
     table NCBI:align:tbl:qstat #1.0 QUAL_STAT;
 };
 
-database NCBI:align:db:alignment_evidence #1.2
+database NCBI:align:db:alignment_evidence #1.2.1
 {
     table NCBI:align:tbl:reference #2 REFERENCE;
     table NCBI:align:tbl:align_unsorted #1.1 PRIMARY_ALIGNMENT;
@@ -1442,11 +1470,11 @@ database NCBI:align:db:alignment_evidence #1.2
     table NCBI:align:tbl:align_allele #1.1 EVIDENCE_INTERVAL;
     table NCBI:align:tbl:align_mate_unsorted #1.0 EVIDENCE_ALIGNMENT;
     table NCBI:align:tbl:seq #1.0 SEQUENCE;
-    table NCBI:align:view:cs_seq #1.0 CS_SEQUENCE;
+    table NCBI:align:view:cs_seq #1.1 CS_SEQUENCE;
     table NCBI:align:tbl:qstat #1.0 QUAL_STAT;
 };
 
-database NCBI:align:db:alignment_evidence_sorted #1.0
+database NCBI:align:db:alignment_evidence_sorted #1.0.1
 {
     table NCBI:align:tbl:reference #2 REFERENCE;
     table NCBI:align:tbl:align_sorted #1.1 PRIMARY_ALIGNMENT;
@@ -1454,6 +1482,6 @@ database NCBI:align:db:alignment_evidence_sorted #1.0
     table NCBI:align:tbl:align_allele #1.1 EVIDENCE_INTERVAL;
     table NCBI:align:tbl:align_mate_unsorted #1.0 EVIDENCE_ALIGNMENT;
     table NCBI:align:tbl:seq #1.0 SEQUENCE;
-    table NCBI:align:view:cs_seq #1.0 CS_SEQUENCE;
+    table NCBI:align:view:cs_seq #1.1 CS_SEQUENCE;
     table NCBI:align:tbl:qstat #1.0 QUAL_STAT;
 };

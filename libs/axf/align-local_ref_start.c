@@ -46,7 +46,7 @@
 typedef struct LocalRefStart LocalRefStart;
 struct LocalRefStart
 {
-    uint32_t maxSeqLen;
+    uint32_t max_seq_len;
 };
 
 static
@@ -60,43 +60,37 @@ void CC LocalRefStartWhack ( void *obj )
 }
 
 static
-rc_t LocalRefStartMake ( LocalRefStart **objp, const VTable *tbl )
+rc_t LocalRefStartMake ( LocalRefStart **objp, const VTable *tbl, const VCursor *native_curs )
 {
     rc_t rc;
-    const VCursor *curs;
-    uint32_t colIdx;
 
     /* create the object */
     LocalRefStart *obj = malloc ( sizeof * obj );
     if ( obj == NULL ) {
         rc = RC ( rcXF, rcFunction, rcConstructing, rcMemory, rcExhausted );
     } else {
-        /* open the reference table */
-        const VTable *reftbl;
-        if( (rc = AlignRefTable(tbl, &reftbl)) == 0 ) {
-            /* create a cursor */
-            rc = VTableCreateCursorRead ( reftbl, & curs);
-            VTableRelease ( reftbl );
-            if( rc == 0 ) {
-                /* add columns to cursor */
-                if( (rc = VCursorAddColumn(curs, &colIdx, "(U32)MAX_SEQ_LEN")) == 0 ) {
-                    rc = VCursorOpen(curs);
-                }
-                if (rc == 0) {
+	const VCursor *curs=NULL;
+         /* open the reference table cursor*/
+        if( (rc = AlignRefTableCursor(tbl, native_curs, &curs, NULL)) == 0 ){
+                uint32_t itmp;
+                if(  (rc = VCursorAddColumn(curs, &itmp, "(U32)MAX_SEQ_LEN")) == 0 || GetRCState(rc) == rcExists)  {
                     const void *base;
                     uint32_t row_len;
-                    
-                    rc = VCursorCellDataDirect(curs, 1, colIdx, NULL, &base, NULL, &row_len);
-                    if (rc == 0) {
-                        memcpy(&obj->maxSeqLen, base, 4);
+                    rc = VCursorCellDataDirect(curs, 1, itmp, NULL, &base, NULL, &row_len);
+                    if(rc == 0) {
+                        assert(row_len == 1);
+                        memcpy(&obj->max_seq_len, base, 4);
                     }
                 }
-                VCursorRelease(curs);
-                if( rc == 0 ) {
-                    *objp = obj;
-                    return 0;
+                if( GetRCObject(rc) == rcColumn && GetRCState(rc) == rcNotFound ) {
+                    obj->max_seq_len = 0;
+                    rc = 0;
                 }
-            }
+                VCursorRelease(curs);
+                if(rc == 0){
+                        *objp = obj;
+                        return 0;
+                }
         }
         free ( obj );
     }
@@ -115,7 +109,7 @@ rc_t CC align_local_ref_start ( void *data, const VXformInfo *info, void *Dst, c
     unsigned i;
     
     for (i = 0; i != elem_count; ++i) {
-        dst[i] = global_ref_start[i] % self->maxSeqLen;
+        dst[i] = global_ref_start[i] % self->max_seq_len;
     }
     return 0;
 }
@@ -124,7 +118,7 @@ VTRANSFACT_IMPL ( NCBI_align_local_ref_start, 1, 0, 0 ) ( const void *self, cons
     VFuncDesc *rslt, const VFactoryParams *cp, const VFunctionParams *dp )
 {
     LocalRefStart *fself;
-    rc_t rc = LocalRefStartMake ( & fself, info -> tbl );
+    rc_t rc = LocalRefStartMake ( & fself, info -> tbl, (const VCursor*)info->parms  );
     if ( rc == 0 )
     {
         rslt -> self = fself;

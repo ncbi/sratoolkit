@@ -61,15 +61,6 @@ typedef struct KSysDir KSysDir;
 rc_t KSysDirMakePath ( struct KSysDir const *self, enum RCContext ctx, bool canon,
     char *buffer, size_t path_max, const char *path, va_list args );
 
-
-/* RealPath
- *  returns a real OS path
- */
-rc_t KSysDirRealPath ( const KSysDir *self,
-    char *real, size_t bsize, const char *path, ... );
-rc_t KSysDirVRealPath ( const KSysDir *self,
-    char *real, size_t bsize, const char *path, va_list args );
-
 #ifdef __cplusplus
 }
 #endif

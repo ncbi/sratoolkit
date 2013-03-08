@@ -45,9 +45,8 @@
      fqBASESEQ = 262,
      fqCOLORSEQ = 263,
      fqTOKEN = 264,
-     fqASC33QUAL = 265,
-     fqASC64QUAL = 266,
-     fqUNRECOGNIZED = 267
+     fqASCQUAL = 265,
+     fqUNRECOGNIZED = 266
    };
 #endif
 

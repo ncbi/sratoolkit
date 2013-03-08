@@ -38,7 +38,7 @@
 #define ALIAS_FORCE    "f"
 #define ALIAS_DEC_SRA  NULL
 
-extern bool Decrypting;
+extern const bool Decrypting;
 
 extern char Password [];
 extern size_t PasswordSize;
@@ -47,6 +47,8 @@ extern const char De [];
 extern const char de [];
 extern const char SraOption[];
 
+extern const char EncExt[];
+bool NameFixUp (char * name);
 extern const char * ForceUsage[];
 
 /* for encfile encrypt/decrypt */
@@ -59,6 +61,8 @@ typedef enum ArcScheme
     arcNone,
     arcSRAFile
 } ArcScheme;
+
+extern bool IsArchive; /* this approach makes threading fail */
 
 struct KFile;
 
@@ -73,7 +77,8 @@ typedef enum EncScheme
 } EncScheme;
 
 void CryptOptionLines ();
-bool DoThisFile (const struct KFile * infile, EncScheme scheme);
+
+bool DoThisFile (const struct KFile * infile, EncScheme enc, ArcScheme * arc);
 
 struct Args;
 rc_t CommonMain (struct Args * args);

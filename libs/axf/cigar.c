@@ -210,14 +210,12 @@ rc_t cigar_string_2(KDataBuffer *dst, size_t boff, uint64_t *bsize, const int ve
     
 #define BUF_WRITE(OP, LEN) { if ((rc = op2b(dst, di + boff, &nwrit, (OP), (LEN))) != 0) return rc; di += nwrit; }
     si=read_start;
-    if(!use_S && read_start == read_end && reflen > 0){/** full delete as a last ploidy ends up written nowhere  **/
-	di=0;
-	opcode = 'D';
-	op_len = reflen;
-    } else for (op_len = di = 0, opcode = ri = 0; si < read_end && ri <= (int)reflen; ) {
-#if 0
-        fprintf(stderr, "si: %u; ri: %i\n", si, ri);
-#endif
+    if (/* !use_S && */read_start == read_end && reflen > 0) {/** full delete as a last ploidy ends up written nowhere  **/
+        di=0;
+        opcode = 'D';
+        op_len = reflen;
+    }
+    else for (op_len = di = 0, opcode = ri = 0; si < read_end && ri <= (int)reflen; ) {
         if (has_ref_offset[si]) {
             int offs;
             
@@ -382,12 +380,6 @@ rc_t CC cigar_impl_2 ( void *data, const VXformInfo *info, int64_t row_id,
     else {
         rslt->data->elem_bits = 8;
         rslt->elem_count = 0;
-
-        if (argv[0].u.data.elem_count == 0 ||
-            argv[1].u.data.elem_count == 0)
-        {
-            return KDataBufferResize(rslt->data, rslt->elem_count);
-        }
     }
     for (n = 0, start = 0, ro_offset = 0; n < nreads; start += read_len[n++]) {
         if (argc == 4)

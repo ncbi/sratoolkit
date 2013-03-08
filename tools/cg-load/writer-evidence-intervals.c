@@ -145,7 +145,7 @@ rc_t CGWriterEvdInt_Write(const CGWriterEvdInt* cself, const TEvidenceDnbsData* 
                 self->algn.ploidy = 0;
                 rc = ReferenceMgr_Compress(cself->rmgr, ewrefmgr_cmp_Exact, self->data.chr, self->data.offset, self->data.allele[i], self->data.allele_length[i],
                                            self->data.allele_alignment[i], self->data.allele_alignment_length[i],
-                                           0, NULL, 0, NULL, 0, &self->algn);
+                                           0, NULL, 0, 0, NULL, 0, &self->algn);
                 self->data.allele_indexes_to_read_number[i] = 1; /* 1st read */
             }
         }
@@ -168,14 +168,14 @@ rc_t CGWriterEvdInt_Write(const CGWriterEvdInt* cself, const TEvidenceDnbsData* 
                 self->algn.ploidy = 0;
                 rc = ReferenceMgr_Compress(cself->rmgr, ewrefmgr_cmp_Exact, self->data.chr, self->data.offset, self->data.allele[i1], self->data.allele_length[i1],
                                            self->data.allele_alignment[i1], self->data.allele_alignment_length[i1],
-                                           0, NULL, 0, NULL, 0, &self->algn);
+                                           0, NULL, 0, 0, NULL, 0, &self->algn);
                 self->data.allele_indexes_to_read_number[i1] = 1; /* 1st read */
             }
             if( rc == 0 ) {
 		if ( i2 != i1 ) {
 			rc = ReferenceMgr_Compress(cself->rmgr, ewrefmgr_cmp_Exact, self->data.chr, self->data.offset, self->data.allele[i2], self->data.allele_length[i2],
                                            self->data.allele_alignment[i2], self->data.allele_alignment_length[i2],
-                                           0, NULL, 0, NULL, 0, &self->algn);
+                                           0, NULL, 0, 0, NULL, 0, &self->algn);
 			self->data.allele_indexes_to_read_number[i2] = 2; /* 2nd read */
 		} else {
 			self->data.ploidy = 1;
@@ -203,19 +203,19 @@ rc_t CGWriterEvdInt_Write(const CGWriterEvdInt* cself, const TEvidenceDnbsData* 
                 self->algn.ploidy = 0;
                 rc = ReferenceMgr_Compress(cself->rmgr, ewrefmgr_cmp_Exact, self->data.chr, self->data.offset, self->data.allele[i1], self->data.allele_length[i1],
                                            self->data.allele_alignment[i1], self->data.allele_alignment_length[i1],
-                                           0, NULL, 0, NULL, 0, &self->algn);
+                                           0, NULL, 0, 0, NULL, 0, &self->algn);
                 self->data.allele_indexes_to_read_number[i1] = 1; /* 1st read */
             }
             if( rc == 0 ) {
                 rc = ReferenceMgr_Compress(cself->rmgr, ewrefmgr_cmp_Exact, self->data.chr, self->data.offset, self->data.allele[i2], self->data.allele_length[i2],
                                            self->data.allele_alignment[i2], self->data.allele_alignment_length[i2],
-                                           0, NULL, 0, NULL, 0, &self->algn);
+                                           0, NULL, 0, 0, NULL, 0, &self->algn);
                 self->data.allele_indexes_to_read_number[i2] = 2; /* 2nd read */
             }
             if( rc == 0 ) {
                 rc = ReferenceMgr_Compress(cself->rmgr, ewrefmgr_cmp_Exact, self->data.chr, self->data.offset, self->data.allele[i3], self->data.allele_length[i3],
                                            self->data.allele_alignment[i3], self->data.allele_alignment_length[i3],
-                                           0, NULL, 0, NULL, 0, &self->algn);
+                                           0, NULL, 0, 0, NULL, 0, &self->algn);
                 self->data.allele_indexes_to_read_number[i3] = 3; /* 3rd read */
             }
         }

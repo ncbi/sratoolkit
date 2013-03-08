@@ -1124,7 +1124,7 @@ static
         rc = RC (rcFS, rcFile, rcConstructing, rcMemory, rcExhausted);
     else
     {
-        rc = KFileInit (&self->dad, (const KFile_vt*)&vtKXTocFile, true, false);
+        rc = KFileInit (&self->dad, (const KFile_vt*)&vtKXTocFile, "KXTocFile", "no-name", true, false);
         if (rc == 0)
         {
             rc = KFileAddRef (base);
@@ -3332,7 +3332,7 @@ rc_t CC KDirectoryVOpenXTocDirRead (const KDirectory * self,
             return rc;
 
         type = KDirectoryPathType (self, path);
-        switch (type)
+        switch (type & ~kptAlias)
         {
         case kptNotFound:
             rc = RC (rcFS, rcDirectory, rcOpening, rcParam, rcNotFound);

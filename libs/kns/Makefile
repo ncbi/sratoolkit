@@ -78,6 +78,7 @@ $(LIBDIR)/libkurl: $(addprefix $(LIBDIR)/libkurl.,$(LIBEXT))
 KURL_SRC = \
 	kns_manager \
 	KCurlFile \
+	KCurlRequest \
 	url-fetcher \
 	url-fetcher-curl \
 	entrez-fetcher

@@ -27,11 +27,13 @@
 #include "sra-pileup.vers.h"
 
 #include "cmdline_cmn.h"
+#include "reref.h"
 
 #include <kapp/main.h>
 
 #include <klib/out.h>
 #include <klib/printf.h>
+#include <klib/report.h>
 
 #include <kfs/file.h>
 #include <kfs/buffile.h>
@@ -75,6 +77,9 @@
 #define OPTION_SEQNAME "seqname"
 #define ALIAS_SEQNAME  "e"
 
+#define OPTION_REREF   "report-ref"
+#define ALIAS_REREF    NULL
+
 enum
 {
     sra_pileup_samtools = 0,
@@ -101,6 +106,8 @@ static const char * spotgrp_usage[] = { "divide by spotgroups", NULL };
 
 static const char * seqname_usage[] = { "use original seq-name", NULL };
 
+static const char * reref_usage[] = { "report used references", NULL };
+
 OptDef MyOptions[] =
 {
     /*name,           alias,         hfkt, usage-help,    maxcount, needs value, required */
@@ -111,7 +118,8 @@ OptDef MyOptions[] =
     { OPTION_NOSKIP,  ALIAS_NOSKIP,  NULL, noskip_usage,  1,        false,       false },
     { OPTION_SHOWID,  ALIAS_SHOWID,  NULL, showid_usage,  1,        false,       false },
     { OPTION_SPOTGRP, ALIAS_SPOTGRP, NULL, spotgrp_usage, 1,        false,       false },
-    { OPTION_SEQNAME, ALIAS_SEQNAME, NULL, seqname_usage, 1,        false,       false }
+    { OPTION_SEQNAME, ALIAS_SEQNAME, NULL, seqname_usage, 1,        false,       false },
+    { OPTION_REREF,   ALIAS_REREF,   NULL, reref_usage,   1,        false,       false }
 };
 
 /* =========================================================================================== */
@@ -125,6 +133,7 @@ typedef struct pileup_options
     bool show_id;
     bool div_by_spotgrp;
     bool use_seq_name;
+    bool reref;
     uint32_t minmapq;
     uint32_t output_mode;
     uint32_t source_table;
@@ -224,6 +233,9 @@ static rc_t get_pileup_options( Args * args, pileup_options *opts )
     if ( rc == 0 )
         rc = get_bool_option( args, OPTION_SEQNAME, &opts->use_seq_name, false );
 
+    if ( rc == 0 )
+        rc = get_bool_option( args, OPTION_REREF, &opts->reref, false );
+
     return rc;
 }
 
@@ -268,6 +280,7 @@ rc_t CC Usage ( const Args * args )
     HelpOptionLine ( ALIAS_MODE, OPTION_MODE, "output-modes", mode_usage );
     HelpOptionLine ( ALIAS_SPOTGRP, OPTION_SPOTGRP, "spotgroups-modes", spotgrp_usage );
     HelpOptionLine ( ALIAS_SEQNAME, OPTION_SEQNAME, "org. seq-name", seqname_usage );
+    HelpOptionLine ( ALIAS_REREF, OPTION_REREF, "report reference", reref_usage );
     HelpOptionsStandard ();
     HelpVersion ( fullpath, KAppVersion() );
     return rc;
@@ -477,7 +490,9 @@ static rc_t set_stdout_to( bool gzip, bool bzip2, const char * filename, size_t 
         KDirectory *dir;
         rc = KDirectoryNativeDir( &dir );
         if ( rc != 0 )
+        {
             LOGERR( klogInt, rc, "KDirectoryNativeDir() failed" );
+        }
         else
         {
             KFile *of;
@@ -514,7 +529,9 @@ static rc_t set_stdout_to( bool gzip, bool bzip2, const char * filename, size_t 
                     g_out_writer.org_data = KOutDataGet();
                     rc = KOutHandlerSet( BufferedWriter, &g_out_writer );
                     if ( rc != 0 )
+                    {
                         LOGERR( klogInt, rc, "KOutHandlerSet() failed" );
+                    }
                 }
                 KFileRelease( of );
             }
@@ -567,7 +584,9 @@ static rc_t read_base_and_len( struct VCursor const *curs,
     uint32_t column_idx;
     rc_t rc = VCursorGetColumnIdx ( curs, &column_idx, name );
     if ( rc != 0 )
+    {
         LOGERR( klogInt, rc, "VCursorGetColumnIdx() failed" );
+    }
     else
     {
         uint32_t elem_bits, boff, len_intern;
@@ -575,7 +594,9 @@ static rc_t read_base_and_len( struct VCursor const *curs,
         rc = VCursorCellDataDirect ( curs, row_id, column_idx, 
                                      &elem_bits, &ptr, &boff, &len_intern );
         if ( rc != 0 )
+        {
             LOGERR( klogInt, rc, "VCursorCellDataDirect() failed" );
+        }
         else
         {
             if ( len != NULL ) *len = len_intern;
@@ -641,22 +662,23 @@ static rc_t CC populate_tooldata( void *obj, const PlacementRecord *placement,
 }
 
 
-static size_t CC alloc_size( struct VCursor const *curs, int64_t row_id, void *data )
+static rc_t CC alloc_size( struct VCursor const *curs, int64_t row_id, size_t * size, void *data )
 {
+    rc_t rc = 0;
     tool_rec * rec;
     pileup_callback_data *cb_data = ( pileup_callback_data * )data;
-    size_t res = ( sizeof *rec );
+    *size = ( sizeof *rec );
 
     if ( !cb_data->options->omit_qualities )
     {
         uint32_t q_len;
-        rc_t rc = read_base_and_len( curs, COL_QUALITY, row_id, NULL, &q_len );
+        rc = read_base_and_len( curs, COL_QUALITY, row_id, NULL, &q_len );
         if ( rc == 0 )
         {
-            res += q_len;
+            *size += q_len;
         }
     }
-    return res;
+    return rc;
 }
 
 
@@ -841,8 +863,8 @@ static rc_t walk_position( ReferenceIterator *ref_iter,
 
                     if ( rc == 0 )
                     {
-                        /* only one OUTMSG(()) per line... */
-                        OUTMSG(( "%s\n", line->data ));
+                        /* only one KOutMsg() per line... */
+                        KOutMsg( "%s\n", line->data );
                     }
 
                     if ( GetRCState( rc ) == rcDone )
@@ -870,13 +892,18 @@ static rc_t walk_reference_window( ReferenceIterator *ref_iter,
         if ( rc != 0 )
         {
             if ( GetRCState( rc ) != rcDone )
+            {
                 LOGERR( klogInt, rc, "ReferenceIteratorNextPos() failed" );
+            }
         }
         else
         {
             rc = walk_position( ref_iter, refname, line, qualities, options );
         }
-        if ( rc == 0 ) rc = Quitting();
+        if ( rc == 0 )
+        {
+            rc = Quitting();
+        }
     }
     if ( GetRCState( rc ) == rcDone ) rc = 0;
     return rc;
@@ -906,7 +933,9 @@ static rc_t walk_reference( ReferenceIterator *ref_iter,
                     if ( rc != 0 )
                     {
                         if ( GetRCState( rc ) != rcDone )
+                        {
                             LOGERR( klogInt, rc, "ReferenceIteratorNextWindow() failed" );
+                        }
                     }
                     else
                     {
@@ -1035,26 +1064,26 @@ static void print_counter_line( const char * refname,
                                 pileup_counters * counters )
 {
     char c = _4na_to_ascii( base, false );
-    OUTMSG(( "%s\t%u\t%c\t%u\t", refname, pos + 1, c, depth ));
+    KOutMsg( "%s\t%u\t%c\t%u\t", refname, pos + 1, c, depth );
     if ( counters->matches > 0 )
-        OUTMSG(( "%u=", counters->matches ));
+        KOutMsg( "%u=", counters->matches );
     if ( counters->mismatches[ 0 ] > 0 )
-        OUTMSG(( "%uA", counters->mismatches[ 0 ] ));
+        KOutMsg( "%uA", counters->mismatches[ 0 ] );
     if ( counters->mismatches[ 1 ] > 0 )
-        OUTMSG(( "%uC", counters->mismatches[ 1 ] ));
+        KOutMsg( "%uC", counters->mismatches[ 1 ] );
     if ( counters->mismatches[ 2 ] > 0 )
-        OUTMSG(( "%uG", counters->mismatches[ 2 ] ));
+        KOutMsg( "%uG", counters->mismatches[ 2 ] );
     if ( counters->mismatches[ 3 ] > 0 )
-        OUTMSG(( "%uT", counters->mismatches[ 3 ] ));
+        KOutMsg( "%uT", counters->mismatches[ 3 ] );
     if ( counters->inserts > 0 )
     {
-        OUTMSG(( "%uI%s", counters->inserts, counters->ins.data ));
+        KOutMsg( "%uI%s", counters->inserts, counters->ins.data );
     }
     if ( counters->deletes > 0 )
     {
-        OUTMSG(( "%uD%s", counters->deletes, counters->del.data ));
+        KOutMsg( "%uD%s", counters->deletes, counters->del.data );
     }
-    OUTMSG(( "\n" ));
+    KOutMsg( "\n" );
 }
 
 static rc_t walk_counter_position( ReferenceIterator *ref_iter,
@@ -1113,7 +1142,9 @@ static rc_t walk_just_counters( ReferenceIterator *ref_iter,
                 if ( rc != 0 )
                 {
                     if ( GetRCState( rc ) != rcDone )
+                    {
                         LOGERR( klogInt, rc, "ReferenceIteratorNextPos() failed" );
+                    }
                 }
                 else
                 {
@@ -1156,7 +1187,7 @@ static void fsm_finalize( fsm_context * ctx, INSDC_coord_zero pos )
     switch( ctx->state )
     {
         case fsm_DATA : ;
-        case fsm_GAP1 : OUTMSG(( "%s:%u-%u\n", ctx->refname, ctx->start, pos )); break;
+        case fsm_GAP1 : KOutMsg( "%s:%u-%u\n", ctx->refname, ctx->start, pos ); break;
     }
 }
 
@@ -1186,7 +1217,7 @@ static void fsm_gap2( fsm_context * ctx )
 {
     if ( ctx->state == fsm_GAP1 )
     {
-        OUTMSG(( "%s:%u-%u\n", ctx->refname, ctx->start, ctx->end ));
+        KOutMsg( "%s:%u-%u\n", ctx->refname, ctx->start, ctx->end );
     }
     ctx->state = fsm_GAP2;
 }
@@ -1224,10 +1255,10 @@ static void fsm_show( fsm_context * ctx, INSDC_coord_zero pos )
 {
     switch( ctx->state )
     {
-        case fsm_INIT : OUTMSG(( "[%u].INIT\n", pos )); break;
-        case fsm_DATA : OUTMSG(( "[%u].DATA\n", pos )); break;
-        case fsm_GAP1 : OUTMSG(( "[%u].GAP1\n", pos )); break;
-        case fsm_GAP2 : OUTMSG(( "[%u].GAP2\n", pos )); break;
+        case fsm_INIT : KOutMsg( "[%u].INIT\n", pos ); break;
+        case fsm_DATA : KOutMsg( "[%u].DATA\n", pos ); break;
+        case fsm_GAP1 : KOutMsg( "[%u].GAP1\n", pos ); break;
+        case fsm_GAP2 : KOutMsg( "[%u].GAP2\n", pos ); break;
     }
 }
 #endif
@@ -1252,7 +1283,9 @@ static rc_t walk_and_detect( ReferenceIterator *ref_iter,
             if ( rc != 0 )
             {
                 if ( GetRCState( rc ) != rcDone )
+                {
                     LOGERR( klogInt, rc, "ReferenceIteratorNextPos() failed" );
+                }
             }
             else
             {
@@ -1307,7 +1340,7 @@ static rc_t walk_ref_iter( ReferenceIterator *ref_iter, pileup_options *options 
                         case sra_pileup_detect : rc = walk_and_detect( ref_iter, refname, 200 );
                                                  break;
 
-                        default : OUTMSG(( "unknown output-mode '%u'\n", options->output_mode ));
+                        default : KOutMsg( "unknown output-mode '%u'\n", options->output_mode );
                                   break;
 
                     }
@@ -1316,19 +1349,27 @@ static rc_t walk_ref_iter( ReferenceIterator *ref_iter, pileup_options *options 
                 else
                 {
                     if ( options->use_seq_name )
+                    {
                         LOGERR( klogInt, rc, "ReferenceObj_Name() failed" );
+                    }
                     else
+                    {
                         LOGERR( klogInt, rc, "ReferenceObj_SeqId() failed" );
+                    }
                 }
             }
         }
         else
         {
             if ( GetRCState( rc ) != rcDone )
+            {
                 LOGERR( klogInt, rc, "ReferenceIteratorNextReference() failed" );
+            }
         }
     }
     if ( GetRCState( rc ) == rcDone ) { rc = 0; }
+    if ( GetRCState( rc ) == rcCanceled ) { rc = 0; }
+    /* RC ( rcExe, rcProcess, rcExecuting, rcProcess, rcCanceled ); */
     return rc;
 }
 
@@ -1340,14 +1381,18 @@ static rc_t add_quality_and_orientation( const VTable *tbl, const VCursor ** cur
 {
     rc_t rc = VTableCreateCursorRead ( tbl, cursor );
     if ( rc != 0 )
+    {
         LOGERR( klogInt, rc, "VTableCreateCursorRead() failed" );
+    }
 
     if ( rc == 0 && !omit_qualities )
     {
         uint32_t quality_idx;
         rc = VCursorAddColumn ( *cursor, &quality_idx, COL_QUALITY );
         if ( rc != 0 )
+        {
             LOGERR( klogInt, rc, "VCursorAddColumn(QUALITY) failed" );
+        }
     }
 
     if ( rc == 0 )
@@ -1355,7 +1400,9 @@ static rc_t add_quality_and_orientation( const VTable *tbl, const VCursor ** cur
         uint32_t ref_orientation_idx;
         rc = VCursorAddColumn ( *cursor, &ref_orientation_idx, COL_REF_ORIENTATION );
         if ( rc != 0 )
+        {
             LOGERR( klogInt, rc, "VCursorAddColumn(REF_ORIENTATION) failed" );
+        }
     }
 
     if ( rc == 0 )
@@ -1363,7 +1410,9 @@ static rc_t add_quality_and_orientation( const VTable *tbl, const VCursor ** cur
         uint32_t read_filter_idx;
         rc = VCursorAddColumn ( *cursor, &read_filter_idx, COL_READ_FILTER );
         if ( rc != 0 )
+        {
             LOGERR( klogInt, rc, "VCursorAddColumn(READ_FILTER) failed" );
+        }
     }
     return rc;
 }
@@ -1374,7 +1423,9 @@ static rc_t prepare_prim_cursor( const VDatabase *db, const VCursor ** cursor, b
     const VTable *tbl;
     rc_t rc = VDatabaseOpenTableRead ( db, &tbl, "PRIMARY_ALIGNMENT" );
     if ( rc != 0 )
+    {
         LOGERR( klogInt, rc, "VDatabaseOpenTableRead(PRIMARY_ALIGNMENT) failed" );
+    }
     else
     {
         rc = add_quality_and_orientation( tbl, cursor, omit_qualities );
@@ -1389,7 +1440,9 @@ static rc_t prepare_sec_cursor( const VDatabase *db, const VCursor ** cursor, bo
     const VTable *tbl;
     rc_t rc = VDatabaseOpenTableRead ( db, &tbl, "SECONDARY_ALIGNMENT" );
     if ( rc != 0 )
+    {
         LOGERR( klogInt, rc, "VDatabaseOpenTableRead(SECONDARY_ALIGNMENT) failed" );
+    }
     else
     {
         rc = add_quality_and_orientation( tbl, cursor, omit_qualities );
@@ -1404,7 +1457,9 @@ static rc_t prepare_evidence_cursor( const VDatabase *db, const VCursor ** curso
     const VTable *tbl;
     rc_t rc = VDatabaseOpenTableRead ( db, &tbl, "EVIDENCE_ALIGNMENT" );
     if ( rc != 0 )
+    {
         LOGERR( klogInt, rc, "VDatabaseOpenTableRead(EVIDENCE) failed" );
+    }
     else
     {
         rc = add_quality_and_orientation( tbl, cursor, omit_qualities );
@@ -1425,7 +1480,7 @@ static void show_placement_params( const char * prefix, const ReferenceObj *refo
     }
     else
     {
-        OUTMSG(( "prepare %s: <%s> %u..%u\n", prefix, name, start, end ));
+        KOutMsg( "prepare %s: <%s> %u..%u\n", prefix, name, start, end ) ;
     }
 }
 
@@ -1442,7 +1497,9 @@ static rc_t CC prepare_section_cb( prepare_ctx * ctx, uint32_t start, uint32_t e
     {
         rc = ReferenceObj_SeqLength( ctx->refobj, &len );
         if ( rc != 0 )
+        {
             LOGERR( klogInt, rc, "ReferenceObj_SeqLength() failed" );
+        }
         else
         {
             rc_t rc1 = 0, rc2 = 0, rc3 = 0;
@@ -1455,68 +1512,77 @@ static rc_t CC prepare_section_cb( prepare_ctx * ctx, uint32_t start, uint32_t e
             /* depending on ctx->select prepare primary, secondary or both... */
             if ( ctx->use_primary_alignments )
             {
-                const VCursor * align_cursor = NULL;
-                rc1 = prepare_prim_cursor( ctx->db, &align_cursor, ctx->omit_qualities );
+                const VCursor * prim_align_cursor = NULL;
+                rc1 = prepare_prim_cursor( ctx->db, &prim_align_cursor, ctx->omit_qualities );
                 if ( rc1 == 0 )
                 {
     /*                show_placement_params( "primary", ctx->refobj, start, end ); */
-                    rc1 = ReferenceIteratorAddPlacements ( ctx->ref_iter,        /* the outer ref-iter */
+                    rc1 = ReferenceIteratorAddPlacements ( ctx->ref_iter,       /* the outer ref-iter */
                                                           ctx->refobj,          /* the ref-obj for this chromosome */
                                                           start - 1,            /* start ( zero-based ) */
                                                           end - start + 1,      /* length */
                                                           NULL,                 /* ref-cursor */
-                                                          align_cursor,         /* align-cursor */
+                                                          prim_align_cursor,    /* align-cursor */
                                                           primary_align_ids,    /* which id's */
                                                           ctx->spot_group );    /* what read-group */
                     if ( rc1 != 0 )
+                    {
                         LOGERR( klogInt, rc1, "ReferenceIteratorAddPlacements(prim) failed" );
-                    VCursorRelease( align_cursor );
+                    }
+                    VCursorRelease( prim_align_cursor );
                 }
             }
             if ( ctx->use_secondary_alignments )
             {
-                const VCursor * align_cursor = NULL;
-                rc2 = prepare_sec_cursor( ctx->db, &align_cursor, ctx->omit_qualities );
+                const VCursor * sec_align_cursor = NULL;
+                rc2 = prepare_sec_cursor( ctx->db, &sec_align_cursor, ctx->omit_qualities );
                 if ( rc2 == 0 )
                 {
     /*                show_placement_params( "secondary", ctx->refobj, start, end ); */
-                    rc2 = ReferenceIteratorAddPlacements ( ctx->ref_iter,        /* the outer ref-iter */
+                    rc2 = ReferenceIteratorAddPlacements ( ctx->ref_iter,       /* the outer ref-iter */
                                                           ctx->refobj,          /* the ref-obj for this chromosome */
                                                           start - 1,            /* start ( zero-based ) */
                                                           end - start + 1,      /* length */
                                                           NULL,                 /* ref-cursor */
-                                                          align_cursor,         /* align-cursor */
+                                                          sec_align_cursor,     /* align-cursor */
                                                           secondary_align_ids,  /* which id's */
                                                           ctx->spot_group );    /* what read-group */
                     if ( rc2 != 0 )
+                    {
                         LOGERR( klogInt, rc2, "ReferenceIteratorAddPlacements(sec) failed" );
+                    }
+                    VCursorRelease( sec_align_cursor );
                 }
-                VCursorRelease( align_cursor );
             }
 
             if ( ctx->use_evidence_alignments )
             {
-                const VCursor * align_cursor = NULL;
-                rc3 = prepare_evidence_cursor( ctx->db, &align_cursor, ctx->omit_qualities );
+                const VCursor * ev_align_cursor = NULL;
+                rc3 = prepare_evidence_cursor( ctx->db, &ev_align_cursor, ctx->omit_qualities );
                 if ( rc3 == 0 )
                 {
     /*                show_placement_params( "evidende", ctx->refobj, start, end ); */
-                    rc3 = ReferenceIteratorAddPlacements ( ctx->ref_iter,        /* the outer ref-iter */
+                    rc3 = ReferenceIteratorAddPlacements ( ctx->ref_iter,       /* the outer ref-iter */
                                                           ctx->refobj,          /* the ref-obj for this chromosome */
                                                           start - 1,            /* start ( zero-based ) */
                                                           end - start + 1,      /* length */
                                                           NULL,                 /* ref-cursor */
-                                                          align_cursor,         /* align-cursor */
+                                                          ev_align_cursor,      /* align-cursor */
                                                           evidence_align_ids,   /* which id's */
                                                           ctx->spot_group );    /* what read-group */
                     if ( rc3 != 0 )
+                    {
                         LOGERR( klogInt, rc3, "ReferenceIteratorAddPlacements(evidence) failed" );
+                    }
+                    VCursorRelease( ev_align_cursor );
                 }
-                VCursorRelease( align_cursor );
             }
 
-
-            if ( rc1 == 0 )
+            if ( rc1 == SILENT_RC( rcAlign, rcType, rcAccessing, rcRow, rcNotFound ) )
+            { /* from allocate_populate_rec */
+                rc = rc1;
+            }
+            else if ( rc1 == 0 )
                 rc = 0;
             else if ( rc2 == 0 )
                 rc = 0;
@@ -1575,7 +1641,9 @@ static rc_t pileup_main( Args * args, pileup_options *options )
     /* (1) make the align-manager ( necessary to make a ReferenceIterator... ) */
     rc_t rc = AlignMgrMakeRead ( &cb_data.almgr );
     if ( rc != 0 )
+    {
         LOGERR( klogInt, rc, "AlignMgrMake() failed" );
+    }
 
     cb_data.options = options;
     arg_ctx.options = options;
@@ -1594,7 +1662,9 @@ static rc_t pileup_main( Args * args, pileup_options *options )
 
         rc = AlignMgrMakeReferenceIterator ( cb_data.almgr, &arg_ctx.ref_iter, &cb_block, options->minmapq );
         if ( rc != 0 )
+        {
             LOGERR( klogInt, rc, "AlignMgrMakeReferenceIterator() failed" );
+        }
     }
 
     /* (3) make a KDirectory ( necessary to make a vdb-manager ) */
@@ -1602,7 +1672,9 @@ static rc_t pileup_main( Args * args, pileup_options *options )
     {
         rc = KDirectoryNativeDir( &dir );
         if ( rc != 0 )
+        {
             LOGERR( klogInt, rc, "KDirectoryNativeDir() failed" );
+        }
     }
 
     /* (4) make a vdb-manager */
@@ -1610,7 +1682,9 @@ static rc_t pileup_main( Args * args, pileup_options *options )
     {
         rc = VDBManagerMakeRead ( &arg_ctx.vdb_mgr, dir );
         if ( rc != 0 )
+        {
             LOGERR( klogInt, rc, "VDBManagerMakeRead() failed" );
+        }
     }
 
 
@@ -1619,12 +1693,16 @@ static rc_t pileup_main( Args * args, pileup_options *options )
     {
         rc = VDBManagerMakeSRASchema( arg_ctx.vdb_mgr, &arg_ctx.vdb_schema );
         if ( rc != 0 )
+        {
             LOGERR( klogInt, rc, "VDBManagerMakeSRASchema() failed" );
+        }
         else if ( options->cmn.schema_file != NULL )
         {
             rc = VSchemaParseFile( arg_ctx.vdb_schema, options->cmn.schema_file );
             if ( rc != 0 )
+            {
                 LOGERR( klogInt, rc, "VSchemaParseFile() failed" );
+            }
         }
     }
 
@@ -1632,13 +1710,13 @@ static rc_t pileup_main( Args * args, pileup_options *options )
     if ( rc == 0 )
     {
         BSTree regions;
-        rc = init_ref_regions( &regions, args );
+        rc = init_ref_regions( &regions, args ); /* cmdline_cmn.c */
         if ( rc == 0 )
         {
             bool empty = false;
             check_ref_regions( &regions ); /* sanitize input... */
             arg_ctx.ranges = &regions;
-            rc = foreach_argument( args, dir, options->div_by_spotgrp, &empty, on_argument, &arg_ctx );
+            rc = foreach_argument( args, dir, options->div_by_spotgrp, &empty, on_argument, &arg_ctx ); /* cmdline_cmn.c */
             if ( empty )
             {
                 Usage ( args );
@@ -1669,8 +1747,11 @@ static rc_t pileup_main( Args * args, pileup_options *options )
 rc_t CC KMain( int argc, char *argv [] )
 {
     rc_t rc = KOutHandlerSet( write_to_FILE, stdout );
+    ReportBuildDate( __DATE__ );
     if ( rc != 0 )
+    {
         LOGERR( klogInt, rc, "KOutHandlerSet() failed" );
+    }
     else
     {
         Args * args;
@@ -1681,7 +1762,7 @@ rc_t CC KMain( int argc, char *argv [] )
             CommonOptions_ptr(), CommonOptions_count() );
         if ( rc == 0 )
         {
-            rc = parse_inf_file( args );
+            rc = parse_inf_file( args ); /* cmdline_cmn.h */
             if ( rc == 0 )
             {
                 pileup_options options;
@@ -1698,9 +1779,16 @@ rc_t CC KMain( int argc, char *argv [] )
 
                     if ( rc == 0 )
                     {
-                        /* ============================== */
-                        rc = pileup_main( args, &options );
-                        /* ============================== */
+                        if ( options.reref )
+                        {
+                            rc = report_on_reference( args, true ); /* reref.c */
+                        }
+                        else
+                        {
+                            /* ============================== */
+                            rc = pileup_main( args, &options );
+                            /* ============================== */
+                        }
                     }
 
                     if ( options.cmn.output_file != NULL )
@@ -1709,6 +1797,13 @@ rc_t CC KMain( int argc, char *argv [] )
             }
             ArgsWhack( args );
         }
+    }
+
+    {
+        /* Report execution environment if necessary */
+        rc_t rc2 = ReportFinalize( rc );
+        if ( rc == 0 )
+            rc = rc2;
     }
     return rc;
 }

@@ -31,6 +31,9 @@
 #include <klib/log.h>
 #include <klib/rc.h>
 #include <kfs/directory.h>
+#include <kfg/config.h>
+#include <vfs/manager.h>
+#include <vfs/resolver.h>
 #include <kdb/manager.h>
 #include <kdb/kdb-priv.h>
 #include <vdb/manager.h>
@@ -41,6 +44,7 @@
 #include <sra/srapath.h>
 #include <sra/sradb-priv.h>
 #include <sysalloc.h>
+#include <atomic.h>
 
 #include "sra-priv.h"
 
@@ -63,8 +67,14 @@ rc_t SRAMgrWhack ( const SRAMgr *that )
 
     /* must check here for NULL because
        SRAPathRelease is weak-linked */
-    if ( self -> pmgr != NULL )
-        SRAPathRelease ( self -> pmgr );
+    if ( self -> _pmgr != NULL )
+    {
+#if OLD_SRAPATH_MGR
+        SRAPathRelease ( self -> _pmgr );
+#else
+        VResolverRelease ( ( const VResolver* ) self -> _pmgr );
+#endif
+    }
 
     free ( self );
     return 0;
@@ -146,16 +156,37 @@ rc_t SRAMgrSever ( const SRAMgr *self )
 static
 rc_t SRAMgrInitPath ( SRAMgr *mgr, const KDirectory *wd )
 {
+#if OLD_SRAPATH_MGR
     /* try to make the path manager */
-    rc_t rc = SRAPathMake ( & mgr -> pmgr, wd );
+    rc_t rc = SRAPathMake ( & mgr -> _pmgr, wd );
+
     if ( GetRCState ( rc ) == rcNotFound && GetRCTarget ( rc ) == rcDylib )
     {
         /* we are operating outside of the archive */
-        assert ( mgr -> pmgr == NULL );
+        assert ( mgr -> _pmgr == NULL );
         rc = 0;
     }
 
     return rc;
+#else
+    KConfig *kfg;
+    rc_t rc = KConfigMake ( & kfg, NULL );
+    if ( rc == 0 )
+    {
+        VFSManager *vfs;
+        rc = VFSManagerMake ( & vfs );
+        if ( rc == 0 )
+        {
+            rc = VFSManagerMakeResolver ( vfs, ( VResolver** ) & mgr -> _pmgr, kfg );
+            VFSManagerRelease ( vfs );
+        }
+        KConfigRelease ( kfg );
+    }
+    if ( rc != 0 )
+        mgr -> _pmgr = NULL;
+
+    return 0;
+#endif
 }
 
 rc_t SRAMgrMake ( SRAMgr **mgrp,
@@ -227,6 +258,24 @@ LIB_EXPORT rc_t CC SRAMgrWritable ( const SRAMgr *self,
 }
 
 
+/* AccessSRAPath
+ *  returns a new reference to SRAPath
+ *  do NOT access "pmgr" directly
+ */
+SRAPath *SRAMgrAccessSRAPath ( const SRAMgr *cself )
+{
+    SRAMgr *self = ( SRAMgr* ) cself;
+    if ( self != NULL )
+    {
+#if OLD_SRAPATH_MGR
+        /* get a pointer to object - read is expected to be atomic */
+        SRAPath *pold = self -> _pmgr;
+#endif
+    }
+    return NULL;
+}
+
+
 /* GetSRAPath
  *  retrieve a reference to SRAPath object in use - may be NULL
  * UseSRAPath
@@ -243,17 +292,21 @@ LIB_EXPORT rc_t CC SRAMgrGetSRAPath ( const SRAMgr *self,
     {
         if ( self == NULL )
             rc = RC ( rcSRA, rcMgr, rcAccessing, rcSelf, rcNull );
-        else if ( self -> pmgr == NULL )
+#if OLD_SRAPATH_MGR
+        else if ( self -> _pmgr == NULL )
             rc = 0;
         else
         {
-            rc = SRAPathAddRef ( self -> pmgr );
+            rc = SRAPathAddRef ( self -> _pmgr );
             if ( rc == 0 )
             {
-                * path = self -> pmgr;
+                * path = self -> _pmgr;
                 return 0;
             }
         }
+#else
+        else
+#endif
 
         * path = NULL;
     }
@@ -268,15 +321,16 @@ LIB_EXPORT rc_t CC SRAMgrUseSRAPath ( const SRAMgr *cself, SRAPath *path )
 
     if ( self == NULL )
         rc = RC ( rcSRA, rcMgr, rcUpdating, rcSelf, rcNull );
-    else if ( path == self -> pmgr )
+#if OLD_SRAPATH_MGR
+    else if ( path == self -> _pmgr )
         rc = 0;
     else if ( path == NULL )
     {
         rc = 0;
-        if ( self -> pmgr != NULL )
+        if ( self -> _pmgr != NULL )
         {
-            SRAPathRelease ( self -> pmgr );
-            self -> pmgr = NULL;
+            SRAPathRelease ( self -> _pmgr );
+            self -> _pmgr = NULL;
         }
     }
     else
@@ -284,30 +338,60 @@ LIB_EXPORT rc_t CC SRAMgrUseSRAPath ( const SRAMgr *cself, SRAPath *path )
         rc = SRAPathAddRef ( path );
         if ( rc == 0 )
         {
-            SRAPathRelease ( self -> pmgr );
-            self -> pmgr = path;
+            SRAPathRelease ( self -> _pmgr );
+            self -> _pmgr = path;
         }
     }
+#else
+    else
+        rc = 0;
+#endif
 
     return rc;
 }
 
 LIB_EXPORT rc_t CC SRAMgrConfigReload( const SRAMgr *cself, const KDirectory *wd )
 {
+#if OLD_SRAPATH_MGR
+    SRAMgr *self = cself;
+
+    /* create a new SRAPath object */
+    SRAPath *pnew;
+    rc_t rc = SRAPathMake ( & pnew, wd );
+    if ( rc == 0 )
+    {
+        /* swap with the old guy */
+        SRAPath *pold = self -> _pmgr;
+        if ( atomic_test_and_set_ptr ( ( void *volatile* ) & self -> _pmgr, pnew, pold ) == ( void* ) pold )
+            SRAPathRelease ( pold );
+        else
+            SRAPathRelease ( pnew );
+    }
+
+    return rc;
+#else
+    return 0;
+#endif
+
+#if 0
+
+
     /* do not reload VDBManager config for now
        it cannot reload properly and grows in memory */
     rc_t rc = 0;
     /* (not thread) safely re-instanciate sra path config */
     SRAMgr *self = (SRAMgr*)cself;
-    SRAPath* p = cself->pmgr;
-    self->pmgr = NULL;
+    SRAPath* p = cself->_pmgr;
+    self->_pmgr = NULL;
     if( (rc = SRAMgrInitPath(self, wd)) == 0 ) {
         SRAPathRelease(p);
     } else {
         /* roll back */
-        self->pmgr = p;
+        self->_pmgr = p;
     }
     return rc;
+#endif
+
 }
 
 /* GetVDBManager

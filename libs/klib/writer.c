@@ -207,8 +207,8 @@ rc_t RCLiteral ( rc_t self, char *buffer, size_t bsize, size_t *num_writ )
 #endif
     return string_printf ( buffer, bsize, num_writ
 #if _DEBUGGING
-        , "rc = %s:$s:%u:%u.%u.%u.%u.%u"
-        , GetRCFilename(), GetRCFunction (), GetRCLineno ()
+        , "rc = %s:%u:$s:%u.%u.%u.%u.%u"
+        , GetRCFilename(), GetRCLineno (), GetRCFunction ()
 #else
         , "rc = %u.%u.%u.%u.%u"
 #endif
@@ -255,7 +255,7 @@ LIB_EXPORT rc_t CC RCExplain2 ( rc_t rc, char *buffer, size_t bsize, size_t *num
         const char *function = GetRCFunction ();
         if ( function != NULL )
         {
-            len = snprintf(buffer + total, bsize - total, "%s:%s:%u: ", GetRCFilename(), function, GetRCLineno () );
+            len = snprintf(buffer + total, bsize - total, "%s:%u:%s: ", GetRCFilename(), GetRCLineno (), function );
             if( len < 0 || ( total + len ) >= bsize ) {
                 return RCLiteral ( rc, buffer, bsize, num_writ );
             }

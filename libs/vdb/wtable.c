@@ -967,3 +967,21 @@ LIB_EXPORT rc_t CC VTableDropColumn(VTable *self, const char fmt[], ...)
     va_end(va);
     return rc;
 }
+
+LIB_EXPORT rc_t CC VTableRenameColumn ( struct VTable *self, bool force,
+    const char *from, const char *to )
+{
+    rc_t rc;
+
+    if ( self == NULL )
+        rc = RC ( rcVDB, rcTable, rcAccessing, rcSelf, rcNull );
+    else
+    {
+        rc = KTableRenameColumn ( self->ktbl, force, from, to );
+        if ( GetRCState(rc) == rcNotFound )
+           rc = KMDataNodeRenameChild( self->col_node, from, to );
+    }
+
+    return rc;
+}
+

@@ -63,6 +63,11 @@
 #include <os-native.h>
 #include <sysalloc.h>
 
+#include <kproc/lock.h>
+#include <kproc/cond.h>
+#include <kproc/thread.h>
+
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -188,6 +193,44 @@ int CC NamedParamNodeComp ( const BSTNode *A, const BSTNode *B )
 
     return StringOrderNoNullCheck ( & a -> name, & b -> name );
 }
+/*--------------------------------------------------------------------------
+ * LinkedCursorNode
+ */
+
+typedef struct LinkedCursorNode LinkedCursorNode;
+struct LinkedCursorNode
+{
+    BSTNode n;
+    char tbl[64];
+    VCursor *curs;
+};
+
+static
+void CC LinkedCursorNodeWhack ( BSTNode *n, void *ignore )
+{
+    LinkedCursorNode *self = ( LinkedCursorNode* ) n;
+    VCursorRelease (  self -> curs );
+    free ( self );
+}
+
+static
+int CC LinkedCursorComp ( const void *item, const BSTNode *n )
+{
+    const char *tbl = item;
+    const LinkedCursorNode *node = ( const LinkedCursorNode* ) n;
+
+    return strncmp ( tbl, node -> tbl, sizeof(node -> tbl) );
+}
+
+static
+int CC LinkedCursorNodeComp ( const BSTNode *A, const BSTNode *B )
+{
+    const LinkedCursorNode *a = (const LinkedCursorNode *) A;
+    const LinkedCursorNode *b = (const LinkedCursorNode *) B;
+
+    return strncmp ( a -> tbl, b -> tbl,sizeof(a->tbl) );
+}
+
 
 
 /*--------------------------------------------------------------------------
@@ -210,6 +253,7 @@ rc_t VCursorDestroy ( VCursor *self )
     if ( self -> user_whack != NULL )
         ( * self -> user_whack ) ( self -> user );
     BSTreeWhack ( & self -> named_params, NamedParamNodeWhack, NULL );
+    BSTreeWhack ( & self -> linked_cursors, LinkedCursorNodeWhack, NULL );
     VCursorCacheWhack ( & self -> col, NULL, NULL );
     VCursorCacheWhack ( & self -> phys, VPhysicalWhack, NULL );
     VCursorCacheWhack ( & self -> prod, NULL, NULL );
@@ -456,48 +500,61 @@ rc_t VCursorSupplementSchema ( const VCursor *self )
  *  "capacity" [ IN ] - the maximum bytes to cache on the cursor before
  *  dropping least recently used blobs
  */
+static rc_t VTableCreateCachedCursorReadImpl(const VTable *self, const VCursor **cursp, size_t capacity,bool create_pagemap_thread);
 LIB_EXPORT rc_t CC VTableCreateCachedCursorRead ( const VTable *self,
     const VCursor **cursp, size_t capacity )
 {
+	return VTableCreateCachedCursorReadImpl(self,cursp,capacity,true);
+}
+/**
+*** VTableCreateCursorReadInternal is only visible in vdb and needed for schema resolutions
+****/
+rc_t  VTableCreateCursorReadInternal(const VTable *self, const VCursor **cursp)
+{
+	return VTableCreateCachedCursorReadImpl(self,cursp,0,false);
+}
+static rc_t VTableCreateCachedCursorReadImpl ( const VTable *self,
+    const VCursor **cursp, size_t capacity, bool create_pagemap_thread  )
+{
     rc_t rc;
-
 #if DISABLE_READ_CACHE
     capacity = 0;
 #endif
-
     if ( cursp == NULL )
         rc = RC ( rcVDB, rcTable, rcOpening, rcParam, rcNull );
-    else
-    {
+    else {
         if ( self == NULL )
             rc = RC ( rcVDB, rcTable, rcOpening, rcSelf, rcNull );
-        else
-        {
+        else {
             VCursor *curs;
-
 #if LAZY_OPEN_COL_NODE
             if ( self -> col_node == NULL )
                 KMetadataOpenNodeRead ( self -> meta, & ( ( VTable* ) self ) -> col_node, "col" );
 #endif
             rc = VCursorMake ( & curs, self );
-            if ( rc == 0 )
-            {
+            if ( rc == 0 ) {
 		curs -> blob_mru_cache = VBlobMRUCacheMake(capacity);
                 curs -> read_only = true;
                 rc = VCursorSupplementSchema ( curs );
+               
+#if 0  
+		if(create_pagemap_thread && capacity > 0 && rc == 0 )
+			rc = VCursorLaunchPagemapThread ( curs );
+#endif
                 if ( rc == 0 )
                 {
+		    if(capacity > 0)
+			curs->launch_cnt = 5;
+		    else
+			curs->launch_cnt=200;
                     * cursp = curs;
                     return 0;
                 }
-
                 VCursorRelease ( curs );
             }
         }
-
         * cursp = NULL;
     }
-
     return rc;
 }
 
@@ -1688,6 +1745,8 @@ LIB_EXPORT rc_t CC VCursorReadBits ( const VCursor *self, uint32_t col_idx,
                 else if ( * num_read != 0 )
                 {
                     uint64_t to_read = * num_read * elem_size;
+                    uint64_t doff = start * elem_bits;
+                    to_read = to_read > doff ? to_read - doff : 0;
                     if ( blen == 0 )
                     {
                         * num_read = 0;
@@ -1707,7 +1766,7 @@ LIB_EXPORT rc_t CC VCursorReadBits ( const VCursor *self, uint32_t col_idx,
                             * remaining = (uint32_t)( ( to_read - bsize ) / elem_bits );
                             to_read = bsize;
                         }
-                        bitcpy ( buffer, off, base, boff, ( bitsz_t ) to_read );
+                        bitcpy ( buffer, off, base, boff + doff, ( bitsz_t ) to_read );
                         * num_read = ( uint32_t ) ( to_read / elem_bits );
                         return 0;
                     }
@@ -2029,6 +2088,51 @@ LIB_EXPORT rc_t CC VCursorSetUserData ( const VCursor *cself,
     return 0;
 }
 
+LIB_EXPORT rc_t CC VCursorLinkedCursorGet(const VCursor *cself,const char *tbl,VCursor const **curs)
+{
+    LinkedCursorNode *node;
+    VCursor *self = (VCursor *)cself;
+
+    if(cself == NULL)
+        return RC(rcVDB, rcCursor, rcAccessing, rcSelf, rcNull);
+    if(tbl == NULL)
+        return RC(rcVDB, rcCursor, rcAccessing, rcName, rcNull);
+    if(tbl[0] == '\0')
+        return RC(rcVDB, rcCursor, rcAccessing, rcName, rcEmpty);
+    node = (LinkedCursorNode *)BSTreeFind(&self->linked_cursors, tbl, LinkedCursorComp);
+    if (node == NULL)
+        return RC(rcVDB, rcCursor, rcAccessing, rcName, rcNotFound);
+
+    *curs = node->curs;
+    return 0;
+}
+LIB_EXPORT rc_t CC VCursorLinkedCursorSet(const VCursor *cself,const char *tbl,VCursor const *curs)
+{
+    LinkedCursorNode *node;
+    VCursor *self = (VCursor *)cself;
+    rc_t rc;
+
+    if(cself == NULL)
+        return RC(rcVDB, rcCursor, rcAccessing, rcSelf, rcNull);
+    if(tbl == NULL)
+        return RC(rcVDB, rcCursor, rcAccessing, rcName, rcNull);
+    if(tbl[0] == '\0')
+        return RC(rcVDB, rcCursor, rcAccessing, rcName, rcEmpty);
+
+    node = malloc(sizeof(*node));
+    if (node == NULL)
+            return RC(rcVDB, rcCursor, rcAccessing, rcMemory, rcExhausted);
+    strncpy(node->tbl,tbl,sizeof(node->tbl));
+    node->curs=(VCursor*)curs;
+    rc = BSTreeInsertUnique(&self->linked_cursors, (BSTNode *)node, NULL, LinkedCursorNodeComp);
+    if (rc)
+       free(node); 
+    else 
+	VCursorAddRef(curs);
+    return rc;
+}
+
+
 /* private */
 LIB_EXPORT rc_t CC VCursorParamsGet( struct VCursorParams const *cself,
     const char *Name, KDataBuffer **value )
@@ -2170,4 +2274,84 @@ LIB_EXPORT rc_t CC VCursorParamsUnset( struct VCursorParams const *cself, const 
 LIB_EXPORT struct VSchema const * CC VCursorGetSchema ( struct VCursor const *self )
 {
     return self ? self->schema : NULL;
+}
+
+
+static rc_t run_pagemap_thread ( const KThread *t, void *data )
+{
+    rc_t rc;
+    VCursor *self = data;
+    /* acquire lock */
+    MTCURSOR_DBG (( "run_pagemap_thread: acquiring lock\n" ));
+    while((rc = KLockAcquire ( self -> pmpr.lock ))==0){
+CHECK_AGAIN:
+	switch(self->pmpr.state){
+	 case ePMPR_STATE_NONE: 		/* wait for new request */
+	 case ePMPR_STATE_SERIALIZE_DONE: 	/* wait for result pickup **/
+	 case ePMPR_STATE_DESERIALIZE_DONE:	/* wait for result pickup **/
+		MTCURSOR_DBG (( "run_pagemap_thread: waiting for new request\n" ));
+		rc = KConditionWait ( self -> pmpr.cond, self -> pmpr.lock );
+		goto CHECK_AGAIN;
+	 case ePMPR_STATE_EXIT: /** exit requested ***/
+		MTCURSOR_DBG (( "run_pagemap_thread: exit by request\n" ));
+		KLockUnlock(self -> pmpr.lock);
+		return 0;
+	 case ePMPR_STATE_DESERIALIZE_REQUESTED:
+		MTCURSOR_DBG (( "run_pagemap_thread: request to deserialize\n" ));
+		self->pmpr.rc = PageMapDeserialize(&self->pmpr.pm,self->pmpr.data.base,self->pmpr.data.elem_count,self->pmpr.row_count);
+		if(self->pmpr.rc == 0){
+			self->pmpr.rc=PageMapExpandFull(self->pmpr.pm);
+			/*self->pmpr.rc=PageMapExpand(self->pmpr.pm,self->pmpr.row_count<2048?self->pmpr.row_count-1:2048);*/
+			assert(self->pmpr.rc == 0);
+		}
+		self->pmpr.state = ePMPR_STATE_DESERIALIZE_DONE;
+		/*fprintf(stderr,"Pagemap %p Done R:%6d|DR:%d|LR:%d\n",self->pmpr.lock, self->pmpr.pm->row_count,self->pmpr.pm->data_recs,self->pmpr.pm->leng_recs);*/
+		KLockUnlock(self -> pmpr.lock);
+		KConditionSignal ( self -> pmpr.cond );
+		break;
+	 case ePMPR_STATE_SERIALIZE_REQUESTED:
+		MTCURSOR_DBG (( "run_pagemap_thread: request to serialize\n" ));
+		self->pmpr.rc = PageMapSerialize(self->pmpr.pm,&self->pmpr.data,0,&self->pmpr.elem_count);
+		self->pmpr.state = ePMPR_STATE_SERIALIZE_DONE;
+		KLockUnlock(self -> pmpr.lock);
+		KConditionSignal ( self -> pmpr.cond );
+		break;
+	 default:
+		assert(0);
+		KLockUnlock(self -> pmpr.lock);
+		return RC(rcVDB, rcPagemap, rcConverting, rcParam, rcInvalid );
+	 
+	}
+    }
+    MTCURSOR_DBG (( "run_pagemap_thread: exit\n" ));
+    return rc;
+}
+
+rc_t CC VCursorLaunchPagemapThread(VCursor *curs)
+{
+	rc_t rc;
+	curs -> pagemap_thread = NULL; /** if fails - will not use **/
+	rc = KLockMake ( & curs -> pmpr.lock );
+	if(rc == 0)
+		rc = KConditionMake ( & curs -> pmpr.cond );
+	if(rc == 0)
+		rc = KThreadMake ( & curs -> pagemap_thread, run_pagemap_thread, curs );
+	return rc;
+}
+rc_t CC VCursorTerminatePagemapThread(VCursor *self)
+{
+	rc_t rc=0;
+	if(self -> pagemap_thread != NULL){
+		rc = KLockAcquire ( self -> pmpr.lock );
+		if ( rc == 0 ){
+			self -> pmpr.state = ePMPR_STATE_EXIT;
+			KConditionSignal ( self -> pmpr.cond );
+			KLockUnlock ( self -> pmpr.lock );
+		}
+		KThreadWait ( self -> pagemap_thread, NULL );
+	}
+	KThreadRelease ( self -> pagemap_thread );
+	KConditionRelease ( self -> pmpr.cond );
+	KLockRelease ( self -> pmpr.lock );
+	return rc;
 }

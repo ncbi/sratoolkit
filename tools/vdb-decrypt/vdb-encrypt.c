@@ -38,6 +38,7 @@
 #include <klib/status.h>
 
 #include <assert.h>
+#include <string.h>
 
 /* Version  EXTERN
  *  return 4-part version code: 0xMMmmrrrr, where
@@ -69,18 +70,69 @@ OptDef Options[] =
 static 
 bool DecryptSraFlag = false;
 
+const bool Decrypting = false;
 
 void CryptOptionLines () {}
 
-bool DoThisFile (const KFile * infile, EncScheme scheme)
+bool DoThisFile (const KFile * infile, EncScheme enc, ArcScheme * parc)
 {
-    switch (scheme)
+    const KFile * Infile;
+    ArcScheme arc;
+    rc_t rc;
+    bool do_enc;
+
+    *parc = arcNone;
+
+    switch (enc)
     {
     default:
+        STSMSG (1, ("error checking encrypted"));
         return false;
+
     case encNone:
-        return true;
+        do_enc = true;
+        rc = KFileAddRef (infile);
+        if (rc)
+            return false;
+        Infile = infile;
+        break;
+
+    case encEncFile:
+        do_enc = false;
+        rc = KEncFileMakeRead (&Infile, infile, &Key);
+        if (rc)
+            return false;
+        break;
+
+    case encWGAEncFile:
+        do_enc = false;
+        rc = KFileMakeWGAEncRead (&Infile, infile, Password, PasswordSize);
+        if (rc)
+            return false;
+        break;
     }
+    arc = ArchiveTypeCheck (Infile);
+    KFileRelease (Infile);
+    if (arc == arcSRAFile)
+    {
+        STSMSG (1, ("%sencrypted sra archive", do_enc ? "un" : ""));
+        *parc = arcSRAFile;
+    }
+    return do_enc;
+}
+
+bool NameFixUp (char * name)
+{
+    char * pc = strrchr (name, '.');
+
+    if (((pc != NULL) &&
+         (strcmp (pc, EncExt) == 0)) ||
+        IsArchive )
+        return false;
+
+    strcat (name, EncExt);
+
+    return true;
 }
 
 rc_t CryptFile (const KFile * in, const KFile ** new_in,
@@ -124,6 +176,7 @@ rc_t CryptFile (const KFile * in, const KFile ** new_in,
             return rc;
         }
         *new_out = out;
+        STSMSG (1, ("already encrypted just copying"));
         break;
     }
     *new_in = in;

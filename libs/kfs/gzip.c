@@ -134,7 +134,7 @@ LIB_EXPORT rc_t CC KFileMakeGzipForRead( const struct KFile **result,
     if (!obj)
         return RC ( rcFS, rcFile, rcConstructing, rcMemory, rcExhausted );
 
-    rc = KFileInit(&obj->dad, (const KFile_vt*) &s_vtKFile_InGz, true, false);
+    rc = KFileInit(&obj->dad, (const KFile_vt*) &s_vtKFile_InGz, "KGZipFile", "no-name", true, false);
     if (rc != 0) {
         free(obj);
         return rc;
@@ -425,7 +425,7 @@ LIB_EXPORT rc_t CC KFileMakeGzipForWrite( struct KFile **result,
     if (!obj)
         return RC ( rcFS, rcFile, rcConstructing, rcMemory, rcExhausted );
 
-    rc = KFileInit(&obj->dad, (const KFile_vt*) &s_vtKFile_OutGz, false, true);
+    rc = KFileInit(&obj->dad, (const KFile_vt*) &s_vtKFile_OutGz, "KGZipFile", "no-name", false, true);
     if (rc != 0) {
         free(obj);
         return rc;

@@ -162,7 +162,7 @@ libz.vers: $(ZLIB_TAR_GET)
 	$(TAR_CMD) $^
 	mv zlib-$(ZLIB_VERS)/*.[ch] .
 	mv zlib-$(ZLIB_VERS)/win32/zlib.def libz.def
-	rm -rf zlib-$(ZLIB_VERS) >/dev/null
+	-rm -rf zlib-$(ZLIB_VERS) >/dev/null
 	@ $(ECHO_VERS) > $@
 
 download: libz.vers

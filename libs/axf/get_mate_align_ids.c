@@ -191,33 +191,41 @@ rc_t CC get_mate_algn_id_drvr(void *Self,
 /* open_sub_cursor
  */
 static
-rc_t open_sub_cursor(ID_cache_t *self, const VXfactInfo *info)
+rc_t open_sub_cursor(ID_cache_t *self, const VXfactInfo *info, const VCursor *native_curs)
 {
     rc_t rc;
-    const VDatabase *db;
-    const VTable *tbl;
 
-    rc = VTableOpenParentRead (info->tbl, &db);
-    if (rc == 0) {
-        rc = VDatabaseOpenTableRead(db, &tbl, "SEQUENCE");
-        VDatabaseRelease(db);
-        if (rc == 0) {
-                rc = VTableCreateCachedCursorRead(tbl, &self->curs, 256*1024*1024);
-                VTableRelease(tbl);
-                if (rc == 0) {
-                    rc = VCursorAddColumn(self->curs, &self->idx, "(I64)PRIMARY_ALIGNMENT_ID");
-                    if (rc == 0) {
-                        rc = VCursorOpen(self->curs);
-                        if (rc == 0) {
-				rc = KVectorMake(&self->j_cache);
-				if(rc==0) rc = KVectorMake(&self->p_cache);
-				if(rc==0) return 0;
-                        }
-                    }
-                    VCursorRelease(self->curs);
-                }
-        }
+    rc = VCursorLinkedCursorGet(native_curs,"SEQUENCE",&self->curs);
+    if(rc != 0){
+	const VDatabase *db;
+	const VTable *tbl;
+	/* get at the parent database */
+	rc = VTableOpenParentRead ( info -> tbl, & db );
+	if(rc != 0) return rc;
+	/* open the table */
+	rc = VDatabaseOpenTableRead ( db, &tbl, "SEQUENCE" );
+	VDatabaseRelease ( db );
+	if(rc != 0) return rc;
+	/* create a cursor */
+	rc = VTableCreateCachedCursorRead(tbl, &self->curs,2UL*1024*1024*1024);
+	VTableRelease(tbl);
+	if(rc != 0) return rc;
+	rc = VCursorPermitPostOpenAdd( self->curs );
+	if(rc != 0) return rc;
+	rc = VCursorOpen( self->curs );
+	if(rc != 0) return rc;
+	rc = VCursorLinkedCursorSet(native_curs,"SEQUENCE",self->curs);
+	if(rc != 0) return rc;
+    } else {
+	    VCursorAddRef(self->curs);
     }
+    rc = VCursorAddColumn(self->curs, &self->idx, "(I64)PRIMARY_ALIGNMENT_ID");
+    if (rc == 0) {
+	rc = KVectorMake(&self->j_cache);
+	if(rc==0) rc = KVectorMake(&self->p_cache);
+	if(rc==0) return 0;
+    }
+    VCursorRelease(self->curs);
     return rc;
 }
 
@@ -248,7 +256,7 @@ VTRANSFACT_IMPL(NCBI_align_get_mate_align_id, 1, 0, 0) (const void *Self, const 
     if (self == NULL)
         return RC(rcXF, rcFunction, rcConstructing, rcMemory, rcExhausted);
 
-    rc = open_sub_cursor(self, info);
+    rc = open_sub_cursor(self, info, (const VCursor*)info->parms);
     if (rc == 0) {
         rslt->self = self;
         rslt->u.rf = get_mate_algn_id_drvr;

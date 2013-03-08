@@ -51,12 +51,13 @@ unset PROXY_TOOL
 
 function convert_path
 {
-    if [ "$OS" != "rwin" ]
-    then
+    if [ "$OS" != "rwin" ] ; then
         convert_path_result="$(cygpath -w $1)"
-    else
+    elif [ "$1" != "." ] ; then
         convert_path_result="$RHOME${1#$LHOME}"
         convert_path_result="${convert_path_result//\//\\}"
+    else
+        convert_path_result="."
     fi
 }
 
@@ -202,12 +203,12 @@ then
     else # rwin
         # sometimes home path comes back in lowercase
         # make sure to compare lowercased prefixes
-        rhome_low=$(echo ${RHOME} | tr '[A-Z]' '[a-z]')
+        rhome_low=$(echo ${RHOME} | tr '[A-Z]' '[a-z]' | tr '\\' '/')
         rhome_len=${#RHOME}
 
         for inc in $(cat $TARG.inc)
         do
-            inc_low=$(echo ${inc} | tr '[A-Z]' '[a-z]')
+            inc_low=$(echo ${inc} | tr '[A-Z]' '[a-z]' | tr '\\' '/')
             # vers.h files are now generated in the objdir
             if [ "$inc" != "${inc%.vers.h}" ]
             then

@@ -41,6 +41,9 @@
 #include <kdb/table.h>
 #include <kdb/database.h>
 #include <kdb/kdb-priv.h>
+#include <vfs/path.h>
+#include <vfs/path-priv.h>
+#include <vfs/resolver.h>
 #include <klib/refcount.h>
 #include <klib/log.h>
 #include <klib/debug.h>
@@ -57,6 +60,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <assert.h>
+#include <va_copy.h>
 
 /* Destroy
  */
@@ -374,15 +378,16 @@ rc_t SRATableFillOut ( SRATable *self, bool update )
  *  resolves via SRAPath mgr if present
  */
 rc_t ResolveTablePath ( const SRAMgr *mgr,
-        char *path, size_t psize, const char *spec, va_list args )
+    char *path, size_t psize, const char *spec, va_list args )
 {
+#if OLD_SRAPATH_MGR
     int len;
     char tblpath [ 4096 ];
-    const SRAPath *pmgr = mgr -> pmgr;
+    const SRAPath *pmgr = mgr -> _pmgr;
 
     /* if no path manager or if the spec string has embedded path separators,
        then this can't be an accession - just print it out */
-    if ( mgr -> pmgr == NULL || strchr( spec, '/' ) != NULL )
+    if ( mgr -> _pmgr == NULL || strchr( spec, '/' ) != NULL )
     {
         len = vsnprintf ( path, psize, spec, args );
         if ( len < 0 || ( size_t ) len >= psize )
@@ -409,6 +414,23 @@ rc_t ResolveTablePath ( const SRAMgr *mgr,
     strcpy ( path, tblpath );
 
     return 0;
+#else
+    VPath *accession;
+    const VPath *tblpath = NULL;
+    rc_t rc = VPathMakeFmt ( & accession, spec, args );
+    if ( rc == 0 )
+    {
+        rc = VResolverLocal ( ( const VResolver* ) mgr -> _pmgr, accession, & tblpath );
+        if ( rc == 0 )
+        {
+            size_t size;
+            rc = VPathReadPath ( tblpath, path, psize, & size );
+            VPathRelease ( tblpath );
+        }
+        VPathRelease ( accession );
+    }
+    return rc;
+#endif
 }
 
 /* OpenRead
@@ -437,67 +459,65 @@ rc_t CC SRAMgrVOpenAltTableRead ( const SRAMgr *self,
             rc = RC ( rcSRA, rcTable, rcOpening, rcName, rcEmpty );
         else
         {
-            char path [ 4096 ];
-            rc = ResolveTablePath ( self, path, sizeof path, spec, args );
-            if ( rc == 0 )
+            SRATable *tbl = calloc ( 1, sizeof *tbl );
+            if ( tbl == NULL )
+                rc = RC ( rcSRA, rcTable, rcConstructing, rcMemory, rcExhausted );
+            else
             {
-                SRATable *tbl = calloc ( 1, sizeof *tbl );
-                if ( tbl == NULL )
-                    rc = RC ( rcSRA, rcTable, rcConstructing, rcMemory, rcExhausted );
-                else
+                VSchema *schema = NULL;
+
+                rc = VDBManagerMakeSRASchema(self -> vmgr, & schema);
+                if ( rc == 0 ) 
                 {
-                    VSchema *schema = NULL;
-
-                    rc = VDBManagerMakeSRASchema(self -> vmgr, & schema);
-                    if ( rc == 0 ) 
+                    va_list args_copy;
+                    va_copy ( args_copy, args );
+                    rc = VDBManagerVOpenTableRead ( self -> vmgr, & tbl -> vtbl, schema, spec, args );
+                    if ( rc != 0 && GetRCObject ( rc ) == rcTable && GetRCState ( rc ) == rcIncorrect )
                     {
-                        rc = VDBManagerOpenTableRead ( self -> vmgr, & tbl -> vtbl, schema, path );
-                        if ( rc != 0 && GetRCObject ( rc ) == rcTable && GetRCState ( rc ) == rcIncorrect )
+                        const VDatabase *db;
+                        rc_t rc2 = VDBManagerVOpenDBRead ( self -> vmgr, & db, schema, spec, args_copy );
+                        if ( rc2 == 0 )
                         {
-                            const VDatabase *db;
-                            rc_t rc2 = VDBManagerOpenDBRead ( self -> vmgr, & db, schema, path );
+                            rc2 = VDatabaseOpenTableRead ( db, & tbl -> vtbl, altname );
                             if ( rc2 == 0 )
-                            {
-                                rc2 = VDatabaseOpenTableRead ( db, & tbl -> vtbl, altname );
-                                if ( rc2 == 0 )
-                                    rc = 0;
+                                rc = 0;
 
-                                VDatabaseRelease ( db );
-                            }
+                            VDatabaseRelease ( db );
                         }
+                    }
+                    va_end ( args_copy );
 
-                        VSchemaRelease(schema);
+                    VSchemaRelease(schema);
 
+                    if ( rc == 0 )
+                    {
+                        rc = VTableOpenMetadataRead ( tbl -> vtbl, & tbl -> meta );
                         if ( rc == 0 )
                         {
-                            rc = VTableOpenMetadataRead ( tbl -> vtbl, & tbl -> meta );
+                            rc = KMetadataVersion ( tbl -> meta, & tbl -> metavers );
                             if ( rc == 0 )
                             {
-                                rc = KMetadataVersion ( tbl -> meta, & tbl -> metavers );
+                                rc = VTableCreateCursorRead ( tbl -> vtbl, & tbl -> curs );
                                 if ( rc == 0 )
                                 {
-                                    rc = VTableCreateCursorRead ( tbl -> vtbl, & tbl -> curs );
+                                    tbl -> mgr = SRAMgrAttach ( self );
+                                    tbl -> mode = self -> mode;
+                                    tbl -> read_only = true;
+                                    KRefcountInit ( & tbl -> refcount, 1, "SRATable", "OpenTableRead", spec );
+                                        
+                                    rc = SRATableFillOut ( tbl, false );
                                     if ( rc == 0 )
                                     {
-                                        tbl -> mgr = SRAMgrAttach ( self );
-                                        tbl -> mode = self -> mode;
-                                        tbl -> read_only = true;
-                                        KRefcountInit ( & tbl -> refcount, 1, "SRATable", "OpenTableRead", path );
-                                        
-                                        rc = SRATableFillOut ( tbl, false );
-                                        if ( rc == 0 )
-                                        {
-                                            * rslt = tbl;
-                                            return 0;
-                                        }
+                                        * rslt = tbl;
+                                        return 0;
                                     }
                                 }
                             }
                         }
-                        
                     }
-                    SRATableWhack ( tbl );
+                    
                 }
+                SRATableWhack ( tbl );
             }
         }
 

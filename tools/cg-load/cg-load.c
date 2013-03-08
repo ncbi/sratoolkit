@@ -61,6 +61,7 @@
 #include <string.h>
 #include <errno.h>
 #include <limits.h>
+#include <assert.h>
 
 typedef struct SParam_struct
 {
@@ -126,7 +127,7 @@ rc_t DB_Init(const SParam* p, DB_Handle* h)
     }
     else if( (rc = VDBManagerCreateDB(h->mgr, &h->db, h->schema, "NCBI:align:db:alignment_evidence",
                                         p->force ? kcmInit : kcmCreate, p->out)) != 0 ) {
-        PLOGERR(klogErr, (klogErr, rc, "failed to creat database at '$(path)'", PLOG_S(path), p->out));
+        PLOGERR(klogErr, (klogErr, rc, "failed to create database at '$(path)'", PLOG_S(path), p->out));
 
     }
     else if( (rc = ReferenceMgr_Make(&h->rmgr, h->db, h->mgr, (p->force_refw ? ewrefmgr_co_allREADs : 0),
@@ -163,6 +164,8 @@ rc_t DB_Fini(const SParam* p, DB_Handle* h, bool drop)
 {
     rc_t rc = 0, rc2;
 
+    /* THIS FUNCTION MAKES NO ATTEMPT TO PRESERVE INITIAL ERROR CODES
+       EACH SUCCESSIVE ERROR OVERWRITES THE PREVIOUS CODE */
     if( h != NULL ) {
         PLOGMSG(klogInfo, (klogInfo, "Fini SEQUENCE", "severity=status"));
         if( (rc2 = CGWriterSeq_Whack(h->wseq, !drop, NULL)) != 0 && !drop ) {
@@ -199,7 +202,8 @@ rc_t DB_Fini(const SParam* p, DB_Handle* h, bool drop)
 	    LOGERR(klogErr, rc, "Failed calculating reference coverage");
         }
         h->rmgr = NULL;
-        if( rc == 0 ) {
+        if( rc == 0 )
+        {
             KMetadata* meta;
             if( (rc = VDatabaseOpenMetadataUpdate(h->db, &meta)) == 0 ) {
                 KMDataNode *node;
@@ -220,9 +224,11 @@ rc_t DB_Fini(const SParam* p, DB_Handle* h, bool drop)
         if( drop || rc != 0 ) {
             rc2 = VDBManagerDrop(h->mgr, kptDatabase, p->out);
             if( GetRCState(rc2) == rcNotFound ) {
+                /* WHAT WOULD BE THE POINT OF RESETTING "rc" TO ZERO? */
                 rc = 0;
             } else if( rc2 != 0 ) {
-                rc = rc ? rc : rc2;
+                if ( rc == 0 )
+                    rc = rc2;
                 PLOGERR(klogErr, (klogErr, rc2, "cannot drop db at '$(path)'", PLOG_S(path), p->out));
             }
         }
@@ -458,11 +464,16 @@ void CC FGroupMAP_Validate( BSTNode *n, void *data )
     if( rc == 0 && g->seq == NULL ) {
         rc = RC(rcExe, rcQueue, rcValidating, rcItem, rcIncomplete);
     }
-    if( rc != 0 ) {
+
+    /* THIS USED TO WIPE OUT THE "rc" ON EACH ENTRY */
+    if( rc != 0)  {
         PLOGERR(klogErr, (klogErr, rc,  "file pair $(f1)[mandatory], $(f2)[optional]", PLOG_2(PLOG_S(f1),PLOG_S(f2)), rnm, mnm));
-        *rc_out = rc;
+        if ( * rc_out == 0 )
+            *rc_out = rc;
+#if 0
     } else {
         *rc_out = RC(0, 0, 0, 0, 0);
+#endif
     }
 }
 
@@ -540,7 +551,8 @@ bool CC FGroupMAP_LoadReads( BSTNode *node, void *data )
     FGroupMAP_LoadData* d = (FGroupMAP_LoadData*)data;
 
     DEBUG_MSG(5, (" started\n", FGroupKey_Validate(&n->key)));
-    while( d->rc == 0 ) {
+    while( d->rc == 0 )
+    {
         if( (d->rc = CGLoaderFile_GetRead(n->seq, d->db.reads)) == 0 ) {
             if( (d->db.reads->flags & (cg_eLeftHalfDnbNoMatches | cg_eLeftHalfDnbMapOverflow)) &&
                 (d->db.reads->flags & (cg_eRightHalfDnbNoMatches | cg_eRightHalfDnbMapOverflow)) ) {
@@ -712,9 +724,21 @@ static rc_t Load( SParam* param )
             }
             if ( rc == 0 )
             {
-                rc = RC( rcExe, rcFile, rcReading, rcData, rcInsufficient );
-                BSTreeForEach( &slides, false, FGroupMAP_Validate, &rc );
-                BSTreeForEach( &evidence, false, FGroupMAP_Validate, &rc );
+                /* SHOULD HAVE A BSTreeEmpty FUNCTION OR SOMETHING...
+                   MAKE ONE HERE - WITH KNOWLEDGE THAT TREE IS NOT NULL: */
+#ifndef BSTreeEmpty
+#define BSTreeEmpty( bst ) \
+    ( ( bst ) -> root == NULL )
+#endif
+                if ( BSTreeEmpty ( & slides ) && BSTreeEmpty ( & evidence ) )
+                    rc = RC( rcExe, rcFile, rcReading, rcData, rcInsufficient );
+                else
+                {
+                    /* CORRECTED SETTING OF "rc" IN "FGroupMAP_Validate" */
+                    assert ( rc == 0 );
+                    BSTreeForEach( &slides, false, FGroupMAP_Validate, &rc );
+                    BSTreeForEach( &evidence, false, FGroupMAP_Validate, &rc );
+                }
 
                 if ( rc == 0 )
                 {
@@ -740,17 +764,18 @@ static rc_t Load( SParam* param )
                         }
                     }
                     rc1 = DB_Fini( param, &data.db, rc != 0 );
-                    rc = rc ? rc : rc1;
+                    if ( rc == 0 )
+                        rc = rc1;
                 }
             }
         }
 
         /* copy the extra library ( file or recursive directory ) */
-        if ( param->library != NULL )
+        if ( rc == 0 && param->library != NULL )
         {
             const KDirectory *lib_src;
-            rc_t rc2 = open_dir_or_tar( param->input_dir, &lib_src, param->library );
-            if ( rc2 == 0 )
+            rc = open_dir_or_tar( param->input_dir, &lib_src, param->library );
+            if ( rc == 0 )
             {
                 rc = copy_library( param->input_dir, param->output_dir,
                                    param->library, param->out );
@@ -1066,22 +1091,26 @@ rc_t CC KMain( int argc, char* argv[] )
     }
     /* find accession as last part of path for internal XML logging */
     refseq_chunk = params.out ? strrchr(params.out, '/') : "/???";
-    if( refseq_chunk == NULL ) {
+    if( refseq_chunk ++ == NULL )
         refseq_chunk = params.out;
-    } else {
-        refseq_chunk++;
-    }
-    if( argc < 2 ) {
+
+    if( argc < 2 )
         MiniUsage(args);
-    } else if( rc != 0 ) {
-        if( errmsg ) {
+    else if( rc != 0 )
+    {
+        if( errmsg )
+        {
             MiniUsage(args);
             LOGERR(klogErr, rc, errmsg);
-        } else {
+        }
+        else
+        {
             PLOGERR(klogErr, (klogErr, rc, "load failed: $(reason_short)",
                     "severity=total,status=failure,accession=%s", refseq_chunk));
         }
-    } else {
+    }
+    else
+    {
         PLOGMSG(klogInfo, (klogInfo, "loaded",
                 "severity=total,status=success,accession=%s", refseq_chunk));
     }

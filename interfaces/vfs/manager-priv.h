@@ -42,11 +42,33 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+#define ENV_KRYPTO_PWFILE       "VDB_PWFILE"
+#define KFG_KRYPTO_PWFILE         "krypto/pwfile"
+#define KFG_KRYPTO_PWFD         "krypto/pwfd"
+
+
 struct VFSManager;
 struct KDirectory;
 struct KFile;
 struct VPath;
 struct SRAPath;
+
+
+/* this resembles the interface functions in manager.h
+ * but allows the use of a KDirectory for the base instead of a VPath
+ * of a directory
+ *
+ * this is expected to be more temporary if this code base continues.
+ * much longer
+ */
+VFS_EXTERN rc_t CC VFSManagerResolvePathRelativeDir (const struct VFSManager * self,
+                                                     uint32_t flags,
+                                                     const struct  KDirectory * base_dir,
+                                                     const struct  VPath * in_path,
+                                                     struct VPath ** out_path);
+
+
 
 /* bad interface.  Bad! Bad!
  * but needed to hack VFS into KDB

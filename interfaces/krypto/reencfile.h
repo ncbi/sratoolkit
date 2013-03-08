@@ -65,6 +65,10 @@ KRYPTO_EXTERN rc_t CC KReencFileMakeRead (const struct KFile ** pself,
                                           const struct KKey * deckey,
                                           const struct KKey * enckey);
 
+KRYPTO_EXTERN rc_t CC KEncryptFileMakeRead (const struct KFile ** pself, 
+                                            const struct KFile * encrypted,
+                                            const struct KKey * enckey);
+
 
 /* ----------
  * Write mode encrypted file can only be written straight through form the

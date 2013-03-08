@@ -54,8 +54,8 @@ void KColConstBlockMapSwap ( KColConstBlockMap *self, uint32_t count, int type )
         ( ( uint64_t* ) self -> h . first ) [ 0 ] = bswap_64 ( self -> h . first [ 0 ] );
         break;
     case btypePredictable:
-        * ( ( uint64_t* ) & ( self -> h . pred ) -> pg ) = bswap_64 ( self -> h . pred -> pg );
-        * ( ( uint32_t* ) & ( self -> h . pred ) -> sz ) = bswap_32 ( self -> h . pred -> sz );
+        * ( uint64_t* ) & ( self -> h . pred -> pg ) = bswap_64 ( self -> h . pred -> pg );
+        * ( uint32_t* ) & ( self -> h . pred -> sz ) = bswap_32 ( self -> h . pred -> sz );
         break;
     }
 
@@ -509,7 +509,8 @@ rc_t KColIdxBlockInit ( KColIdxBlock *self,
     if ( bswap )
     {
         KColConstBlockMapSwap ( & self -> id, count, bloc -> u . blk . id_type );
-        KColConstBlockMapSwap ( & self -> pg, count, bloc -> u . blk . pg_type );
+        if ( self -> pg . h . p != self -> id . h . p )
+            KColConstBlockMapSwap ( & self -> pg, count, bloc -> u . blk . pg_type );
     }
 
     /* check for need to rewrite columns */

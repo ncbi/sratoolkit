@@ -53,6 +53,8 @@
 
 /*#define ALIGN_DBG KOutMsg*/
 
+#define USE_OWN_REFSEQ_RESOLVER 0
+
 struct RefSeqMgr {
     BSTree tree;
     KConfig *kfg;
@@ -65,6 +67,35 @@ struct RefSeqMgr {
     RefSeq* last_used;
     BSTree vdbs;
 };
+
+struct RefSeq {
+    BSTNode dad;
+    const RefSeqMgr* mgr;
+    const TableReaderRefSeq* reader;
+    uint64_t usage;
+    uint32_t accession_sz;
+    /* must be last member of struct */
+    char accession[1];
+};
+
+typedef struct RefSeqMgr_Db_struct {
+    BSTNode dad;
+    char key[4096];
+    const VDatabase* db;
+} RefSeqMgr_Db;
+
+#if USE_OWN_REFSEQ_RESOLVER
+struct FindTable_ctx {
+    RefSeqMgr* self;
+    const KDBManager* kmgr;
+    const VTable** tbl;
+    char const* name;
+    uint32_t name_sz;
+    bool found;
+    rc_t rc;
+    char** path; /* optional */
+};
+#endif
 
 static
 rc_t RefSeqMgr_ConfigValue ( const KConfig *kfg, const char *node_path, char *value, size_t value_size )
@@ -82,7 +113,7 @@ rc_t RefSeqMgr_ConfigValue ( const KConfig *kfg, const char *node_path, char *va
             else
                 value [ num_read ] = 0;
         }
-
+        
         KConfigNodeRelease ( node );
     }
     return rc;
@@ -94,12 +125,12 @@ rc_t RefSeqMgr_KfgReadRepositories(const KConfig* kfg, char* paths, size_t paths
     /* servers are children of refseq/repository, e.g.:             /refseq/repository/main="..." */ 
     /* volumes are in refseq/repository/<serverName>/volumes, e.g.: /refseq/repository/main/volumes="..." */
     /* all server/volume combinations are returned in paths separated by ':' */
-
+    
     rc_t rc = 0;
     const KConfigNode *node;
-    #define KFG_PATH "/refseq/repository/"
+#define KFG_PATH "/refseq/repository/"
     paths[0] = 0;
-
+    
     rc = KConfigOpenNodeRead ( kfg, & node, KFG_PATH );
     if ( rc == 0 )
     {
@@ -118,11 +149,11 @@ rc_t RefSeqMgr_KfgReadRepositories(const KConfig* kfg, char* paths, size_t paths
                     rc = KNamelistGet ( children, i, &name );
                     if ( rc == 0 )
                     {
-                        #define BufSize 4096
+#define BufSize 4096
                         char server[ BufSize ];
                         char buf[ BufSize ];
                         size_t num_writ;
-
+                        
                         rc = string_printf(buf, BufSize, &num_writ, KFG_PATH "%s", name);
                         if (rc == 0)
                         {
@@ -138,7 +169,7 @@ rc_t RefSeqMgr_KfgReadRepositories(const KConfig* kfg, char* paths, size_t paths
                                     {   /* create a server/volume pair for every combination, append to paths, ':' - separate */ 
                                         char *vol_rem = volumes;
                                         char *vol_sep;
-
+                                        
                                         do {
                                             char const *volume = vol_rem;
                                             vol_sep = string_chr(volume, string_size(volume), ':');
@@ -158,7 +189,7 @@ rc_t RefSeqMgr_KfgReadRepositories(const KConfig* kfg, char* paths, size_t paths
                                 }
                             }
                         }
-                        #undef BufSize
+#undef BufSize
                     }
                     if ( rc != 0 )
                     {
@@ -168,7 +199,7 @@ rc_t RefSeqMgr_KfgReadRepositories(const KConfig* kfg, char* paths, size_t paths
             }
             KNamelistRelease ( children );
         }
-
+        
         KConfigNodeRelease ( node );
     }
     if (GetRCState(rc) == rcNotFound)
@@ -184,7 +215,7 @@ rc_t RefSeqMgr_KfgReadStr(const KConfig* kfg, const char* path, char* value, siz
 {
     rc_t rc = 0;
     const KConfigNode *node;
-
+    
     if ( (rc = KConfigOpenNodeRead(kfg, &node, path)) == 0 ) {
         size_t num_read, remaining;
         if( (rc = KConfigNodeRead(node, 0, value, value_sz - 1, &num_read, &remaining)) == 0 ) {
@@ -207,7 +238,7 @@ rc_t RefSeqMgr_ForEachVolume(const RefSeqMgr* cself, RefSeqMgr_ForEachVolume_cal
     rc_t rc = 0;
     char servers[4096];
     char volumes[4096];
-
+    
     if( cself == NULL || cb == NULL ) {
         rc = RC(rcAlign, rcType, rcConstructing, rcParam, rcNull);
     } else if( cb(".", NULL, data) ) {
@@ -221,7 +252,7 @@ rc_t RefSeqMgr_ForEachVolume(const RefSeqMgr* cself, RefSeqMgr_ForEachVolume_cal
             char *srv_rem = servers;
             do {
                 char const* server = srv_rem;
-
+                
                 srv_sep = strchr(server, ':');
                 if(srv_sep) {
                     srv_rem = srv_sep + 1;
@@ -243,7 +274,7 @@ rc_t RefSeqMgr_ForEachVolume(const RefSeqMgr* cself, RefSeqMgr_ForEachVolume_cal
                 char *srv_rem = servers;
                 do {
                     char const* server = srv_rem;
-
+                    
                     srv_sep = strchr(server, ':');
                     if(srv_sep) {
                         srv_rem = srv_sep + 1;
@@ -258,7 +289,7 @@ rc_t RefSeqMgr_ForEachVolume(const RefSeqMgr* cself, RefSeqMgr_ForEachVolume_cal
         }
         if( !found ) {
             if ( (rc = RefSeqMgr_KfgReadStr(cself->kfg, "refseq/servers", servers, sizeof(servers))) != 0 ||
-                        (rc = RefSeqMgr_KfgReadStr(cself->kfg, "refseq/volumes", volumes, sizeof(volumes))) != 0 ) {
+                (rc = RefSeqMgr_KfgReadStr(cself->kfg, "refseq/volumes", volumes, sizeof(volumes))) != 0 ) {
                 ALIGN_DBGERRP("%s", rc, "RefSeqMgr_KfgReadStr(servers/volumes)");
             } 
             /* servers and volumes are deprecated and optional */
@@ -266,12 +297,12 @@ rc_t RefSeqMgr_ForEachVolume(const RefSeqMgr* cself, RefSeqMgr_ForEachVolume_cal
                 char *srv_sep;
                 char *srv_rem = servers;
                 do {
-                    char vol[4096];
+                    char vol[ 4096 ];
                     char const *server = srv_rem;
                     char *vol_rem = vol;
                     char *vol_sep;
-
-                    strcpy(vol, volumes);
+                    
+                    string_copy ( vol, sizeof vol, volumes, string_size( volumes ) );
                     srv_sep = strchr(server, ':');
                     if(srv_sep) {
                         srv_rem = srv_sep + 1;
@@ -279,7 +310,7 @@ rc_t RefSeqMgr_ForEachVolume(const RefSeqMgr* cself, RefSeqMgr_ForEachVolume_cal
                     }
                     do {
                         char const *volume = vol_rem;
-
+                        
                         vol_sep = strchr(volume, ':');
                         if(vol_sep) {
                             vol_rem = vol_sep + 1;
@@ -290,43 +321,11 @@ rc_t RefSeqMgr_ForEachVolume(const RefSeqMgr* cself, RefSeqMgr_ForEachVolume_cal
                 } while(!found && srv_sep);
             }
         }
-        if(!found){/** last resort - go through http; TODO - move to name services ***
-
-DISABLED WHILE PREPARING PUBLIC RELEASE 2.2.0.b1
-
-            if(cb("http://ftp-private.ncbi.nlm.nih.gov/sra", "refseq", data) ) rc=0;*/
-        }
     }
     return rc;
 }
 
-struct RefSeq {
-    BSTNode dad;
-    const RefSeqMgr* mgr;
-    const TableReaderRefSeq* reader;
-    uint64_t usage;
-    uint32_t accession_sz;
-    /* must be last member of struct */
-    char accession[1];
-};
-
-typedef struct RefSeqMgr_Db_struct {
-    BSTNode dad;
-    char key[4096];
-    const VDatabase* db;
-} RefSeqMgr_Db;
-
-struct FindTable_ctx {
-    RefSeqMgr* self;
-    const KDBManager* kmgr;
-    const VTable** tbl;
-    char const* name;
-    uint32_t name_sz;
-    bool found;
-    rc_t rc;
-    char** path; /* optional */
-};
-
+#if USE_OWN_REFSEQ_RESOLVER
 static
 int CC RefSeqMgr_DbSort(const BSTNode* item, const BSTNode* node)
 {
@@ -352,9 +351,9 @@ bool FindTable(char const server[], char const volume[], void *data)
     }
     ctx->rc = VDBManagerOpenTableRead(ctx->self->vmgr, &tbl, NULL, "%s%s%s/%.*s", server, vol_sep, volume, ctx->name_sz, ctx->name);
     ALIGN_DBG("trying '%s%s%s/%.*s'...", server, vol_sep, volume, ctx->name_sz, ctx->name);
-
+    
     ctx->found = false;
-
+    
     if(ctx->rc == 0){
         ALIGN_DBG("found\n", "");
 	    ctx->found = true;
@@ -362,7 +361,7 @@ bool FindTable(char const server[], char const volume[], void *data)
     else if (GetRCState(ctx->rc) == rcNotFound) {
         ctx->rc = 0;
         ALIGN_DBG("not found\n", "");
-
+        
         /* can be kar */
         if( ctx->name_sz > 7 ) {
             uint32_t i = 0;
@@ -395,7 +394,7 @@ bool FindTable(char const server[], char const volume[], void *data)
                             if( db == NULL ) {
                                 ctx->rc = RC(rcAlign, rcDatabase, rcOpening, rcMemory, rcExhausted);
                             } else {
-                                strcpy(db->key, key);
+                                string_copy( db->key, sizeof db->key, key, string_size( key ) );
                                 db->db = vdb;
                                 ctx->rc = BSTreeInsertUnique(&ctx->self->vdbs, &db->dad, NULL, RefSeqMgr_DbSort);
                             }
@@ -404,11 +403,6 @@ bool FindTable(char const server[], char const volume[], void *data)
                             VDatabaseRelease(vdb);
                             free(db);
                             db = NULL;
-
-                            if (GetRCState(ctx->rc) == rcNotFound) {
-                                ctx->rc = 0;
-                                ALIGN_DBG("VDatabase not found\n", "");
-                            }
                         }
                     }
                     if( db != NULL ) {
@@ -471,6 +465,7 @@ rc_t RefSeqMgr_FindTable(const RefSeqMgr* cself, char const accession[], uint32_
     }
     return rc ? rc : ctx.rc;
 }
+#endif
 
 LIB_EXPORT rc_t CC RefSeqMgr_SetCache(RefSeqMgr const *const cself, size_t cache, uint32_t keep_open_num)
 {
@@ -567,8 +562,22 @@ LIB_EXPORT rc_t RefSeqMgr_Exists(const RefSeqMgr* cself, const char* accession, 
 
     if( cself == NULL || accession == NULL || accession_sz == 0 ) {
         rc = RC(rcAlign, rcIndex, rcAccessing, rcParam, rcNull);
-    } else {
+    }
+    else {
+#if USE_OWN_REFSEQ_RESOLVER
         rc = RefSeqMgr_FindTable(cself, accession, accession_sz, NULL, path);
+#else
+        VTable const *tbl = NULL;
+
+        /* if "accession" is not a path,
+           prepend special scheme to tell VResolver
+           to treat WGS accessions as Refseq */
+        if ( string_chr ( accession, accession_sz, '/' ) == NULL )
+            rc = VDBManagerOpenTableRead(cself->vmgr, &tbl, NULL, "ncbi-acc:%.*s?vdb-ctx=refseq", accession_sz, accession);
+        else
+            rc = VDBManagerOpenTableRead(cself->vmgr, &tbl, NULL, "%.*s", accession_sz, accession);
+        VTableRelease(tbl);
+#endif
     }
     return rc;
 }
@@ -597,19 +606,6 @@ int CC RefSeq_Sort(const BSTNode* item, const BSTNode* node)
     return i->accession_sz - n->accession_sz;
 }
 
-static
-void CC RefSeq_Oldest( BSTNode *node, void *data )
-{
-    RefSeq* n = (RefSeq*)node;
-    RefSeq** d = (RefSeq**)data;
-
-    if( n->reader != NULL ) {
-        if( *d == NULL || (*d)->usage > n->usage ) {
-            *d = n;
-        }
-    }
-}
-
 LIB_EXPORT rc_t CC RefSeqMgr_Read(const RefSeqMgr* cself, const char* seq_id, uint32_t seq_id_sz,
                                   INSDC_coord_zero offset, INSDC_coord_len len,
                                   uint8_t* buffer, INSDC_coord_len* written)
@@ -625,16 +621,29 @@ LIB_EXPORT rc_t CC RefSeqMgr_Read(const RefSeqMgr* cself, const char* seq_id, ui
 }
 
 static
+void CC RefSeq_Oldest( BSTNode *node, void *Data )
+{
+    RefSeq const *const n = (RefSeq const *)node;
+    RefSeq const **const rslt = (RefSeq const **)Data;
+    RefSeq const *const d = *rslt;
+    
+    if (n->reader != NULL && (d == NULL || n->usage < d->usage))
+        *rslt = n;
+}
+
+static
 rc_t RefSeqMgr_GetReader(RefSeqMgr *const mgr, RefSeq *const obj)
 {
     rc_t rc = 0;
     
     if (obj->reader == NULL) {
         VTable const *tbl;
-        RefSeq *old = NULL;
         
         while (mgr->num_open_max > 0 && mgr->num_open >= mgr->num_open_max) {
+            RefSeq *old;
+            
         REMOVE_OLDEST:
+            old = NULL;
             BSTreeForEach(&mgr->tree, false, RefSeq_Oldest, &old);
             if (old == NULL)
                 break;
@@ -643,11 +652,20 @@ rc_t RefSeqMgr_GetReader(RefSeqMgr *const mgr, RefSeq *const obj)
             old->reader = NULL;
             --mgr->num_open;
         }
+#if USE_OWN_REFSEQ_RESOLVER
         rc = RefSeqMgr_FindTable(mgr, obj->accession, obj->accession_sz, &tbl, NULL);
-        if (rc) return rc;
-        
-        rc = TableReaderRefSeq_MakeTable(&obj->reader, mgr->vmgr, tbl,
-                                         mgr->reader_options, mgr->cache);
+#else
+        /* if "accession" is not a path,
+           prepend special scheme to tell VResolver
+           to treat WGS accessions as Refseq */
+        if ( string_chr ( obj -> accession, obj -> accession_sz, '/' ) == NULL )
+            rc = VDBManagerOpenTableRead(mgr->vmgr, &tbl, NULL, "ncbi-acc:%.*s?vdb-ctx=refseq", obj->accession_sz, obj->accession);
+        else
+            rc = VDBManagerOpenTableRead(mgr->vmgr, &tbl, NULL, "%.*s", obj->accession_sz, obj->accession);
+#endif
+        if (rc == 0)
+            rc = TableReaderRefSeq_MakeTable(&obj->reader, mgr->vmgr, tbl,
+                                             mgr->reader_options, mgr->cache);
         if (rc == 0) {
             VTableRelease(tbl);
             ++mgr->num_open;

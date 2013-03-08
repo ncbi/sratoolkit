@@ -116,7 +116,8 @@ $(LIBDIR)/libvfs: $(addprefix $(LIBDIR)/libvfs.,$(LIBEXT))
 VFS_SRC = \
 	path \
 	syspath \
-	manager 
+	manager  \
+	resolver
 
 VFS_OBJ = \
 	$(addsuffix .$(LOBX),$(VFS_SRC))

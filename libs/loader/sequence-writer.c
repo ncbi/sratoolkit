@@ -43,6 +43,7 @@
 #include <align/writer-sequence.h>
 
 #include <loader/sequence-writer.h>
+#include <loader/common-reader.h>
 
 /* MARK: SequenceWriter Object */
 
@@ -113,10 +114,19 @@ rc_t SequenceWriteRecord(SequenceWriter *self,
         alcnt[i] = rec->aligned[i] ? 1 : 0;
         readLen[i] = rec->readLen[i];
         readStart[i] = rec->readStart[i];
-        readType[i] = SRA_READ_TYPE_BIOLOGICAL | (rec->orientation[i] ?
-                                                  SRA_READ_TYPE_REVERSE:
-                                                  SRA_READ_TYPE_FORWARD
-                                                  );
+        readType[i] = readLen[i] ? SRA_READ_TYPE_BIOLOGICAL : SRA_READ_TYPE_TECHNICAL;
+        switch ( rec->orientation[i] )
+        {
+            case ReadOrientationForward:
+                readType[i] |= SRA_READ_TYPE_FORWARD;
+                break;
+            case ReadOrientationReverse:
+                readType[i] |= SRA_READ_TYPE_REVERSE;
+                break;
+            case ReadOrientationUnknown:
+            default:
+                break;
+        }
         readFilter[i] = isDup ? SRA_READ_FILTER_CRITERIA
                       : rec->is_bad[i] ? SRA_READ_FILTER_REJECT : SRA_READ_FILTER_PASS;
     }

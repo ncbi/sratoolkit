@@ -4,7 +4,7 @@
 # N.B. Run "perl configuration-assistant.perl" if you see a message like:
 # configuration-assistant.perl: /usr/local/bin/perl: bad interpreter: No such file or directory
 ################################################################################
-my $VERSION = '1.1.2';
+my $VERSION = '2.3.1';
 ################################################################################
 
 use strict;
@@ -12,7 +12,7 @@ use strict;
 use Cwd "getcwd";
 use Fcntl ':mode';
 use File::Basename qw(basename dirname);
-use File::Path "mkpath";
+use File::Path qw (make_path mkpath);
 use File::Spec;
 use Getopt::Long "GetOptions";
 use IO::Handle;
@@ -30,7 +30,8 @@ my $FOUND = 16;
 my $RWX = $FOUND + $R + $W + $X;
 
 println "==========================================";
-println "The SRA toolkit documentation page is";
+println "Welcome to the SRA Toolkit Configuration Script.";
+println "SRA toolkit documentation:";
 println "http://www.ncbi.nlm.nih.gov/Traces/sra/std";
 println "==========================================\n";
 
@@ -55,117 +56,19 @@ my $DECRYPTION_PKG;
 
 my ($VDB_CONFIG, $BIN_DIR) = FindBin("vdb-config");
 
-my %refseq_cfg;
-%refseq_cfg = CheckRefseqCfg() unless ($DECRYPTION_PKG);
-
+my %kfg;
+Kfg(\%kfg, 'read', 'Reading configuration');
 umask 0002;
-
-my $HOME_CFG_DIR;
-my $fixed_config = 0;
-$fixed_config |= DoRefseqCfg() if (! $DECRYPTION_PKG && ! $options{NCBI});
-$fixed_config |= DoKryptoCfg();
-DoSchemaCfg() unless ($DECRYPTION_PKG);
-exit 0 if ($DECRYPTION_PKG);
-
-if ((! defined $options{references}) && $fixed_config == 0 && 0)
-{   $options{references} = 1 }
-$options{references} = AskyN
-       ("Would you like to test cSRA files for remote reference dependencies?",
-        $fixed_config)
-    unless ($options{references});
-exit 0 unless ($options{references});
-
-my $CHECK_ONLY = $refseq_cfg{refseq_dir_read_only} || $options{NCBI};
-
-my ($ALIGN_INFO, $ALIGN_INFO_DIR) = FindBin("align-info");
-Warn("using align-info and vdb-config located in different directories:\n"
-        . "\t$ALIGN_INFO\n\t$VDB_CONFIG")
-    if ($BIN_DIR ne $ALIGN_INFO_DIR);
-
-my $WGET;
-$WGET = FindWget() unless ($CHECK_ONLY);
-
-my $got_packed;
-my @packed;
-
-if ($#ARGV > -1) {
-    foreach (@ARGV) {
-        Load($CHECK_ONLY, $refseq_cfg{refseq_dir}, $_);
-    }
-} else {
-    while (1) {
-        my $f = Ask("Enter cSRA file name (Press Enter to exit)");
-        last unless ($f);
-        Load($CHECK_ONLY, $refseq_cfg{refseq_dir}, $f);
-    }
+my $fixed = FixKfg(\%kfg);
+if ($fixed) {
+    undef %kfg;
+    Kfg(\%kfg, 'read', 'Checking configuration');
 }
+DoKryptoCfg(\%kfg);
 
 ################################################################################
 # FUNCTIONS #
 ################################################################################
-
-sub DoRefseqCfg {
-    my $fixed_config = 0;
-
-    if ($refseq_cfg{refseq_dir}) {
-        if ($refseq_cfg{FIX_paths}) {
-            ($refseq_cfg{refseq_dir}, $refseq_cfg{refseq_dir_read_only})
-                = AskRefseqChange($refseq_cfg{refseq_dir});
-            unless ($refseq_cfg{refseq_dir_read_only}) {
-                UpdateRefseqCfgNode($refseq_cfg{refseq_dir});
-            }
-        } elsif (not $refseq_cfg{refseq_dir_prm}) {
-            unless (AskYn("Configuration is found\n"
-                . "but the local reference repository $refseq_cfg{refseq_dir} "
-                . "does not exist.\n"
-                . "Do you want to create it?"))
-            {
-                println "Your tools will not work properly.";
-                println "Remote reference sequences will not be resolved.";
-                println "For more information visit SRA website.";
-                exit 1;
-            }
-            my ($prm, $perm)
-                = CheckDir($refseq_cfg{refseq_dir}, "create_missing");
-            my $created = $prm & $CREATED;
-            $prm &= $RWX;
-            if ($prm != $RWX) {
-                if ($^O ne 'cygwin' || $created != $CREATED) {
-                    Fatal("Cannot create $refseq_cfg{refseq_dir}");
-                    FixRefseqCfg(\%refseq_cfg,
-                        "Local reference repository is read-only. ".
-                        "Whould you like to change it?",
-                        "You will not be able to upload reference sequences.\n"
-                        . "For more information visit SRA website.");
-                }
-            }
-            ++$fixed_config;
-        }
-    } else {
-        unless (AskYn("Do you want to create a new configuration?")) {
-            println "Your tools will not work properly without configuration.";
-            println "For more information visit SRA website.";
-            exit 1;
-        }
-
-        ($refseq_cfg{refseq_dir}, $refseq_cfg{refseq_dir_prm})
-            = MakeRefseqDir();
-
-        UpdateRefseqCfgNode($refseq_cfg{refseq_dir});
-        ++$fixed_config;
-    }
-
-    unless ($refseq_cfg{refseq_dir_read_only}) {
-        CleanEmptyFiles($refseq_cfg{refseq_dir});
-    }
-    
-    if ($^O ne 'MSWin32' && $options{fix}) {
-        FixRefseqDirPermissions($refseq_cfg{refseq_dir},
-            $refseq_cfg{refseq_dir_read_only});
-    }
-
-    return $fixed_config;
-}
 
 sub Ask {
     my ($prompt) = @_;
@@ -351,11 +254,11 @@ $bin version $VERSION
 
 Utility to help configure the SRA tools to be able
 to access the local reference repository,
-determine which reference sequences a cSRA file relies
+determine which reference sequences a SRA file relies
 upon and to fetch them from NCBI.
 Fetched references are placed in the local reference repository.
 
-Usage: $bin [--fix] [--wordy] [cSRA_FILE ...]
+Usage: $bin [--fix] [--wordy] [SRA_FILE ...]
 
 Options
 -f, --fix         re-download existing reference files;
@@ -375,7 +278,8 @@ sub FixRefseqCfg {
         exit 1;
     }
 
-    ($refseq_cfg->{refseq_dir}, $refseq_cfg{refseq_dir_prm}) = MakeRefseqDir();
+    ($refseq_cfg->{refseq_dir}, $refseq_cfg->{refseq_dir_prm})
+        = MakeRefseqDir();
     UpdateRefseqCfgNode($refseq_cfg->{refseq_dir});
 }
 
@@ -394,10 +298,14 @@ sub UpdateKryptoCfgNode {
 sub UpdateConfigNode {
     my ($name, $val) = @_;
 
+    print "'$name' => '$val': ";
     my $cmd = "$VDB_CONFIG -s \"$name=$val\"";
+#   println "\n$cmd";
     `$cmd`;
     if ($?) {
-        die "Cannot execute '$cmd': $!";
+        println "error: $!";
+    } else {
+        println "updated";
     }
 }
 
@@ -459,134 +367,6 @@ sub CheckSchemaFile {
     println "not found";
 
     return 0;
-}
-
-sub Load {
-    my ($check_only, $refseq_dir, $f) = @_;
-    println "Determining $f external dependencies...";
-    my $cmd = "$ALIGN_INFO $f";
-    my @info = `$cmd`;
-    if ($?) {
-        println "$f: error";
-    } else {
-        my $refs = 0;
-        my $ok = 0;
-        my $ko = 0;
-        foreach (@info) {
-            my $force = 0;
-            chomp;
-            my @r = split /,/;
-            if ($#r >= 3) {
-                my ($seqId, $remote) = ($r[0], $r[3]);
-                my $refseqName;
-                ++$refs;
-                if ($remote =~ /^remote/ && ! $check_only) {
-                    ($refseqName, $remote) = CheckPacked($seqId, $remote);
-                }
-                if ($remote eq 'remote') {
-                    if ($check_only) {
-                        println "$seqId: unresolved";
-                        ++$ok;
-                    } else {
-                        ++$force;
-                    }
-                }
-                elsif ($remote =~ /^remote/ && ! $check_only
-                    && $options{all_references})
-                {	++$force; }
-                if ($force) {
-                    my $res = Download($refseqName);
-                    if ($res) {
-                        ++$ko;
-                    } else {
-                        ++$ok;
-                    }
-                }
-            }
-        }
-        if ($check_only) {
-            if ($ok == 0) {
-                println "All $refs references were found";
-            } else {
-                println "$refs references were checked, $ok missed";
-            }
-        } else {
-            print "All $refs references were checked (";
-            print "$ko failed, " if ($ko);
-            println "$ok downloaded)";
-        }
-    }
-}
-
-sub Download {
-    my ($file) = @_;
-    
-    my $refseq_dir = $refseq_cfg{refseq_dir};
-    
-    print "Downloading $file... ";
-    println if ($options{wordy});
-    
-    my $dest = "$refseq_dir/$file";
-    my $cmd = "$WGET \"$dest\"" .
-        " http://ftp-private.ncbi.nlm.nih.gov/sra/refseq/$file 2>&1";
-
-    my $res;
-    if ($options{wordy}) {
-        $res = system($cmd);
-    } else {
-        `$cmd`;
-        $res = $?;
-    }
-
-    print "$file: " if ($options{wordy});
-
-    if ($res) {
-        println "failed";
-        if (-z $dest)
-        {   unlink($dest); }
-    } else {
-        println "ok";
-    }
-
-    return $res;
-}
-
-sub CheckPacked {
-    my ($seqId, $remote) = @_;
-
-    my $file = $seqId;
-    my $refseq_dir = $refseq_cfg{refseq_dir};
-
-    unless ($got_packed) {
-        Download('packed.txt');
-        ++$got_packed;
-
-        my $f = "$refseq_dir/packed.txt";
-        if (-e $f) {
-            if (open(IN, $f)) {
-                foreach (<IN>) {
-                    next if (/^\s*\#/);
-                    chomp;
-                    if (/^\s*([\w\.]+)\s*$/) {
-                        push (@packed, $1);
-                    }
-                }
-                close(IN);
-            }
-        }
-    }
-
-    foreach (@packed) {
-        if ($seqId =~ /^$_/) {
-            $file = $_;
-            if (-s "$refseq_dir/$file") {
-                $remote = 'local';
-            }
-            last;
-        }
-    }
-
-    return ($file, $remote);
 }
 
 sub CleanEmptyFiles {
@@ -843,19 +623,19 @@ sub CheckDir {
     return ($prm, $perm);
 }
 
-sub CheckRefseqCfg {
+sub CheckCfg {
     print "checking refseq configuration... ";
 
-    my %refseq_cfg;
-    RefseqFromConfig(\%refseq_cfg);
+    my %konfig;
+    RefseqFromConfig(\%konfig);
 
-    if ($refseq_cfg{repository} || $refseq_cfg{servers} || $refseq_cfg{volumes})
+    if ($konfig{refseqrepository} || $konfig{servers} || $konfig{volumes})
     {
-        if ($refseq_cfg{repository}) {
+        if ($konfig{refseqrepository}) {
             println "refseq/repository found:";
-        } elsif ($refseq_cfg{servers}) {
+        } elsif ($konfig{servers}) {
             println "refseq/servers found:";
-        } elsif ($refseq_cfg{volumes}) {
+        } elsif ($konfig{volumes}) {
             println "refseq/volumes found:";
         }
         println "Seems to be running in NCBI environment:";
@@ -865,18 +645,18 @@ sub CheckRefseqCfg {
         return;
     }
 
-    if ($refseq_cfg{paths}) {
-        println "paths=$refseq_cfg{paths}";
+    if ($konfig{paths}) {
+        println "paths=$konfig{paths}";
     } else {
         println "not found";
-        return %refseq_cfg;
+        return %konfig;
     }
 
-    if ($refseq_cfg{paths} and index($refseq_cfg{paths}, ":") != -1) {
-        die "Unexpected configuration: paths=$refseq_cfg{paths}";
+    if ($konfig{paths} and index($konfig{paths}, ":") != -1) {
+        die "Unexpected configuration: paths=$konfig{paths}";
     }
 
-    my $dir = "$refseq_cfg{paths}";
+    my $dir = "$konfig{paths}";
 
     if ($^O eq 'MSWin32') { # Windows: translate POSIX to Windows path
         $dir =~ tr|/|\\|;
@@ -885,18 +665,18 @@ sub CheckRefseqCfg {
         $dir = "/cygdrive$dir";
     }
 
-    $refseq_cfg{refseq_dir} = $dir;
+    $konfig{refseq_dir} = $dir;
     my ($prm, $perm) = CheckDir($dir);
-    $refseq_cfg{refseq_dir_prm} = $prm;
+    $konfig{refseq_dir_prm} = $prm;
     if ($prm == 0) { # not found
-        return %refseq_cfg;
+        return %konfig;
     } elsif ($prm != $RWX) {
         if ($^O ne 'cygwin') {
-            ++$refseq_cfg{FIX_paths};
+            ++$konfig{FIX_paths};
 #           Fatal("refseq repository is invalid or read-only");
         } # else cygwin does not always can tell permissions correctly
     }
-    return %refseq_cfg;
+    return %konfig;
 }
 
 sub FindWget {
@@ -1055,81 +835,23 @@ sub FindBin {
 }
 
 sub DoKryptoCfg {
-    my $fixed_config = 0;
+    my ($kfg) = @_;
 
-    print "checking krypto configuration... ";
-
-    my $nm = 'pwfile';
-    my $name = "krypto/$nm";
-
-    my $v = `$VDB_CONFIG $name 2>&1`;
-    if ($?) {
-        die $! unless ($v =~ /path not found while opening node/);
-        println "not found";
-        if ($DECRYPTION_PKG) {
-            if (AskYn("Do you want to set VDB password?")) {
-                UpdateKryptoCfg('create kfg');
-                $fixed_config = 1;
-            }
-        } else {
-            if (AskyN("Do you want to set VDB password?")) {
-                UpdateKryptoCfg('create kfg');
-                $fixed_config = 1;
-            }
-        }
-    } else {
-        $v =~ /<$nm>(.*)<\/$nm>/;
-        die "Invalid '$nm' configuration" unless ($1);
-        $v = $1;
-        print "$nm=$v";
-        if ($v eq '1') { # fix bug introduced by previous script version
-            println ": bad";
-            if ($DECRYPTION_PKG) {
-                if (AskYn("Do you want to set VDB password?")) {
-                    UpdateKryptoCfg('create kfg');
-                    $fixed_config = 1;
-                }
-            } else {
-                if (AskyN("Do you want to set VDB password?")) {
-                    UpdateKryptoCfg('create kfg');
-                    $fixed_config = 1;
-                }
-            }
-        } else {
-            if (-e $v) {
-                println ": found";
-            } else {
-                println ": not found";
-            }
-            if (-e $v) {
-                if (AskyN("Do you want to update VDB password?")) {
-                    UpdateKryptoCfg();
-                    $fixed_config = 1;
-                }
-            } elsif (! $DECRYPTION_PKG) {
-                if (AskyN("Do you want to set VDB password?")) {
-                    UpdateKryptoCfg();
-                    $fixed_config = 1;
-                }
-            } else {
-                if (AskYn("Do you want to set VDB password?")) {
-                    UpdateKryptoCfg();
-                    $fixed_config = 1;
-                }
-            }
-        }
+    my $v = $kfg->{'krypto/pwfile'};
+    unless ($v) {
+        println "failed to read krypto configuration";
+        return;
     }
 
-    return $fixed_config;
+    my $dflt = $DECRYPTION_PKG ? 'y' : 'n';
+    print "Do you want to " . ((-e $v) ? "update" : "set") . "VDB password? [" .
+        ($DECRYPTION_PKG ? "Yn" : "yN") . "] ";
+    my $answer = GetYNAnswer($dflt, 'y');
+    UpdateKryptoCfg() if ($answer eq 'y');
 }
 
 sub UpdateKryptoCfg {
-    my ($update_kfg) = @_;
-
     my $VDB_PASSWD = (FindBin('vdb-passwd'))[0];
-
-    my $home = Home();
-    UpdateKryptoCfgNode("$home/.ncbi/vdb-passwd") if ($update_kfg);
 
     my $res = system("$VDB_PASSWD -q");
     if ($res) {
@@ -1164,9 +886,291 @@ sub RefseqFromConfig {
     my ($refseq) = @_;
 
     $refseq->{paths} = RefseqConfig('paths');
-    $refseq->{repository} = RefseqConfig('repository');
+    $refseq->{refseqrepository} = RefseqConfig('repository');
     $refseq->{servers} = RefseqConfig('servers');
     $refseq->{volumes} = RefseqConfig('volumes');
+}
+
+sub GetKfgNode {
+    my ($nm, $specPrnt) = @_;
+
+    print "$nm: ";
+
+    @_ = split(/\//, $nm);
+    die "GetKfgNode($nm)" if ($#_ < 0);
+    my $leaf = $_[$#_];
+
+    $_ = `$VDB_CONFIG $nm 2>&1`;
+
+    if ($?) {
+        if (/path not found while opening node/) {
+            $_ = '';
+        } else {
+            println;
+            die $!;
+        }
+    } else {
+        m|<$leaf>(.*)</$leaf>|s;
+        unless ($1) {
+            println;
+            die "Invalid '$nm' configuration: '$_'" 
+        }
+        $_ = $1;
+    }
+
+    if ($_) {
+        if ($specPrnt) {
+            if ($specPrnt  eq 'file') {
+                print "'$_': ";
+                if (-e $_) {
+                    println "exists";
+                } else {
+                    println "don't exist";
+                }
+            } else {
+                println "found";
+            }
+        } else {
+            println "'$_'";
+        }
+    } else {
+        println "not found";
+    }
+
+    return $_;
+}
+
+sub Kfg {
+    my ($kfg, $kfgMode, $msg) = @_;
+    my $updated;
+    my $read;
+    if ($kfgMode eq 'fix') {
+        println "\n$msg";
+    } else {
+        println "\n$msg";
+        $read = 1;
+    }
+
+    if ($read) {
+        $kfg->{dflt_user_root} = File::Spec->catdir(Home(), 'ncbi', 'public');
+    }
+
+    my $nm = 'krypto/pwfile';
+    if ($read) {
+        $kfg->{$nm} = GetKfgNode($nm, 'file');
+        if ($kfg->{$nm} eq '1' || $kfg->{$nm} eq '/.ncbi/vdb-passwd') {
+             # fix bugs introduced by previous script version
+             $kfg->{$nm} = '';
+        }
+        println;
+    } else {
+        if (!$kfg->{$nm}) {
+            my $path = Posixify(
+                File::Spec->catdir(Home(), '.ncbi', 'vdb-passwd'));
+            UpdateConfigNode($nm, $path);
+            $updated = 1;
+        }
+    }
+
+    if ($read) {
+        $nm = 'refseq/servers';
+        $kfg->{$nm} = GetKfgNode($nm, 'file');
+
+        $nm = 'refseq/volumes';
+        $kfg->{$nm} = GetKfgNode($nm);
+        if ($kfg->{'refseq/servers'} && !($kfg->{'refseq/servers'} =~ m|^/net|)
+            && !($kfg->{'refseq/servers'} =~ m|^/panfs/|))
+        {
+            $kfg->{dflt_user_root}
+                = File::Spec->catdir($kfg->{'refseq/servers'});
+        }
+
+        $nm = 'refseq/paths';
+        $kfg->{$nm} = GetKfgNode($nm, 'file');
+        if ($kfg->{$nm} && ($kfg->{$nm} =~ m|^(.+)/refseq$|)) {
+            $kfg->{dflt_user_root} = $1;
+        }
+
+        println;
+    }
+
+
+    if ($read) {
+        $nm = 'repository';
+        $kfg->{$nm} = GetKfgNode($nm, 'dont print');
+    }
+
+    my $disableRemoteName = 'repository/remote/main/NCBI/disabled';
+    my %remote = (
+        'repository/remote/main/NCBI/root'
+                                    => 'http://ftp-trace.ncbi.nlm.nih.gov/sra',
+        'repository/remote/main/NCBI/apps/sra/volumes/fuse1000'
+                                    => 'sra-instant/reads/ByRun/sra',
+        'repository/remote/main/NCBI/apps/refseq/volumes/refseq' => 'refseq',
+        'repository/remote/main/NCBI/apps/wgs/volumes/fuseWGS'   => 'wgs',
+        $disableRemoteName                                       => ''
+    );
+
+    my $userRootName = 'repository/user/main/public/root';
+    my $enableCacheName = 'repository/user/main/public/cache-enabled';
+    my %user = (
+        $userRootName => '',
+        'repository/user/main/public/apps/sra/volumes/sraFlat'   => 'sra',
+        'repository/user/main/public/apps/refseq/volumes/refseq' => 'refseq',
+        'repository/user/main/public/apps/wgs/volumes/wgsFlat'   => 'wgs',
+        $enableCacheName                                         => ''
+   );
+
+    if ($read && $kfg->{repository}) {
+        $nm = 'repository/site';
+        $kfg->{$nm} = GetKfgNode($nm, 'dont print');
+
+        println;
+    }
+
+    if ($read && $kfg->{repository}) {
+        $nm = 'repository/remote';
+        $kfg->{$nm} = GetKfgNode($nm, 'dont print');
+    }
+
+    foreach $nm(keys %remote) {
+        if ($read) {
+            if ($kfg->{'repository/remote'}) {
+                $kfg->{$nm} = GetKfgNode($nm);
+                $kfg->{fix_remote} = 1 unless ($kfg->{$nm});
+            }
+        } elsif (!$kfg->{$nm}) {
+            my $v = $remote{$nm};
+            unless ($v) {
+                unless ($nm eq $disableRemoteName) {
+                    println "$nm: unknown";
+                    next;
+                }
+                next if ($DECRYPTION_PKG);
+                print "\nWould you like to enable Remote Internet"
+                    . " access to NCBI(recommented)? [Y/n] ";
+                my $answer = GetYNAnswer('y', 'n');
+                if ($answer eq 'y') {
+                    $v = 'no';
+                } else {
+                    println "You will be able to work "
+                        . "just with SRR files found locally";
+                    $v = 'yes';
+                }
+            }
+            UpdateConfigNode($nm, $v);
+            $updated = 1;
+        }
+    }
+
+    if ($read && $kfg->{repository}) {
+        $nm = 'repository/user';
+        $kfg->{$nm} = GetKfgNode($nm, 'dont print');
+    }
+
+    foreach $nm(keys %user) {
+        if ($read) {
+            if ($kfg->{'repository/user'}) {
+                my $mode;
+                $mode = 'file' if ($nm eq $userRootName);
+                $kfg->{$nm} = GetKfgNode($nm, $mode);
+                $kfg->{fix_user} = 1 unless ($kfg->{$nm});
+            }
+        } elsif (!$kfg->{$nm}) {
+            my $v = $user{$nm};
+            unless ($v) {
+                next if ($DECRYPTION_PKG);
+                if ($nm eq $userRootName) {
+                    my $dflt = '';
+                    if ($kfg->{dflt_user_root}) {
+                        $dflt = $kfg->{dflt_user_root};
+                    }
+                    println;
+                    print
+               "The SRA Toolkit has the ability to download and cache data.\n" .
+               "Please indicate where data should be stored.\n" .
+               "You should choose a volume with enough free space.\n" .
+               "Path to your Repository ";
+                    print "[ $dflt ]: " if ($dflt);
+                    my $in = <STDIN>;
+                    chomp $in;
+                    $in = $dflt unless ($in);
+                    if (-e $in) {
+                        unless (-d $in) {
+                            println "$in: bad path";
+                        }
+                    } else {
+                        println "Directory '$in' does not exist.";
+                        print "Would you like to create it? [Y/n] ";
+                        my $answer = GetYNAnswer('y', 'y');
+                        if ($answer eq 'y') {
+                            print "'$in': creating... ";
+                            if (make_path($in)) {
+                                println "ok";
+                            } else {
+                                println "error";
+                            }
+                        }
+                    }
+                    $v = Posixify($in);
+                } elsif ($nm eq $enableCacheName) {
+                    print
+            "\nWould you like to enable caching of downloaded data? [Y/n] ";
+                    my $answer = GetYNAnswer('y', 'y');
+                    $v = $answer eq 'n' ? 'false' : 'true';
+                } else {
+                    println "$nm: unknown";
+                    next;
+                }
+            }
+            UpdateConfigNode($nm, $v);
+            $updated = 1;
+        }
+    }
+
+    println;
+    return $updated;
+}
+
+sub FixKfg {
+    my ($kfg) = @_;
+
+    if (!$kfg->{'krypto/pwfile'} || !$kfg->{repository} ||
+        $kfg->{fix_remote} || $kfg->{fix_user})
+    {
+        print "Your configuration is incomplete. " .
+            "Would you like to fix it? [Y/n] ";
+        my $answer = GetYNAnswer('y', 'n');
+        if ($answer eq 'y') {
+            return Kfg($kfg, 'fix', 'Fixing configuration');
+        } else {
+            println
+                "Warning: Some tools could fail without proper configuration.";
+        }
+    }
+
+    return 0;
+}
+
+sub GetYNAnswer {
+    my ($dflt, $no) = @_;
+    my $in = <STDIN>;
+    chomp $in;
+    if ($in) {
+        if ($in eq 'Y' || $in eq 'y' ||
+            $in eq 'YES' || $in eq 'yes' || $in eq 'Yes')
+        {
+            return 'y';
+        } elsif ($in eq 'N' || $in eq 'n'
+            || $in eq 'NO' || $in eq 'no' || $in eq 'No')
+        {
+            return 'n';
+        } else {
+            return $no;
+        }
+    } else {
+        return $dflt;
+    }
 }
 
 sub Fatal {
@@ -1185,6 +1189,5 @@ sub Warn {
     println ": WARNING: $msg";
 }
 
-################################################################################
 # EOF #
 ################################################################################

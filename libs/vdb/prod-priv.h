@@ -256,10 +256,11 @@ struct VSimpleProd
 {
     VProduction dad;
     VProduction *in;
+    struct VCursor const *curs;
 };
 
 rc_t VSimpleProdMake ( VProduction **prod, Vector *owned,
-    int sub, const char *name, const VFormatdecl *fd,
+    struct VCursor const *curs,int sub, const char *name, const VFormatdecl *fd,
     const VTypedesc *desc, const VCtxId *cid,
     VProduction *in, uint8_t chain );
 
@@ -364,11 +365,12 @@ struct VScriptProd
     VProduction dad;
     VProduction *rtn;
     Vector owned;
+    struct VCursor const *curs;
 };
 
 
 rc_t VScriptProdMake ( VScriptProd **prod, Vector *owned,
-    int sub, const char *name, const VFormatdecl *fd,
+    struct VCursor const *curs, int sub, const char *name, const VFormatdecl *fd,
     const VTypedesc *desc, uint8_t chain );
 
 void VScriptProdDestroy ( VScriptProd *self );

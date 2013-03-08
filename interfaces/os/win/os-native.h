@@ -80,6 +80,10 @@ struct timeout_t
 /* #define snprintf _snprintf */
 
 
+#ifndef putenv
+#define putenv( s ) _putenv ( s )
+#endif
+
 #define mkdir( d, m ) _mkdir( d )
 #define strcasecmp _stricmp
 #define strtoll _strtoi64

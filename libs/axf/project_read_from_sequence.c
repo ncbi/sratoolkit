@@ -28,6 +28,7 @@
 #include <vdb/database.h>
 #include <vdb/table.h>
 #include <vdb/cursor.h>
+#include <vdb/vdb-priv.h>
 
 
 #include <klib/defs.h>
@@ -65,7 +66,7 @@ void CC RestoreReadWhack ( void *obj )
 }
 
 static
-rc_t RestoreReadMake ( RestoreRead **objp, const VXfactInfo *info, const VFactoryParams *cp )
+rc_t RestoreReadMake ( RestoreRead **objp, const VXfactInfo *info, const VFactoryParams *cp, const VCursor *native_curs )
 {
     rc_t rc;
 
@@ -74,59 +75,60 @@ rc_t RestoreReadMake ( RestoreRead **objp, const VXfactInfo *info, const VFactor
     if ( obj == NULL ) {
         rc = RC ( rcXF, rcFunction, rcConstructing, rcMemory, rcExhausted );
     } else {
-        /* get at the parent database */
-        const VDatabase *db;
-        rc = VTableOpenParentRead ( info -> tbl, & db );
-        if ( rc == 0 ) {
-            /* open the primary alignment table */
-            const VTable *patbl;
-            rc = VDatabaseOpenTableRead ( db, & patbl, "SEQUENCE" );
-            VDatabaseRelease ( db );
-            if ( rc == 0 )
-            {
-                /* create a cursor */
-                rc = VTableCreateCachedCursorRead(patbl, &obj->curs,512*1024*1024);
-                VTableRelease ( patbl );
-                if ( rc == 0 )
-                {
-                    /* add columns to cursor */
-                    assert ( cp -> argc == 1 );
-                    rc = VCursorAddColumn ( obj -> curs, & obj -> col_idx, "%.*s",
-                        cp -> argv [ 0 ] . count, cp -> argv [ 0 ] . data . ascii );
-                    if ( rc == 0)
-                        rc = VCursorAddColumn ( obj -> curs, & obj -> read_len_idx, "(INSDC:coord:len)READ_LEN" );
-                    if ( rc == 0)
-                        rc = VCursorAddColumn ( obj -> curs, & obj -> read_start_idx, "(INSDC:coord:zero)READ_START");
-                    if ( rc == 0 )
-                    {
-                        rc = VCursorOpen ( obj -> curs );
-                        if ( rc == 0 )
-                        {
-                            VTypedesc src;
-                            rc = VCursorDatatype ( obj -> curs, obj -> col_idx, NULL, & src );
-                            if ( rc == 0 )
-                            {
-                                /* selected column should have same characteristics */
-                                if ( src . domain != info -> fdesc . desc . domain                 ||
-                                     src . intrinsic_bits != info -> fdesc . desc . intrinsic_bits ||
-                                     src . intrinsic_dim != info -> fdesc . desc. intrinsic_dim )
-                                {
-                                    rc = RC ( rcXF, rcFunction, rcConstructing, rcType, rcInconsistent );
-                                }
-                                else if ( ( src . intrinsic_bits & 7 ) != 0 )
-                                    rc = RC ( rcXF, rcFunction, rcConstructing, rcType, rcUnsupported );
-                                else
-                                {
-                                    * objp = obj;
-                                    return 0;
-                                }
-                            }
-                        }
-                    }
-
-                    VCursorRelease ( obj -> curs );
-                }
-            }
+        rc = VCursorLinkedCursorGet(native_curs,"SEQUENCE",&obj->curs);
+	if(rc != 0){
+		const VDatabase *db;
+		const VTable *tbl;
+		/* get at the parent database */
+		rc = VTableOpenParentRead ( info -> tbl, & db );
+		if(rc != 0) return rc;
+		/* open the table */
+		rc = VDatabaseOpenTableRead ( db, &tbl, "SEQUENCE" );
+		VDatabaseRelease ( db );
+		if(rc != 0) return rc;
+		/* create a cursor */
+                rc = VTableCreateCachedCursorRead(tbl, &obj->curs,2UL*1024*1024*1024);
+		VTableRelease(tbl);
+		if(rc != 0) return rc;
+		rc = VCursorPermitPostOpenAdd( obj->curs );
+                if(rc != 0) return rc;
+                rc = VCursorOpen( obj->curs );
+                if(rc != 0) return rc;
+                rc = VCursorLinkedCursorSet(native_curs,"SEQUENCE",obj->curs);
+                if(rc != 0) return rc;
+	} else {
+		VCursorAddRef(obj->curs);
+	}
+	if ( rc == 0 )
+	{
+	    /* add columns to cursor */
+	    assert ( cp -> argc == 1 );
+	    rc = VCursorAddColumn ( obj -> curs, & obj -> col_idx, "%.*s",
+		cp -> argv [ 0 ] . count, cp -> argv [ 0 ] . data . ascii );
+	    if ( rc == 0 || GetRCState(rc) == rcExists )
+		rc = VCursorAddColumn ( obj -> curs, & obj -> read_len_idx, "(INSDC:coord:len)READ_LEN" );
+	    if ( rc == 0 || GetRCState(rc) == rcExists )
+		rc = VCursorAddColumn ( obj -> curs, & obj -> read_start_idx, "(INSDC:coord:zero)READ_START");
+	    if ( rc == 0  || GetRCState(rc) == rcExists) {
+		VTypedesc src;
+		rc = VCursorDatatype ( obj -> curs, obj -> col_idx, NULL, & src );
+		if ( rc == 0 ){
+			/* selected column should have same characteristics */
+			if ( src . domain != info -> fdesc . desc . domain                 ||
+			     src . intrinsic_bits != info -> fdesc . desc . intrinsic_bits ||
+			     src . intrinsic_dim != info -> fdesc . desc. intrinsic_dim )
+			{
+			    rc = RC ( rcXF, rcFunction, rcConstructing, rcType, rcInconsistent );
+			}
+			else if ( ( src . intrinsic_bits & 7 ) != 0 )
+			    rc = RC ( rcXF, rcFunction, rcConstructing, rcType, rcUnsupported );
+			else
+			{
+			    * objp = obj;
+			    return 0;
+			}
+		}
+	    }
         }
         free ( obj );
     }
@@ -214,11 +216,11 @@ VTRANSFACT_IMPL ( ALIGN_project_from_sequence, 1, 0, 0 ) ( const void *Self, con
     VFuncDesc *rslt, const VFactoryParams *cp, const VFunctionParams *dp )
 {
     RestoreRead *fself;
-    rc_t rc = RestoreReadMake ( & fself, info, cp );
+    rc_t rc = RestoreReadMake ( & fself, info, cp, (const VCursor*)info->parms  );
     if(rc == 0 ) {
         rslt->self = fself;
         rslt->u.ndf = project_from_sequence_impl;
-        rslt->variant = vftNonDetRow;
+        rslt->variant = vftRow;
         rslt -> whack = RestoreReadWhack;
     }
     return rc;

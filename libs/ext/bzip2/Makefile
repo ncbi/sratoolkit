@@ -153,7 +153,7 @@ libbz2.vers: $(BZIP2_TAR_GET)
 	$(TAR_CMD) $^
 	mv bzip2-$(BZIP2_VERS)/*.[ch] .
 	mv bzip2-$(BZIP2_VERS)/*.def .
-	rm -rf bzip2-$(BZIP2_VERS)
+	-rm -rf bzip2-$(BZIP2_VERS)
 	@ $(ECHO_VERS) > $@
 
 download: libbz2.vers

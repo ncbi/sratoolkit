@@ -128,7 +128,7 @@ rc_t KExclAccessFileMake ( KExclAccessFile **fp, KLockFile *lock, KFile *f )
     else
     {
         rc = KFileInit ( & xf -> dad, ( const KFile_vt* ) & KExclAccessFile_vt,
-            f -> read_enabled, f -> write_enabled );
+            "KExclAccessFile", "no-name", f -> read_enabled, f -> write_enabled );
         if ( rc == 0 )
         {
             xf -> lock = lock;

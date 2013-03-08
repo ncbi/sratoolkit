@@ -124,7 +124,7 @@ rc_t VProdResolveColumnRoot ( const VProdResolve *self,
     /* pick up production */
     if ( scol -> validate != NULL )
     {
-        rc = VSimpleProdMake ( & wcol -> val, self -> owned,
+        rc = VSimpleProdMake ( & wcol -> val, self -> owned, self -> curs,
             prodSimpleCast, name, NULL, NULL, NULL, in, chainDecoding );
         if ( rc != 0 )
             return rc;
@@ -345,7 +345,7 @@ rc_t VProdResolvePhysicalWrite ( const VProdResolve *self, VPhysical *phys )
     /* build encoding schema in steps:
          in <- page-to-blob
     */
-    rc = VSimpleProdMake ( & prod, pr . owned,
+    rc = VSimpleProdMake ( & prod, pr . owned,  self->curs,
         prodSimplePage2Blob, name, & fd, & desc, NULL, phys -> in, chainEncoding );
     if ( rc == 0 && enc != NULL )
     {
@@ -361,7 +361,7 @@ rc_t VProdResolvePhysicalWrite ( const VProdResolve *self, VPhysical *phys )
     }
     if ( rc == 0 )
     {
-        rc = VSimpleProdMake ( & phys -> b2s, pr . owned,
+        rc = VSimpleProdMake ( & phys -> b2s, pr . owned, self->curs,
             prodSimpleBlob2Serial, name, & fd, & desc, NULL, prod, chainEncoding );
     }
 

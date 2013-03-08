@@ -33,7 +33,8 @@ include $(TOP)/build/Makefile.env
 INT_TOOLS = \
 
 EXT_TOOLS = \
-	sra-pileup
+	sra-pileup \
+	sam-dump
 
 ALL_TOOLS = \
 	$(INT_TOOLS) \
@@ -85,6 +86,7 @@ clean: stdclean
 #
 TOOL_SRC = \
 	cmdline_cmn \
+	reref \
 	sra-pileup
 
 TOOL_OBJ = \
@@ -110,5 +112,41 @@ TOOL_LIB = \
 $(BINDIR)/sra-pileup: $(TOOL_OBJ)
 	$(LD) --exe --vers $(SRCDIR) -o $@ $^ $(TOOL_LIB)
 
-sra-pileup_tag:
-	@ $(TOP)/build/tag-module.sh $(MODULE) sra-pileup $(TOOL_OBJ)
+#-------------------------------------------------------------------------------
+# sam-dump
+#
+SAMDUMP3_SRC = \
+	inputfiles \
+	sam-dump-opts \
+	out_redir \
+	sam-hdr \
+	matecache \
+	read_fkt \
+	sam-aligned \
+	sam-unaligned \
+	cg_tools \
+	sam-dump \
+	sam-dump3
+
+SAMDUMP3_OBJ = \
+	$(addsuffix .$(OBJX),$(SAMDUMP3_SRC))
+
+SAMDUMP3_LIB = \
+	-lkapp \
+	-ssrapath \
+	-lalign-reader \
+	$(READONLY_SCHEMA_LIBS) \
+	-lsraschema \
+	-lvdb \
+	-lkdb \
+	-lvfs \
+	-lkrypto \
+	-lkfg \
+	-lkfs \
+	-lksrch \
+	-lkproc \
+	-lklib \
+	-lm
+
+$(BINDIR)/sam-dump: $(SAMDUMP3_OBJ)
+	$(LD) --exe --vers $(SRCDIR) -o $@ $^ $(SAMDUMP3_LIB)

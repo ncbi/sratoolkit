@@ -2211,6 +2211,7 @@ rc_t KArcFileMake (KArcFile ** self,
             {
                 rc = KFileInit (&pF->dad,				/* initialize base class */
                                 (const KFile_vt*)&vtKArcFile,	/* VTable for KArcFile */
+                                "KArcFile", "no-name",
                                 true,				/* read allowed */
                                 false);				/* write disallowed */
                 if (rc == 0)
@@ -3687,6 +3688,8 @@ rc_t KDirectoryOpenArcDirRead_intern( const KDirectory * self,
         }
     }
 
+    rc = rc | rcaux;
+
     if ( rc != 0 )
     {
         if ( arcdir != NULL )
@@ -3696,7 +3699,8 @@ rc_t KDirectoryOpenArcDirRead_intern( const KDirectory * self,
 
     if ( toc != NULL )
         KTocRelease ( toc );
-    return rc | rcaux;
+
+    return rc;
 }
 
 

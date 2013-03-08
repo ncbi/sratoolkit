@@ -166,7 +166,7 @@ LIB_EXPORT rc_t CC KConditionRelease ( const KCondition *cself )
     KCondition *self = ( KCondition* ) cself;
     if ( cself != NULL )
     {
-        if ( atomic32_add ( & self -> refcount, -1 ) <= 0 )
+        if ( atomic32_add ( & self -> refcount, -1 ) <= 1 )
             return KConditionWhack ( self );
     }
     return 0;

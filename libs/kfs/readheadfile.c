@@ -273,6 +273,7 @@ LIB_EXPORT rc_t CC KFileMakeReadHead (const KFile ** pself,
 
 	rc = KFileInit (&self->dad,			/* initialize base class */
 			(const KFile_vt*)&vtKReadHeadFile,/* VTable for KReadHeadFile */
+            "KReadHeadFile", "no-name",
 			original->read_enabled,
 			false);
 	if (rc == 0)

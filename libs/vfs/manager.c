@@ -33,8 +33,11 @@
 #include <krypto/encfile.h>
 #include <krypto/wgaencrypt.h>
 #include <krypto/ciphermgr.h>
-#include <sra/srapath.h>
 #include <kfg/config.h>
+#include <kfg/repository.h>
+
+#include <vfs/resolver.h>
+#include <sra/srapath.h>
 
 #include <kfs/directory.h>
 #include <kfs/file.h>
@@ -45,11 +48,9 @@
 #include <kfs/nullfile.h>
 #include <kfs/buffile.h>
 #include <kfs/quickmount.h>
+#include <kfs/cacheteefile.h>
 
-#if !WINDOWS
 #include <kns/curl-file.h>
-#endif
-
 #include <kxml/xml.h>
 #include <klib/refcount.h>
 #include <klib/log.h>
@@ -70,26 +71,8 @@
 #endif
 
 
-/*--------------------------------------------------------------------------
- * KCurlFileMakeBuffered
- */
-static
-rc_t KCurlFileMakeBuffered ( const KFile **cfp, const char * url, bool verbose )
-{
-    rc_t rc = KCurlFileMake ( cfp, url, verbose );
-    if ( rc == 0 )
-    {
-        const KFile *bf;
-        rc_t rc2 = KBufFileMakeRead ( & bf, * cfp, 128 * 1024 * 1024 );
-        if ( rc2 == 0 )
-        {
-            KFileRelease ( * cfp );
-            * cfp = bf;
-        }
-    }
-
-    return rc;
-}
+#define DEFAULT_CACHE_BLOCKSIZE ( 32768 * 4 )
+#define DEFAULT_CACHE_CLUSTER 1
 
 /*--------------------------------------------------------------------------
  * VFSManager
@@ -115,8 +98,13 @@ struct VFSManager
     /* krypto's cipher manager */
     KCipherManager * cipher;
 
+    /* SRAPath will be replaced with a VResolver */
+    struct VResolver * resolver;
     /* SRAPath */
-    SRAPath * srapath;
+    struct SRAPath * srapath;
+
+    /* if not NULL, need to remove from environment and free */
+    char *pw_env;
 };
 
 static const char kfsmanager_classname [] = "VFSManager";
@@ -131,7 +119,7 @@ VFSManager * singleton = NULL;
 LIB_EXPORT rc_t CC VFSManagerDestroy ( VFSManager *self )
 {
     if ( self == NULL )
-        return RC ( rcFS, rcFile, rcDestroying, rcSelf, rcNull );
+        return RC ( rcVFS, rcFile, rcDestroying, rcSelf, rcNull );
 
     KRefcountWhack (&self->refcount, kfsmanager_classname);
 
@@ -143,9 +131,18 @@ LIB_EXPORT rc_t CC VFSManagerDestroy ( VFSManager *self )
 
     KCipherManagerRelease (self->cipher);
 
-    SRAPathRelease (self->srapath);
+    VResolverRelease ( self->resolver );
+
+    SRAPathRelease ( self->srapath );
+
+    if ( self -> pw_env != NULL )
+    {
+        putenv ( "VDB_PWFILE=" );
+        free ( self -> pw_env );
+    }
 
     free (self);
+
     singleton = NULL;
     return 0;
 }
@@ -163,13 +160,13 @@ LIB_EXPORT rc_t CC VFSManagerAddRef ( const VFSManager *self )
         case krefOkay:
             break;
         case krefZero:
-            return RC (rcFS, rcMgr, rcAttaching, rcRefcount, rcIncorrect);
+            return RC (rcVFS, rcMgr, rcAttaching, rcRefcount, rcIncorrect);
         case krefLimit:
-            return RC (rcFS, rcMgr, rcAttaching, rcRefcount, rcExhausted);
+            return RC (rcVFS, rcMgr, rcAttaching, rcRefcount, rcExhausted);
         case krefNegative:
-            return RC (rcFS, rcMgr, rcAttaching, rcRefcount, rcInvalid);
+            return RC (rcVFS, rcMgr, rcAttaching, rcRefcount, rcInvalid);
         default:
-            return RC (rcFS, rcMgr, rcAttaching, rcRefcount, rcUnknown);
+            return RC (rcVFS, rcMgr, rcAttaching, rcRefcount, rcUnknown);
         }
     }
     return 0;
@@ -193,9 +190,9 @@ LIB_EXPORT rc_t CC VFSManagerRelease ( const VFSManager *self )
             rc = VFSManagerDestroy ((VFSManager*)self);
             break;
         case krefNegative:
-            return RC (rcFS, rcMgr, rcAttaching, rcRefcount, rcInvalid);
+            return RC (rcVFS, rcMgr, rcAttaching, rcRefcount, rcInvalid);
         default:
-            rc = RC (rcFS, rcMgr, rcAttaching, rcRefcount, rcUnknown);
+            rc = RC (rcVFS, rcMgr, rcAttaching, rcRefcount, rcUnknown);
             break;            
         }
     }
@@ -204,11 +201,46 @@ LIB_EXPORT rc_t CC VFSManagerRelease ( const VFSManager *self )
 
 
 
-LIB_EXPORT rc_t CC VFSManagerGetConfigPWFd (const VFSManager * self, 
+/*--------------------------------------------------------------------------
+ * VFSManagerMakeCurlFile
+ */
+static
+rc_t VFSManagerMakeCurlFile( const VFSManager * self, const KFile **cfp,
+                             const char * url, const char * cache_location )
+{
+    rc_t rc = KCurlFileMake ( cfp, url, false );
+    if ( rc == 0 )
+    {
+        const KFile *temp_file;
+        rc_t rc2;
+        if ( cache_location == NULL )
+        {
+            /* there is no cache_location! just wrap the remote file in a buffer */
+            rc2 = KBufFileMakeRead ( & temp_file, * cfp, 128 * 1024 * 1024 );
+        }
+        else
+        {
+            /* we do have a cache_location! wrap the remote file in a cacheteefile */
+            rc2 = KDirectoryMakeCacheTee ( self->cwd, &temp_file, *cfp, NULL,
+                                           DEFAULT_CACHE_BLOCKSIZE, DEFAULT_CACHE_CLUSTER,
+                                           false, "%s", cache_location );
+        }
+        if ( rc2 == 0 )
+        {
+            KFileRelease ( * cfp );
+            * cfp = temp_file;
+        }
+    }
+    return rc;
+}
+
+
+
+LIB_EXPORT rc_t CC VFSManagerGetConfigPWFd ( const VFSManager * self, 
                                             char * b, size_t bz, size_t * pz)
 {
 #if 1
-    rc_t rc = RC (rcFS, rcPath, rcConstructing, rcParam, rcUnsupported);
+    rc_t rc = RC (rcVFS, rcPath, rcConstructing, rcParam, rcUnsupported);
 #else
     const KConfigNode * node;
     size_t oopsy;
@@ -217,6 +249,7 @@ LIB_EXPORT rc_t CC VFSManagerGetConfigPWFd (const VFSManager * self,
 
     *pz = 0;
 
+/*    rc = KConfigOpenNodeRead (self->cfg, &node, KRYPTO_PWFD); */
     rc = KConfigOpenNodeRead (self->cfg, &node, "krypto/pwfd");
     if (rc == 0)
     {
@@ -250,6 +283,8 @@ LIB_EXPORT rc_t CC VFSManagerGetConfigPWFile (const VFSManager * self,
     if (pz)
         *pz = 0;
 
+/*#ifdef ENV_KRYPTO_PWFILE */
+/*    env = getenv (ENV_KRYPTO_PWFILE); */
     env = getenv ("VDB_PWFILE");
 
     if (env)
@@ -265,7 +300,9 @@ LIB_EXPORT rc_t CC VFSManagerGetConfigPWFile (const VFSManager * self,
        
         return 0;
     }
+/* #endif */
 
+/*     rc = KConfigOpenNodeRead (self->cfg, &node, KFG_KRYPTO_PWFILE); */
     rc = KConfigOpenNodeRead (self->cfg, &node, "krypto/pwfile");
     if (rc)
     {
@@ -289,6 +326,233 @@ LIB_EXPORT rc_t CC VFSManagerGetConfigPWFile (const VFSManager * self,
         KConfigNodeRelease (node);
     }
     return rc;
+}
+
+
+/* ResolvePath
+ *
+ * take a VPath and resolve to a final form apropriate for KDB
+ *
+ * that is take a relative path and resolve it against the CWD
+ * or take an accession and resolve into the local or remote 
+ * VResolver file based on config. It is just a single resolution percall
+ */
+static rc_t VFSManagerResolvePathResolver (const VFSManager * self,
+                                           uint32_t flags,
+                                           const VPath * in_path,
+                                           VPath ** out_path)
+{
+    rc_t rc = 0;
+
+    *out_path = NULL;
+
+    /*
+     * this RC perculates up for ncbi-acc: schemes but not for
+     * no scheme uris
+     */
+    if ((flags & vfsmgr_rflag_no_acc) == vfsmgr_rflag_no_acc)
+    {
+        /* hack */
+        if (in_path->scheme == vpuri_none)
+            rc = SILENT_RC (rcVFS, rcMgr, rcResolving, rcSRA, rcNotAvailable);
+        else
+            rc = RC (rcVFS, rcMgr, rcResolving, rcSRA, rcNotAvailable);
+    }
+    else
+    {
+        bool not_done = true;
+
+        /*
+         * cast because we seem to have the restriction on the output from
+         * VResolver that seems too restrictive
+         */
+        if ((flags & vfsmgr_rflag_no_acc_local) == 0)
+        {
+            rc = VResolverLocal (self->resolver, in_path, (const VPath **)out_path);
+            if (rc == 0)
+                not_done = false;
+        }
+            
+        if (not_done && ((flags & vfsmgr_rflag_no_acc_remote) == 0))
+            rc = VResolverRemote (self->resolver, in_path, 
+                                  (const VPath **)out_path, NULL);
+    }
+    return rc;
+}
+
+
+static rc_t VFSManagerResolvePathInt (const VFSManager * self,
+                                      uint32_t flags,
+                                      const KDirectory * base_dir,
+                                      const VPath * in_path,
+                                      VPath ** out_path)
+{
+    char * pc;
+    rc_t rc;
+
+    assert (self);
+    assert (in_path);
+    assert (out_path);
+
+    switch (in_path->scheme)
+    {
+    default:
+        rc = RC (rcVFS, rcMgr, rcResolving, rcPath, rcInvalid);
+        break;
+
+    case vpuri_not_supported:
+    case vpuri_ncbi_legrefseq:
+        rc = RC (rcVFS, rcMgr, rcResolving, rcPath, rcUnsupported);
+        break;
+
+    case vpuri_ncbi_acc:
+        rc = VFSManagerResolvePathResolver (self, flags, in_path, out_path);
+        break;
+
+    case vpuri_none:
+        /* for KDB purposes, no scheme might be an accession */
+        if (flags & vfsmgr_rflag_kdb_acc)
+        {
+             /* no '/' is permitted in an accession */
+            pc = string_chr (in_path->path.addr, in_path->path.size, '/');
+            if (pc == NULL)
+            {
+                rc = VFSManagerResolvePathResolver (self, flags, in_path, out_path);
+                if (rc == 0)
+                    break;
+            }
+        }
+        /* Fall through */
+    case vpuri_ncbi_vfs:
+#if SUPPORT_FILE_URL
+    case vpuri_file:
+#endif
+        /* check for relative versus full path : assumes no 'auth' not starting with '/' */
+        if (in_path->path.addr[0] == '/')
+        {
+            rc = VPathAddRef (in_path);
+            if (rc == 0)
+                *out_path = (VPath *)in_path; /* oh these const ptr are annoying */
+        }
+        else
+        {
+            char b [4 * 1024];
+
+            /* not 'properly' handling query, fragment etc. for relative path
+             * assumes path within VPath is ASCIZ
+             *
+             * If KDirectoryResolvePath took our format and not vsnprintf we
+             *  could use %S and get the string out of the VPath.
+             */
+            rc = KDirectoryResolvePath (base_dir, true, b, sizeof b,
+                                        in_path->path.addr);
+            if (rc == 0)
+            {
+                VPath * v;
+                char u [32 * 1024];
+
+                switch (in_path->scheme)
+                {
+                default:
+                    rc = RC (rcVFS, rcMgr, rcResolving, rcFunction, rcInvalid);
+                    break;
+
+                case vpuri_ncbi_vfs:
+                    rc = string_printf (u, sizeof u, NULL, "%s:%s?%s#%s",
+                                        in_path->storage, b,
+                                        in_path->query, in_path->fragment);
+                    if (rc == 0)
+                        rc = VPathMake (&v, u);
+                    break;
+
+                case vpuri_none:
+                case vpuri_file:
+                    rc = VPathMake (&v, b);
+                    break;
+                }
+                if (rc == 0)
+                    *out_path = v;
+            }
+        }
+        break;
+
+        /* these are considered fully resolved already */
+    case vpuri_http:
+    case vpuri_ftp:
+        rc = VPathAddRef (in_path);
+        if (rc == 0)
+            *out_path = (VPath*)in_path;
+        break;
+
+    }
+    return rc;
+}
+
+
+LIB_EXPORT rc_t CC VFSManagerResolvePath (const VFSManager * self,
+                                          uint32_t flags,
+                                          const VPath * in_path,
+                                          VPath ** out_path)
+{
+    if (out_path == NULL)
+        return RC (rcVFS, rcMgr, rcResolving, rcParam, rcNull);
+
+    *out_path = NULL;
+
+    if (self == NULL)
+        return RC (rcVFS, rcMgr, rcResolving, rcSelf, rcNull);
+
+    if (in_path == NULL)
+        return RC (rcVFS, rcMgr, rcResolving, rcParam, rcNull);
+
+    return VFSManagerResolvePathInt (self, flags, self->cwd, in_path, out_path);
+}
+
+LIB_EXPORT rc_t CC VFSManagerResolvePathRelative (const VFSManager * self,
+                                                  uint32_t flags,
+                                                  const struct  VPath * base_path,
+                                                  const struct  VPath * in_path,
+                                                  struct VPath ** out_path)
+{
+    const KDirectory * dir;
+    rc_t rc;
+
+    if (out_path == NULL)
+        rc = RC (rcVFS, rcMgr, rcResolving, rcParam, rcNull);
+
+    *out_path = NULL;
+
+    if (self == NULL)
+        return RC (rcVFS, rcMgr, rcResolving, rcSelf, rcNull);
+
+    if (in_path == NULL)
+        return RC (rcVFS, rcMgr, rcResolving, rcParam, rcNull);
+
+    rc = VFSManagerOpenDirectoryRead (self, &dir, base_path);
+    if (rc == 0)
+        rc = VFSManagerResolvePathInt (self, flags, dir, in_path, out_path);
+
+    return rc;
+}
+
+LIB_EXPORT rc_t CC VFSManagerResolvePathRelativeDir (const VFSManager * self,
+                                                     uint32_t flags,
+                                                     const KDirectory * base_dir,
+                                                     const VPath * in_path,
+                                                     VPath ** out_path)
+{
+    if (out_path == NULL)
+        return RC (rcVFS, rcMgr, rcResolving, rcParam, rcNull);
+
+    *out_path = NULL;
+
+    if (self == NULL)
+        return RC (rcVFS, rcMgr, rcResolving, rcSelf, rcNull);
+
+    if (in_path == NULL)
+        return RC (rcVFS, rcMgr, rcResolving, rcParam, rcNull);
+
+    return VFSManagerResolvePathInt (self, flags, base_dir, in_path, out_path);
 }
 
 
@@ -571,11 +835,22 @@ rc_t VFSManagerOpenFileReadDecryption (const VFSManager *self,
                                 ;
                             else
                             {
-                                /* we'll release anextra reference to file
-                                 * after this function returns
+                                const KFile * buffile;
+
+                                /*
+                                 * TODO: make the bsize a config item not a hard constant
                                  */
-                                *f = encfile;
-                                return 0;
+                                rc = KBufFileMakeRead (&buffile, encfile,
+                                                       256 * 1024 * 1024);
+                                if (rc == 0)
+                                {
+                                    /* we'll release an extra reference to file
+                                     * after this function returns
+                                     */
+                                    *f = buffile;
+                                    return 0;
+                                }
+                                KFileRelease (encfile);
                             }
                         }
                     }
@@ -651,12 +926,12 @@ rc_t VFSManagerOpenFileReadRegularFile (char * pbuff, size_t z,
         switch (type & ~kptAlias)
         {
         case kptNotFound:
-            rc = RC (rcFS, rcMgr, rcOpening, rcFile,
+            rc = RC (rcVFS, rcMgr, rcOpening, rcFile,
                      rcNotFound);
             break;
 
         case kptBadPath:
-            rc = RC (rcFS, rcMgr, rcOpening, rcFile,
+            rc = RC (rcVFS, rcMgr, rcOpening, rcFile,
                      rcInvalid);
             break;
 
@@ -665,12 +940,12 @@ rc_t VFSManagerOpenFileReadRegularFile (char * pbuff, size_t z,
         case kptBlockDev:
         case kptFIFO:
         case kptZombieFile:
-            rc = RC (rcFS, rcMgr, rcOpening, rcFile,
+            rc = RC (rcVFS, rcMgr, rcOpening, rcFile,
                      rcIncorrect);
             break;
 
         default:
-            rc = RC (rcFS, rcMgr, rcOpening, rcFile, rcUnknown);
+            rc = RC (rcVFS, rcMgr, rcOpening, rcFile, rcUnknown);
             break;
 
         case kptFile:
@@ -816,17 +1091,17 @@ rc_t VFSManagerOpenFileReadDirectoryRelativeInt (const VFSManager *self,
     rc_t rc;
 
     if (f == NULL)
-        rc = RC (rcFS, rcMgr, rcOpening, rcParam, rcNull);
+        rc = RC (rcVFS, rcMgr, rcOpening, rcParam, rcNull);
 
     else
     {
         *f = NULL;
 
         if ((f == NULL) || (path == NULL))
-            rc = RC (rcFS, rcMgr, rcOpening, rcParam, rcNull);
+            rc = RC (rcVFS, rcMgr, rcOpening, rcParam, rcNull);
 
         else if (self == NULL)
-            rc = RC (rcFS, rcMgr, rcOpening, rcSelf, rcNull);
+            rc = RC (rcVFS, rcMgr, rcOpening, rcSelf, rcNull);
 
         else
         {
@@ -839,25 +1114,43 @@ rc_t VFSManagerOpenFileReadDirectoryRelativeInt (const VFSManager *self,
 
 
 /* we will create a KFile from a http or ftp url... */
-static rc_t VFSManagerOpenCurlFile( const VFSManager *self,
-                                    KFile const **f,
-                                    const VPath * path )
+static rc_t VFSManagerOpenCurlFile ( const VFSManager *self,
+                                     KFile const **f,
+                                     const VPath * path )
 {
-    const char * url;
+    rc_t rc;
+/*    const char * url; */
+    const String * uri = NULL;
 
     if ( f == NULL )
-        return RC( rcFS, rcMgr, rcOpening, rcParam, rcNull );
+        return RC( rcVFS, rcMgr, rcOpening, rcParam, rcNull );
     *f = NULL;
     if ( self == NULL )
-        return RC( rcFS, rcMgr, rcOpening, rcSelf, rcNull );
+        return RC( rcVFS, rcMgr, rcOpening, rcSelf, rcNull );
     if ( path == NULL )
-        return RC( rcFS, rcMgr, rcOpening, rcParam, rcNull );
+        return RC( rcVFS, rcMgr, rcOpening, rcParam, rcNull );
 
-    url = path->path.addr;
-#if !WINDOWS
-    return KCurlFileMakeBuffered( f, url, false );
-#endif
-    return RC( rcFS, rcMgr, rcOpening, rcParam, rcUnsupported );
+/*    url = path->path.addr; */
+    rc = VPathMakeString ( path, &uri );
+    if ( rc == 0 )
+    {
+        if ( self->resolver != NULL )
+        {
+            const VPath * local_cache;
+            /* find cache - vresolver call */
+            rc = VResolverCache ( self->resolver, path, &local_cache, 0 );
+            if ( rc == 0 )
+                /* we did find a place for local cache --> use it! */
+                rc = VFSManagerMakeCurlFile( self, f, uri->addr, local_cache->path.addr );
+            else
+                /* we did NOT find a place for local cache --> we are not caching! */
+                rc = VFSManagerMakeCurlFile( self, f, uri->addr, NULL );
+        }
+        else
+            rc = VFSManagerMakeCurlFile( self, f, uri->addr, NULL );
+        free( ( void * )uri );
+    }
+    return rc;
 }
 
 
@@ -881,41 +1174,87 @@ rc_t CC VFSManagerOpenFileReadDirectoryRelativeDecrypt (const VFSManager *self,
 }
 
 
-LIB_EXPORT rc_t CC VFSManagerOpenFileRead (const VFSManager *self,
-                                           KFile const **f,
-                                           const VPath * path_)
+static rc_t ResolveVPathByVResolver( struct VResolver * resolver, const VPath ** path )
 {
     rc_t rc;
 
-    if (f == NULL)
+    if ( resolver == NULL )
+        rc = RC ( rcVFS, rcFile, rcOpening, rcSRA, rcUnsupported );
+    else
+    {
+        const VPath * tpath;
+        rc = VResolverLocal ( resolver, *path, &tpath );
+        if ( rc == 0 )
+        {
+            VPathRelease ( *path );
+            *path = tpath;
+        }
+    }
+    return rc;
+}
+
+
+static rc_t ResolveVPathBySRAPath( SRAPath * srapath, const VPath ** path )
+{
+    rc_t rc;
+
+    if ( srapath == NULL )
+        rc = RC ( rcVFS, rcFile, rcOpening, rcSRA, rcUnsupported );
+    else
+    {
+        char spath [ 8192 ];
+        rc = SRAPathFind ( srapath, (*path)->path.addr, spath, sizeof spath );
+        if ( rc == 0 )
+        {
+            char npath [ 8192 ];
+            size_t zz;
+
+            if ( (*path)->query && (*path)->query[ 0 ] )
+                rc = string_printf ( npath, sizeof npath, &zz, "ncbi-file:%s?%s",
+                                     spath, (*path)->query );
+            else
+                rc = string_printf ( npath, sizeof npath, &zz, "ncbi-file:%s",
+                                     spath );
+            if ( rc == 0 )
+            {
+                VPath * tpath;
+                rc = VPathMake ( &tpath, npath );
+                if ( rc == 0 )
+                {
+                    VPathRelease ( *path );
+                    *path = tpath;
+                }
+            }
+        }
+    }
+    return rc;
+}
+
+
+LIB_EXPORT rc_t CC VFSManagerOpenFileRead ( const VFSManager *self,
+                                            KFile const **f,
+                                            const VPath * path_ )
+{
+    rc_t rc;
+
+    if ( f == NULL )
         rc = RC (rcVFS, rcMgr, rcOpen, rcParam, rcNull);
     else
     {
         *f = NULL;
 
-        if (self == NULL)
-            rc = RC (rcVFS, rcMgr, rcOpen, rcSelf, rcNull);
-
-        else if (f == NULL)
-            rc = RC (rcVFS, rcMgr, rcOpen, rcParam, rcNull);
-
+        if  (self == NULL )
+            rc = RC ( rcVFS, rcMgr, rcOpen, rcSelf, rcNull );
+        else if ( f == NULL )
+            rc = RC ( rcVFS, rcMgr, rcOpen, rcParam, rcNull );
         else
         {
-            rc = VPathAddRef (path_);
-            if (rc)
-                ;
-
-            else
+            rc = VPathAddRef ( path_ );
+            if ( rc == 0 )
             {
-                const VPath * path;
-                VPath * tpath;
-                size_t zz;
-                char spath [8192];
-                char npath [8192];
+                const VPath * path = path_;
 
-                path = path_;
-
-                switch (path->scheme)
+                switch ( path->scheme )
                 {
                 default:
                 case vpuri_invalid:
@@ -927,45 +1266,31 @@ LIB_EXPORT rc_t CC VFSManagerOpenFileRead (const VFSManager *self,
                     break;
 
                 case vpuri_ncbi_acc:
-                    if (self->srapath == NULL)
-                    {
-                        rc = RC (rcVFS, rcFile, rcOpening, rcSRA, rcUnsupported);
-                        break;
-                    }
-
-                    rc = SRAPathFind (self->srapath, path->path.addr, spath, sizeof spath);
-                    if (rc)
-                        break;
-
-                    if (path->query && path->query[0])
-                        rc = string_printf (npath, sizeof npath, &zz, "ncbi-file:%s?%s",
-                                            spath, path->query);
+                    if ( self->resolver != NULL )
+                        rc = ResolveVPathByVResolver( self->resolver, &path );
                     else
-                        rc = string_printf (npath, sizeof npath, &zz, "ncbi-file:%s",
-                                            spath);
-                    if (rc)
+                        rc = ResolveVPathBySRAPath( self->srapath, &path );
+
+                    if ( rc != 0 )
                         break;
 
-                    rc = VPathMake (&tpath, npath);
-                    if (rc)
-                        break;
-
-                    VPathRelease (path);
-                    path = tpath;
-
-                    /* fall through */
+                /* !!! fall through !!! */
 
                 case vpuri_none:
                 case vpuri_ncbi_vfs:
 #if SUPPORT_FILE_URL
                 case vpuri_file:
 #endif
-                    rc = VFSManagerOpenFileReadDirectoryRelativeInt (self, self->cwd, f, path, false, NULL);
+                    rc = VFSManagerOpenFileReadDirectoryRelativeInt ( self, self->cwd, f, path, false, NULL );
+                    break;
+
+                case vpuri_ncbi_legrefseq:
+                    rc = RC ( rcVFS, rcFile, rcOpening, rcPath, rcIncorrect );
                     break;
 
                 case vpuri_http:
                 case vpuri_ftp:
-                    rc = VFSManagerOpenCurlFile (self, f, path);
+                    rc = VFSManagerOpenCurlFile ( self, f, path );
                     break;
                 }
                 VPathRelease (path);
@@ -980,7 +1305,7 @@ LIB_EXPORT rc_t CC VFSManagerOpenFileReadDecrypt (const VFSManager *self,
                                                   KFile const **f,
                                                   const VPath * path)
 {
-    return VFSManagerOpenFileReadDirectoryRelativeInt (self, self->cwd, f, path, true, NULL);
+    return VFSManagerOpenFileReadDirectoryRelativeInt ( self, self->cwd, f, path, true, NULL );
 }
 
 
@@ -1075,18 +1400,18 @@ rc_t CC VFSManagerOpenDirectoryUpdateDirectoryRelative (const VFSManager *self,
     rc_t rc;
 
     if ((d == NULL) || (path == NULL))
-        return RC (rcFS, rcMgr, rcOpening, rcParam, rcNull);
+        return RC (rcVFS, rcMgr, rcOpening, rcParam, rcNull);
 
     *d = NULL;
 
     if (self == NULL)
-        return RC (rcFS, rcMgr, rcOpening, rcSelf, rcNull);
+        return RC (rcVFS, rcMgr, rcOpening, rcSelf, rcNull);
 
     switch ( path->scheme )
     {
     case vpuri_http :
     case vpuri_ftp :
-        return RC( rcFS, rcMgr, rcOpening, rcParam, rcWrongType );
+        return RC( rcVFS, rcMgr, rcOpening, rcParam, rcWrongType );
 
     default :
         rc = VPathReadPath (path, pbuff, sizeof pbuff, &num_read);
@@ -1103,15 +1428,15 @@ rc_t CC VFSManagerOpenDirectoryUpdateDirectoryRelative (const VFSManager *self,
                 switch (type & ~kptAlias)
                 {
                 case kptNotFound:
-                    rc = RC (rcFS, rcMgr, rcOpening, rcDirectory, rcNotFound);
+                    rc = RC (rcVFS, rcMgr, rcOpening, rcDirectory, rcNotFound);
                     break;
 
                 case kptFile:
-                    rc = RC (rcFS, rcMgr, rcOpening, rcDirectory, rcReadonly);
+                    rc = RC (rcVFS, rcMgr, rcOpening, rcDirectory, rcReadonly);
                     break;
 
                 case kptBadPath:
-                    rc = RC (rcFS, rcMgr, rcOpening, rcDirectory, rcInvalid);
+                    rc = RC (rcVFS, rcMgr, rcOpening, rcDirectory, rcInvalid);
                     break;
 
                 case kptDir:
@@ -1122,11 +1447,11 @@ rc_t CC VFSManagerOpenDirectoryUpdateDirectoryRelative (const VFSManager *self,
                 case kptBlockDev:
                 case kptFIFO:
                 case kptZombieFile:
-                    rc = RC (rcFS, rcMgr, rcOpening, rcDirectory, rcIncorrect);
+                    rc = RC (rcVFS, rcMgr, rcOpening, rcDirectory, rcIncorrect);
                     break;
 
                 default:
-                    rc = RC (rcFS, rcMgr, rcOpening, rcDirectory, rcUnknown);
+                    rc = RC (rcVFS, rcMgr, rcOpening, rcDirectory, rcUnknown);
                     break;
                 }
             }
@@ -1209,7 +1534,7 @@ rc_t VFSManagerOpenDirectoryReadHttp (const VFSManager *self,
                                       bool force_decrypt)
 {
     rc_t rc;
-#if !WINDOWS
+
     {
         const KFile * file = NULL;
         char urlbuffer[ 4096 ];
@@ -1231,10 +1556,11 @@ rc_t VFSManagerOpenDirectoryReadHttp (const VFSManager *self,
                                urlbuffer,&path->path));
         else
         {
-            rc =  KCurlFileMakeBuffered( &file, urlbuffer, false );
-            if (rc)
-                PLOGERR (klogErr, (klogErr, rc, "error with curl open '$(U)'",
-                                   "U=%s,P=%S", urlbuffer));
+            rc = VFSManagerOpenCurlFile ( self, &file, path );
+/*            rc = VFSManagerMakeCurlFile( self, &file, urlbuffer, NULL ); */
+            if ( rc != 0 )
+                PLOGERR ( klogErr, ( klogErr, rc, "error with curl open '$(U)'",
+                                     "U=%s,P=%S", urlbuffer ) );
             else
             {
                 const char mountpointpath[] = "/";
@@ -1257,15 +1583,23 @@ rc_t VFSManagerOpenDirectoryReadHttp (const VFSManager *self,
                         rc = TransformFileToDirectory (mountpoint, file, d, 
                                                        path->path.addr,
                                                        was_encrypted);
+                        /* hacking in the fragment bit */
+                        if ((rc == 0) && (path->fragment != NULL) && (path->fragment[0] != '\0'))
+                        {
+                            const KDirectory * tempd;
+
+                            tempd = *d;
+
+                            rc = KDirectoryOpenDirRead (tempd, d, false, path->fragment);
+                
+                            KDirectoryRelease (tempd);
+                        }
                     }
                     KDirectoryRelease (mountpoint);
                 }
             }
         }
     }
-#else
-    rc = RC( rcFS, rcMgr, rcOpening, rcParam, rcUnsupported );
-#endif
     return rc;
 }
 
@@ -1305,7 +1639,7 @@ rc_t VFSManagerOpenDirectoryReadKfs (const VFSManager *self,
             switch (type & ~kptAlias)
             {
             case kptNotFound:
-                rc = RC( rcFS, rcMgr, rcOpening, rcDirectory, rcNotFound );
+                rc = RC( rcVFS, rcMgr, rcOpening, rcDirectory, rcNotFound );
                 break;
 
             case kptFile:
@@ -1319,7 +1653,7 @@ rc_t VFSManagerOpenDirectoryReadKfs (const VFSManager *self,
                 break;
 
             case kptBadPath:
-                rc = RC( rcFS, rcMgr, rcOpening, rcDirectory, rcInvalid );
+                rc = RC( rcVFS, rcMgr, rcOpening, rcDirectory, rcInvalid );
                 break;
 
             case kptDir:
@@ -1330,12 +1664,109 @@ rc_t VFSManagerOpenDirectoryReadKfs (const VFSManager *self,
             case kptBlockDev:
             case kptFIFO:
             case kptZombieFile:
-                rc = RC( rcFS, rcMgr, rcOpening, rcDirectory, rcIncorrect );
+                rc = RC( rcVFS, rcMgr, rcOpening, rcDirectory, rcIncorrect );
                 break;
 
             default:
-                rc = RC( rcFS, rcMgr, rcOpening, rcDirectory, rcUnknown );
+                rc = RC( rcVFS, rcMgr, rcOpening, rcDirectory, rcUnknown );
                 break;
+            }
+
+            /* hacking in the fragment bit */
+            if ((rc == 0) && (path->fragment != NULL) && (path->fragment[0] != '\0'))
+            {
+                const KDirectory * tempd;
+
+                tempd = *d;
+
+                rc = KDirectoryOpenDirRead (tempd, d, false, path->fragment);
+                
+                KDirectoryRelease (tempd);
+            }
+
+
+        }
+    }
+    return rc;
+}
+
+
+static
+rc_t VFSManagerOpenDirectoryReadLegrefseq (const VFSManager *self,
+                                           const KDirectory * dir,
+                                           KDirectory const **d,
+                                           const VPath * path,
+                                           bool force_decrypt)
+{
+    const KFile * file;
+    const KDirectory * dd;
+    size_t num_read;
+    char pbuff [4096]; /* path buffer */
+    rc_t rc;
+
+    assert (self);
+    assert (dir);
+    assert (d);
+    assert (path);
+    assert ((force_decrypt == false) || (force_decrypt == true));
+    assert (*d == NULL);
+
+    file = NULL;
+    dd = NULL;
+
+    /* hier part only */
+    rc = VPathReadPath (path, pbuff, sizeof pbuff, &num_read);
+    if ( rc == 0 )
+    {
+        char rbuff[ 4096 ]; /* resolved path buffer */
+        rc = KDirectoryResolvePath( dir, true, rbuff, sizeof rbuff, pbuff );
+        if ( rc == 0 )
+        {
+            uint32_t type;
+            bool was_encrypted;
+
+            type = KDirectoryPathType( dir, rbuff );
+            switch (type & ~kptAlias)
+            {
+            case kptNotFound:
+                rc = RC( rcVFS, rcMgr, rcOpening, rcDirectory, rcNotFound );
+                break;
+
+            case kptFile:
+                rc = VFSManagerOpenFileReadDirectoryRelativeInt (self, dir, 
+                                                                 &file, path, 
+                                                                 force_decrypt,
+                                                                 &was_encrypted);
+                if (rc == 0)
+                    rc = TransformFileToDirectory (dir, file, &dd, rbuff,
+                                                   was_encrypted);
+                break;
+
+            case kptBadPath:
+                rc = RC( rcVFS, rcMgr, rcOpening, rcDirectory, rcInvalid );
+                break;
+
+            case kptDir:
+                rc = KDirectoryOpenDirRead( dir, &dd, false, rbuff );
+                break;
+
+            case kptCharDev:
+            case kptBlockDev:
+            case kptFIFO:
+            case kptZombieFile:
+                rc = RC( rcVFS, rcMgr, rcOpening, rcDirectory, rcIncorrect );
+                break;
+
+            default:
+                rc = RC( rcVFS, rcMgr, rcOpening, rcDirectory, rcUnknown );
+                break;
+            }
+
+            if (rc == 0)
+            {
+                rc = KDirectoryOpenDirRead (dd, d, false, path->fragment);
+
+                KDirectoryRelease (dd);
             }
         }
     }
@@ -1350,13 +1781,7 @@ rc_t VFSManagerOpenDirectoryReadDirectoryRelativeInt (const VFSManager *self,
                                                       const VPath * path_,
                                                       bool force_decrypt)
 {
-    char spath [8192];
-    char npath [8192];
     rc_t rc;
-    const VPath * path;
-    VPath * tpath;
-    size_t zz;
-
     do 
     {
         if (d == NULL)
@@ -1386,13 +1811,13 @@ rc_t VFSManagerOpenDirectoryReadDirectoryRelativeInt (const VFSManager *self,
         }
 
         rc = VPathAddRef (path_);
-        if (rc)
+        if ( rc )
             break;
         else
         {
-            path = path_;
+            const VPath *path = path_;
 
-            switch (path->scheme)
+            switch ( path->scheme )
             {
             default:
             case vpuri_invalid:
@@ -1405,48 +1830,33 @@ rc_t VFSManagerOpenDirectoryReadDirectoryRelativeInt (const VFSManager *self,
                 break;
 
             case vpuri_ncbi_acc:
-                if (self->srapath == NULL)
-                {
-                    rc = RC (rcVFS, rcDirectory, rcOpening, rcSRA, rcUnsupported);
-                    break;
-                }
-
-                rc = SRAPathFind (self->srapath, path->path.addr, spath, sizeof spath);
-                if (rc)
-                    break;
-
-                if (path->query && path->query[0])
-                    rc = string_printf (npath, sizeof npath, &zz, "ncbi-file:%s?%s",
-                                        spath, path->query);
+                if ( self->resolver != NULL )
+                    rc = ResolveVPathByVResolver( self->resolver, &path );
                 else
-                    rc = string_printf (npath, sizeof npath, &zz, "ncbi-file:%s",
-                                        spath);
-                if (rc)
+                    rc = ResolveVPathBySRAPath( self->srapath, &path );
+                if ( rc != 0 )
                     break;
 
-                rc = VPathMake (&tpath, npath);
-                if (rc)
-                    break;
-
-                VPathRelease (path);
-                path = tpath;
-
-                /* fall through */
+            /* !!! fall through !!! */
 
             case vpuri_none:
             case vpuri_ncbi_vfs:
 #if SUPPORT_FILE_URL
             case vpuri_file:
 #endif
-                rc = VFSManagerOpenDirectoryReadKfs (self, dir, d, path, force_decrypt);
+                rc = VFSManagerOpenDirectoryReadKfs ( self, dir, d, path, force_decrypt );
+                break;
+
+            case vpuri_ncbi_legrefseq:
+                rc = VFSManagerOpenDirectoryReadLegrefseq ( self, dir, d, path, force_decrypt );
                 break;
 
             case vpuri_http:
             case vpuri_ftp:
-                rc = VFSManagerOpenDirectoryReadHttp (self, dir, d, path, force_decrypt);
+                rc = VFSManagerOpenDirectoryReadHttp ( self, dir, d, path, force_decrypt );
                 break;
             }
-            VPathRelease (path); /* same as path_ if not uri */
+            VPathRelease ( path ); /* same as path_ if not uri */
         }
     } while (0);
     return rc;
@@ -1473,11 +1883,19 @@ rc_t CC VFSManagerOpenDirectoryReadDirectoryRelativeDecrypt (const VFSManager *s
 }
 
 
+LIB_EXPORT rc_t CC VFSManagerOpenDirectoryReadDecrypt (const VFSManager *self,
+                                                       KDirectory const **d,
+                                                       const VPath * path)
+{
+    return VFSManagerOpenDirectoryReadDirectoryRelativeInt (self, self->cwd, d, path, true);
+}
+
+
 LIB_EXPORT rc_t CC VFSManagerOpenDirectoryRead (const VFSManager *self,
                                                 KDirectory const **d,
                                                 const VPath * path)
 {
-    return VFSManagerOpenDirectoryReadDirectoryRelative (self, self->cwd, d, path);
+    return VFSManagerOpenDirectoryReadDirectoryRelativeInt (self, self->cwd, d, path, false);
 }
 
 
@@ -1507,12 +1925,12 @@ LIB_EXPORT rc_t CC VFSManagerOpenFileWrite (const VFSManager *self,
     rc_t rc;
 
     if ((f == NULL) || (path == NULL))
-        return RC (rcFS, rcMgr, rcOpening, rcParam, rcNull);
+        return RC (rcVFS, rcMgr, rcOpening, rcParam, rcNull);
 
     *f = NULL;
 
     if (self == NULL)
-        return RC (rcFS, rcMgr, rcOpening, rcSelf, rcNull);
+        return RC (rcVFS, rcMgr, rcOpening, rcSelf, rcNull);
 
     rc = VPathReadPath (path, pbuff, sizeof pbuff, &num_read);
     if (rc == 0)
@@ -1560,7 +1978,7 @@ LIB_EXPORT rc_t CC VFSManagerOpenFileWrite (const VFSManager *self,
                 switch (type & ~kptAlias)
                 {
                 case kptNotFound:
-                    rc = RC (rcFS, rcMgr, rcOpening, rcFile, rcNotFound);
+                    rc = RC (rcVFS, rcMgr, rcOpening, rcFile, rcNotFound);
                     break;
 
                 case kptFile:
@@ -1568,18 +1986,18 @@ LIB_EXPORT rc_t CC VFSManagerOpenFileWrite (const VFSManager *self,
                     break;
 
                 case kptBadPath:
-                    rc = RC (rcFS, rcMgr, rcOpening, rcFile, rcInvalid);
+                    rc = RC (rcVFS, rcMgr, rcOpening, rcFile, rcInvalid);
                     break;
                 case kptDir:
                 case kptCharDev:
                 case kptBlockDev:
                 case kptFIFO:
                 case kptZombieFile:
-                    rc = RC (rcFS, rcMgr, rcOpening, rcFile, rcIncorrect);
+                    rc = RC (rcVFS, rcMgr, rcOpening, rcFile, rcIncorrect);
                     break;
 
                 default:
-                    rc = RC (rcFS, rcMgr, rcOpening, rcFile, rcUnknown);
+                    rc = RC (rcVFS, rcMgr, rcOpening, rcFile, rcUnknown);
                     break;
                 }
             }
@@ -1645,7 +2063,7 @@ LIB_EXPORT rc_t CC VFSManagerOpenFileWrite (const VFSManager *self,
                 rc = KDirectoryOpenFileRead (self->cwd, &pwfile, obuff);
 
             else
-                rc = RC (rcFS, rcPath, rcConstructing, rcParam, rcUnsupported);
+                rc = RC (rcVFS, rcPath, rcConstructing, rcParam, rcUnsupported);
 
             if (rc == 0)
             {
@@ -1730,12 +2148,12 @@ LIB_EXPORT rc_t CC VFSManagerCreateFile ( const VFSManager *self, KFile **f,
     char rbuff [4096];
 
     if ((f == NULL) || (path == NULL))
-        return RC (rcFS, rcMgr, rcOpening, rcParam, rcNull);
+        return RC (rcVFS, rcMgr, rcOpening, rcParam, rcNull);
 
     *f = NULL;
 
     if (self == NULL)
-        return RC (rcFS, rcMgr, rcOpening, rcSelf, rcNull);
+        return RC (rcVFS, rcMgr, rcOpening, rcSelf, rcNull);
 
     rc = VPathReadPath (path, pbuff, sizeof pbuff, &num_read);
     if (rc == 0)
@@ -1790,18 +2208,18 @@ LIB_EXPORT rc_t CC VFSManagerCreateFile ( const VFSManager *self, KFile **f,
                     break;
 
                 case kptBadPath:
-                    rc = RC (rcFS, rcMgr, rcOpening, rcFile, rcInvalid);
+                    rc = RC (rcVFS, rcMgr, rcOpening, rcFile, rcInvalid);
                     break;
                 case kptDir:
                 case kptCharDev:
                 case kptBlockDev:
                 case kptFIFO:
                 case kptZombieFile:
-                    rc = RC (rcFS, rcMgr, rcOpening, rcFile, rcIncorrect);
+                    rc = RC (rcVFS, rcMgr, rcOpening, rcFile, rcIncorrect);
                     break;
 
                 default:
-                    rc = RC (rcFS, rcMgr, rcOpening, rcFile, rcUnknown);
+                    rc = RC (rcVFS, rcMgr, rcOpening, rcFile, rcUnknown);
                     break;
                 }
             }
@@ -1864,7 +2282,7 @@ LIB_EXPORT rc_t CC VFSManagerCreateFile ( const VFSManager *self, KFile **f,
             else if (VPathOption (path, vpopt_pwfd, obuff, sizeof obuff, &z) == 0)
                 rc = KFileMakeFDFileRead (&pwfile, atoi (obuff));
             else
-                rc = RC (rcFS, rcPath, rcConstructing, rcParam, rcUnsupported);
+                rc = RC (rcVFS, rcPath, rcConstructing, rcParam, rcUnsupported);
 
             if (rc == 0)
             {
@@ -1942,10 +2360,10 @@ LIB_EXPORT rc_t CC VFSManagerRemove ( const VFSManager *self, bool force,
     rc_t rc;
 
     if (path == NULL)
-        return RC (rcFS, rcMgr, rcOpening, rcParam, rcNull);
+        return RC (rcVFS, rcMgr, rcOpening, rcParam, rcNull);
 
     if (self == NULL)
-        return RC (rcFS, rcMgr, rcOpening, rcSelf, rcNull);
+        return RC (rcVFS, rcMgr, rcOpening, rcSelf, rcNull);
 
     rc = VPathReadPath (path, pbuff, sizeof pbuff, &num_read);
     if (rc == 0)
@@ -1973,17 +2391,76 @@ LIB_EXPORT rc_t CC VFSManagerRemove ( const VFSManager *self, bool force,
                 break;
 
             case kptBadPath:
-                rc = RC (rcFS, rcMgr, rcOpening, rcFile, rcInvalid);
+                rc = RC (rcVFS, rcMgr, rcOpening, rcFile, rcInvalid);
                 break;
-/*                 rc = RC (rcFS, rcMgr, rcOpening, rcFile, rcIncorrect); */
+/*                 rc = RC (rcVFS, rcMgr, rcOpening, rcFile, rcIncorrect); */
 /*                 break; */
 
             default:
-                rc = RC (rcFS, rcMgr, rcOpening, rcFile, rcUnknown);
+                rc = RC (rcVFS, rcMgr, rcOpening, rcFile, rcUnknown);
                 break;
             }
         }
     }
+    return rc;
+}
+
+
+static
+rc_t VFSManagerCaptureCurrentEncryptionKey ( VFSManager * self )
+{
+    rc_t rc = 0;
+
+    /* kludge time - for today, we check to see if there is
+       already a path to an encryption-key file. should not
+       be, but we never know. if present, it continues to
+       override everything else. if not present, we can use
+       the current behavior to set it to have a path to the
+       current file if there. */
+    const char * env = getenv ( "VDB_PWFILE" );
+    if ( env == NULL || env [ 0 ] == 0 )
+    {
+        const KRepositoryMgr *rmgr;
+        rc = KConfigMakeRepositoryMgrRead ( self -> cfg, & rmgr );
+        if ( rc != 0 )
+            rc = 0;
+        else
+        {
+            const KRepository *protected;
+            rc = KRepositoryMgrCurrentProtectedRepository ( rmgr, & protected );
+            if ( rc != 0 )
+                rc = 0;
+            else
+            {
+                char path [ 4096 + 16 ];
+                const size_t env_key_size = sizeof "VDB_PWFILE=" - 1;
+                memcpy ( path, "VDB_PWFILE=", env_key_size );
+                rc = KRepositoryEncryptionKeyFile ( protected, & path [ env_key_size ], sizeof path - env_key_size, NULL );
+                if ( rc == 0 && path [ 0 ] != 0 )
+                {
+                    size_t env_size = string_size ( path );
+                    self -> pw_env = malloc ( env_size + 1 );
+                    if ( self -> pw_env == NULL )
+                        rc = RC ( rcVFS, rcMgr, rcConstructing, rcMemory, rcExhausted );
+                    else
+                    {
+                        int status = putenv ( self -> pw_env );
+                        if ( status != 0 )
+                        {
+                            rc = RC ( rcVFS, rcMgr, rcConstructing, rcPath, rcCorrupt );
+                            free ( self -> pw_env );
+                            self -> pw_env = NULL;
+                        }
+                    }
+                }
+
+                KRepositoryRelease ( protected );
+            }
+
+            KRepositoryMgrRelease ( rmgr );
+        }
+    }
+
     return rc;
 }
 
@@ -1995,7 +2472,7 @@ LIB_EXPORT rc_t CC VFSManagerMake ( VFSManager ** pmanager )
     rc_t rc;
 
     if (pmanager == NULL)
-        return RC (rcFS, rcMgr, rcConstructing, rcParam, rcNull);
+        return RC (rcVFS, rcMgr, rcConstructing, rcParam, rcNull);
 
     *pmanager = singleton;
     if (singleton != NULL)
@@ -2010,7 +2487,7 @@ LIB_EXPORT rc_t CC VFSManagerMake ( VFSManager ** pmanager )
 
         obj = calloc (1, sizeof (*obj));
         if (obj == NULL)
-            rc = RC (rcFS, rcMgr, rcConstructing, rcMemory, rcExhausted);
+            rc = RC (rcVFS, rcMgr, rcConstructing, rcMemory, rcExhausted);
         else
         {
             KRefcountInit (&obj->refcount, 1, kfsmanager_classname, "init", 
@@ -2025,19 +2502,30 @@ LIB_EXPORT rc_t CC VFSManagerMake ( VFSManager ** pmanager )
                     rc = KConfigMake (&obj->cfg, NULL);
                     if ( rc == 0 )
                     {
-                        rc = KCipherManagerMake (&obj->cipher);
+                        rc = VFSManagerCaptureCurrentEncryptionKey ( obj );
                         if ( rc == 0 )
                         {
-                            rc = SRAPathMake (&obj->srapath, obj->cwd);
-                            if ( rc != 0 )
+                            rc = KCipherManagerMake (&obj->cipher);
+                            if ( rc == 0 )
                             {
-                                if ( GetRCState ( rc ) != rcNotFound )
-                                    LOGERR (klogWarn, rc, "could not build srapath manager");
-                                rc = 0;
-                            }
 
-                            *pmanager = singleton = obj;
-                            return rc;
+                                rc = VFSManagerMakeResolver ( obj, &obj->resolver, obj->cfg );
+                                if ( rc != 0 )
+                                {
+                                    LOGERR ( klogWarn, rc, "could not build vfs-resolver" );
+                                    rc = 0;
+                                }
+
+                                rc = SRAPathMake ( &obj->srapath, obj->cwd );
+                                if ( rc != 0 )
+                                {
+                                    LOGERR ( klogWarn, rc, "could not build srapath manager" );
+                                    rc = 0;
+                                }
+
+                                *pmanager = singleton = obj;
+                                return rc;
+                            }
                         }
                     }
                 }
@@ -2054,14 +2542,14 @@ LIB_EXPORT rc_t CC VFSManagerGetCWD (const VFSManager * self, KDirectory ** cwd)
     rc_t rc;
 
     if (cwd == NULL)
-        return RC (rcFS, rcMgr, rcAccessing, rcParam, rcNull);
+        return RC (rcVFS, rcMgr, rcAccessing, rcParam, rcNull);
 
     *cwd = NULL;
 
     if (self == NULL)
-        return RC (rcFS, rcMgr, rcAccessing, rcSelf, rcNull);
+        return RC (rcVFS, rcMgr, rcAccessing, rcSelf, rcNull);
 
-    rc = KDirectoryAddRef (self->cwd);
+    rc = KDirectoryAddRef ( self->cwd );
     if (rc)
         return rc;
 
@@ -2070,29 +2558,48 @@ LIB_EXPORT rc_t CC VFSManagerGetCWD (const VFSManager * self, KDirectory ** cwd)
     return 0;
 }
 
-LIB_EXPORT rc_t CC VFSManagerGetSRAPath (const VFSManager * self, SRAPath ** pmgr)
-{
-    rc_t rc;
 
-    if (pmgr == NULL)
-        return RC (rcFS, rcMgr, rcAccessing, rcParam, rcNull);
+LIB_EXPORT rc_t CC VFSManagerGetSRAPath ( const VFSManager * self, struct SRAPath ** pmgr )
+{
+    if ( pmgr == NULL )
+        return RC ( rcVFS, rcMgr, rcAccessing, rcParam, rcNull );
 
     *pmgr = NULL;
 
-    if (self == NULL)
-        return RC (rcFS, rcMgr, rcAccessing, rcSelf, rcNull);
+    if ( self == NULL )
+        return RC ( rcVFS, rcMgr, rcAccessing, rcSelf, rcNull );
 
-    if (self->srapath)
+    if ( self->srapath )
     {
-        rc = SRAPathAddRef (self->srapath);
-        if (rc)
+        rc_t rc = SRAPathAddRef ( self->srapath );
+        if ( rc != 0 )
             return rc;
     }
-
     *pmgr = self->srapath;
-
     return 0;
 }
+
+
+LIB_EXPORT rc_t CC VFSManagerGetResolver ( const VFSManager * self, struct VResolver ** resolver )
+{
+    if ( resolver == NULL )
+        return RC ( rcVFS, rcMgr, rcAccessing, rcParam, rcNull );
+
+    *resolver = NULL;
+
+    if ( self == NULL )
+        return RC ( rcVFS, rcMgr, rcAccessing, rcSelf, rcNull );
+
+    if ( self->resolver )
+    {
+        rc_t rc = VResolverAddRef ( self->resolver );
+        if ( rc != 0 )
+            return rc;
+    }
+    *resolver = self->resolver;
+    return 0;
+}
+
 
 LIB_EXPORT rc_t CC VFSManagerGetKryptoPassword (const VFSManager * self,
                                                 char * password,
@@ -2302,7 +2809,7 @@ LIB_EXPORT rc_t CC VFSManagerUpdateKryptoPassword (const VFSManager * self,
 
             if (rc)
                 PLOGERR (klogErr,
-                         (klogErr, rc, "can not use configured path for "
+                         (klogErr, rc, "cannot use configured path for "
                           "password file '$(P)'", "P=%s", old_password_file));
 
             else
@@ -2360,7 +2867,7 @@ LIB_EXPORT rc_t CC VFSManagerUpdateKryptoPassword (const VFSManager * self,
                     rc = VPathMake (&vnew, new_password_file);
                     if (rc)
                         PLOGERR (klogErr,
-                                 (klogErr, rc, "counld not create vpath for "
+                                 (klogErr, rc, "could not create vpath for "
                                   "password file '$(P)'", "P=%s",
                                   new_password_file));
 
@@ -2579,12 +3086,12 @@ LIB_EXPORT rc_t CC VFSManagerGetCPath (const VFSManager * self, VPath ** cpath)
     rc_t rc;
 
     if (cpath == NULL)
-        return RC (rcFS, rcMgr, rcAccessing, rcParam, rcNull);
+        return RC (rcVFS, rcMgr, rcAccessing, rcParam, rcNull);
 
     *cpath = NULL;
 
     if (self == NULL)
-        return RC (rcFS, rcMgr, rcAccessing, rcSelf, rcNull);
+        return RC (rcVFS, rcMgr, rcAccessing, rcSelf, rcNull);
 
     rc = VPathAddRef (self->cpath);
     if (rc)
@@ -2686,3 +3193,313 @@ LIB_EXPORT rc_t CC KConfigNodeReadVPath ( struct KConfigNode const *self, struct
 
     return rc;
 }
+
+
+static rc_t VFSManagerResolveAcc( const VFSManager * self,
+                                  const struct VPath * source,
+                                  struct VPath ** path_to_build,
+                                  const struct KFile ** remote_file,
+                                  const struct VPath ** local_cache )
+{
+    rc_t rc;
+    
+    assert (self);
+    assert (source);
+    assert (path_to_build);
+    assert (remote_file);
+    assert (local_cache);
+
+    /* first try to find it localy */
+    rc = VResolverLocal ( self->resolver, source, (const VPath **)path_to_build );
+    if ( GetRCState( rc ) == rcNotFound )
+    {
+        /* if not found localy, try to find it remotely */
+        rc = VResolverRemote ( self->resolver, source, (const VPath **)path_to_build, remote_file );
+        if ( rc == 0 && remote_file != NULL && local_cache != NULL )
+        {
+            /* if found and the caller wants to know the location of a local cache file... */
+            uint64_t size_of_remote_file = 0;
+            if ( *remote_file != NULL )
+                rc = KFileSize ( *remote_file, &size_of_remote_file );
+            if ( rc ==  0 )
+                rc = VResolverCache ( self->resolver, *path_to_build, local_cache, size_of_remote_file );
+        }
+    }
+    return rc;
+}
+
+
+static rc_t VFSManagerResolveLocal( const VFSManager * self,
+                                    const char * local_path,
+                                    struct VPath ** path_to_build )
+{
+    char buffer[ 4096 ];
+    size_t num_writ;
+    rc_t rc;
+
+    assert (self);
+    assert (local_path);
+    assert (path_to_build);
+
+    rc = string_printf ( buffer, sizeof buffer, &num_writ, "ncbi-file:%s", local_path );
+    if ( rc == 0 && num_writ > 0 )
+    {
+        rc = VPathMake ( path_to_build, buffer );
+    }
+    return rc;
+}
+
+static rc_t VFSManagerResolvePathOrAcc( const VFSManager * self,
+                                        const struct VPath * source,
+                                        struct VPath ** path_to_build,
+                                        const struct KFile ** remote_file,
+                                        const struct VPath ** local_cache,
+                                        bool resolve_acc )
+{
+    char buffer[ 4096 ];
+    size_t num_read;
+    rc_t rc = VPathReadPath ( source, buffer, sizeof buffer, &num_read );
+    if ( rc == 0 && num_read > 0 )
+    {
+        char * pos_of_slash = string_chr ( buffer, string_size( buffer ), '/' );
+        if ( pos_of_slash != NULL )
+        {
+            /* we can now assume that the source is a filesystem-path :
+               we build a new VPath and prepend with 'ncbi-file:' */
+            rc = VFSManagerResolveLocal( self, buffer, path_to_build );
+        }
+        else if ( resolve_acc )
+        {
+            /* we assume the source is an accession! */
+            rc = VFSManagerResolveAcc( self, source, path_to_build, remote_file, local_cache );
+            if ( GetRCState( rc ) == rcNotFound )
+            {
+                /* if we were not able to find the source as accession, we assume it is a local path */
+                rc = VFSManagerResolveLocal( self, buffer, path_to_build );
+            }
+        }
+        else
+        {
+            rc = RC ( rcVFS, rcMgr, rcAccessing, rcParam, rcInvalid );
+        }
+    }
+    return rc;
+}
+
+
+static rc_t VFSManagerResolveRemote( const VFSManager * self,
+                                     struct VPath ** source,
+                                     struct VPath ** path_to_build,
+                                     const struct KFile ** remote_file,
+                                     const struct VPath ** local_cache )
+{
+    rc_t rc = 0;
+    *path_to_build = *source;
+    if ( local_cache != NULL && remote_file != NULL && self->resolver != NULL )
+    {
+
+/*        VFS_EXTERN rc_t CC VPathMakeString ( const VPath * self, const String ** uri ); */
+        char full_url[ 4096 ];
+        size_t num_read;
+        rc = VPathReadPath ( *source, full_url, sizeof full_url, &num_read );
+        if ( rc == 0 && num_read > 0 )
+        {
+            rc = KCurlFileMake ( remote_file, full_url, false );
+            if ( rc == 0 )
+            {
+                uint64_t size_of_remote_file = 0;
+                rc = KFileSize ( *remote_file, &size_of_remote_file );
+                if ( rc == 0 )
+                    rc = VResolverCache ( self->resolver, *source, local_cache, size_of_remote_file );
+            }
+        }
+    }
+    *source = NULL;
+    return rc;
+}
+
+/* DEPRECATED */
+LIB_EXPORT rc_t CC VFSManagerResolveSpec ( const VFSManager * self,
+                                           const char * spec,
+                                           struct VPath ** path_to_build,
+                                           const struct KFile ** remote_file,
+                                           const struct VPath ** local_cache,
+                                           bool resolve_acc )
+{
+    rc_t rc = 0;
+    if ( self == NULL )
+        rc = RC ( rcVFS, rcMgr, rcAccessing, rcSelf, rcNull );
+    else if ( spec == NULL || path_to_build == NULL )
+        rc = RC ( rcVFS, rcMgr, rcAccessing, rcParam, rcNull );
+    else if ( spec[ 0 ] == 0 )
+        rc = RC ( rcVFS, rcMgr, rcAccessing, rcParam, rcEmpty );
+    else
+    {
+        VPath * temp;
+        *path_to_build = NULL;
+        if ( local_cache != NULL )
+            *local_cache = NULL;
+        if ( remote_file != NULL ) 
+            *remote_file = NULL;
+        rc = VPathMake ( &temp, spec );
+        if ( rc == 0 )
+        {
+            VPUri_t uri_type;
+            rc = VPathGetScheme_t( temp, &uri_type );
+            if ( rc == 0 )
+            {
+                switch ( uri_type )
+                {
+                default                  : /* !! fall through !! */
+                case vpuri_invalid       : rc = RC ( rcVFS, rcMgr, rcAccessing, rcParam, rcInvalid );
+                                           break;
+
+                case vpuri_none          : /* !! fall through !! */
+                case vpuri_not_supported : rc = VFSManagerResolvePathOrAcc( self, temp, path_to_build, remote_file, local_cache, resolve_acc );
+                                           break;
+
+                case vpuri_ncbi_vfs      : /* !! fall through !! */
+                case vpuri_file          : *path_to_build = temp;
+                                           temp = NULL;
+                                           break;
+
+                case vpuri_ncbi_acc      : if ( resolve_acc )
+                                                rc = VFSManagerResolveAcc( self, temp, path_to_build, remote_file, local_cache );
+                                           else
+                                                rc = RC ( rcVFS, rcMgr, rcAccessing, rcParam, rcInvalid );
+                                           break;
+
+                case vpuri_http          : /* !! fall through !! */
+                case vpuri_ftp           : rc = VFSManagerResolveRemote( self, &temp, path_to_build, remote_file, local_cache );
+                                           break;
+
+                case vpuri_ncbi_legrefseq: /* ??? */
+                                           break;
+                }
+            }
+            if ( temp != NULL )
+                VPathRelease ( temp );
+        }
+    }
+    return rc;
+}
+
+
+
+#if 0
+static rc_t VFSManagerResolveSpecLocal( const VFSManager * self,
+                                        const VPath * vpath,
+                                        const KDirectory ** dir )
+{
+    char path[ 4096 ];
+    size_t num_read;
+    rc_t rc = VPathReadPath ( vpath, path, sizeof path, &num_read );
+    if ( rc == 0 && num_read > 0 )
+    {
+        const KFile * local_file = NULL;
+        /* it is a local file or directory... */
+        rc = VFSManagerOpenFileReadRegularFile( path, sizeof path, &local_file, self->cwd );
+        if ( rc == 0 )
+        {
+            bool was_encrypted = false;
+            /* handle encryption here */
+
+            /* it is possible to open it as a file: transform it now into a directory */
+            rc = TransformFileToDirectory ( self->cwd, local_file, dir,
+                                            vpath->path.addr, was_encrypted );
+        }
+        else
+        {
+            /* try to open it as a directory */
+            rc = KDirectoryOpenDirRead ( self->cwd, dir, false, "%s", path );
+        }
+    }
+    return rc;
+}
+
+
+static rc_t VFSManagerResolveSpecRemote( const VFSManager * self,
+                                         const VPath * vpath,
+                                         const KFile * remote_file,
+                                         const VPath * local_cache,
+                                         const KDirectory ** dir )
+{
+    const KFile *temp_file;
+    rc_t rc;
+    if ( local_cache == NULL )
+        rc = KBufFileMakeRead ( &temp_file, remote_file, 128 * 1024 * 1024 );
+    else
+    {
+        char buffer[ 4096 ];
+        size_t num_read;
+        rc = VPathReadPath ( local_cache, buffer, sizeof buffer, &num_read );
+        if ( rc == 0 && num_read > 0 )
+            rc = KDirectoryMakeCacheTee ( self->cwd, &temp_file, remote_file, NULL,
+                                          DEFAULT_CACHE_BLOCKSIZE, DEFAULT_CACHE_CLUSTER,
+                                          false, "%s", buffer );
+    }
+    KFileRelease ( remote_file ); /* we can do that, because it is wrapped now */
+    if ( rc == 0 )
+    {
+        const char mountpointpath[] = "/";
+        const KDirectory * mountpoint;
+
+        rc = KQuickMountDirMake ( self->cwd, &mountpoint, remote_file,
+                                  mountpointpath, sizeof mountpointpath - 1, 
+                                  vpath->path.addr, vpath->path.size );
+        if ( rc != 0 )
+            PLOGERR ( klogErr, ( klogErr, rc, "error creating mount "
+                                 "'$(M)' for '$(F)", "M=%s,F=%S",
+                                 mountpointpath, &vpath->path ) );
+        else
+        {
+            bool was_encrypted = false;
+            /* handle encryption here */
+            rc = TransformFileToDirectory ( mountpoint, temp_file, dir,
+                                            vpath->path.addr,
+                                            was_encrypted );
+            KDirectoryRelease ( mountpoint );
+        }
+        /* release the temp_file after it was transformed into a directory? */
+        KFileRelease( temp_file );
+    }
+    return rc;
+}
+
+
+LIB_EXPORT rc_t CC VFSManagerResolveSpecIntoDir ( const VFSManager * self,
+                                                  const char * spec,
+                                                  const KDirectory ** dir,
+                                                  bool resolve_acc )
+{
+    rc_t rc;
+
+    if ( dir == NULL )
+        rc = RC ( rcVFS, rcMgr, rcAccessing, rcParam, rcNull );
+    else
+    {
+        VPath * vpath;
+        const KFile * remote_file;
+        const VPath * local_cache;
+
+        *dir = NULL;
+        rc = VFSManagerResolveSpec ( self, spec, &vpath, &remote_file, &local_cache, resolve_acc );
+        if ( rc == 0 )
+        {
+            if ( remote_file == NULL )
+                rc = VFSManagerResolveSpecLocal( self, vpath, dir );
+            else
+            {
+                rc = VFSManagerResolveSpecRemote( self, vpath, remote_file, local_cache, dir );
+                KFileRelease( remote_file );
+                if ( local_cache != NULL )
+                    VPathRelease( local_cache );
+            }
+
+            VPathRelease( vpath );
+        }
+    }
+    return rc;
+}
+#endif
+

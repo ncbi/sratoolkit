@@ -35,17 +35,17 @@ extern "C" {
 #endif
 
 
-struct KNSManager;
+typedef struct KNSManager KNSManager;
 
-KNS_EXTERN rc_t CC KNSManagerMake( struct KNSManager **self );
+KNS_EXTERN rc_t CC KNSManagerMake( KNSManager **self );
 
-KNS_EXTERN rc_t CC KNSManagerAddRef ( const struct KNSManager *self );
+KNS_EXTERN rc_t CC KNSManagerAddRef ( const KNSManager *self );
 
-KNS_EXTERN rc_t CC KNSManagerRelease( const struct KNSManager *self );
+KNS_EXTERN rc_t CC KNSManagerRelease( const KNSManager *self );
 
-KNS_EXTERN rc_t CC KNSManagerAvail( const struct KNSManager *self );
+KNS_EXTERN rc_t CC KNSManagerAvail( const KNSManager *self );
 
-KNS_EXTERN rc_t CC KNSManagerCurlVersion( const struct KNSManager *self, const char ** version_string );
+KNS_EXTERN rc_t CC KNSManagerCurlVersion( const KNSManager *self, const char ** version_string );
 
 #ifdef __cplusplus
 }

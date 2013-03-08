@@ -163,6 +163,18 @@ KFG_EXTERN rc_t CC KConfigReadVPath ( const KConfig* self, const char* path, str
 KFG_EXTERN rc_t CC KConfigReadString ( const KConfig* self, const char* path, struct String** result );
 
 
+/* Print
+ * print configuration to output handler (using OUTMSG)
+ */
+KFG_EXTERN rc_t CC KConfigPrint ( const KConfig * self );
+
+
+/* DisableUserSettings
+ *  for testing purposes
+ */
+KFG_EXTERN void CC KConfigDisableUserSettings ( void );
+
+
 /*--------------------------------------------------------------------------
  * KConfigNode
  *  node within configuration tree

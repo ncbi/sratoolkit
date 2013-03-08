@@ -35,13 +35,19 @@
 #include <vfs/extern.h>
 #endif
 
+#ifndef _h_klib_defs_
 #include <klib/defs.h>
-
-#include <stdarg.h>
+#endif
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+
+/*--------------------------------------------------------------------------
+ * forwards
+ */
+struct String;
 
 
 /*--------------------------------------------------------------------------
@@ -195,7 +201,6 @@ extern "C" {
 
 typedef struct VPath VPath;
 
-
 /* AddRef
  * Release
  *  ignores NULL references
@@ -231,13 +236,30 @@ VFS_EXTERN rc_t CC VPathMake ( VPath ** new_path, const char * posix_path);
  */
 VFS_EXTERN rc_t CC VPathMakeSysPath ( VPath ** new_path, const char * sys_path );
 
-VFS_EXTERN rc_t CC VPathReadPath ( const VPath * self, char * buffer, size_t buffer_size,
-                                   size_t * num_read );
+
+/* ReadPath
+ *  returns the hierarchical part of the VPath
+ */
+VFS_EXTERN rc_t CC VPathReadPath ( const VPath * self,
+    char * buffer, size_t buffer_size, size_t * num_read );
+
+/* GetPath
+ *  returns an allocation of hierarchical part of the VPath ( ? )
+ */
+VFS_EXTERN rc_t CC VPathGetPath ( const VPath * self, struct String const ** path );
 
 
+/* MakeString
+ *  convert a VPath into a String
+ *  create a String that is the "URI" representation of VPath.
+ *  If the incoming string had no scheme, this will not as well
+ */
+VFS_EXTERN rc_t CC VPathMakeString ( const VPath * self, struct String const ** uri );
 
 
-
+/* GetScheme
+ *  returns the scheme as an allocation or as an enum
+ */
 typedef int32_t VPUri_t;
 enum eVPUri_t
 {
@@ -251,11 +273,13 @@ enum eVPUri_t
     vpuri_ncbi_acc,
     vpuri_http,
     vpuri_ftp,
+    vpuri_ncbi_legrefseq,
     vpuri_count
 };
 
+VFS_EXTERN rc_t CC VPathGetScheme ( const VPath * self, struct String const ** scheme );
+VFS_EXTERN rc_t CC VPathGetScheme_t ( const VPath * self, VPUri_t * uri_type );
 
-VFS_EXTERN VPUri_t VPathGetUri_t (const VPath * self);
 
 #ifdef __cplusplus
 }

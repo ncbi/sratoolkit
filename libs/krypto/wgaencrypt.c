@@ -868,6 +868,7 @@ KRYPTO_EXTERN rc_t CC KFileMakeWGAEncRead (const struct KFile ** pself,
                                     rc = KFileInit (&self->dad, 
                                                     (const KFile_vt*)
                                                     &vtKWGAEncFileRead,
+                                                    "KWGAEncFile", "no-name",
                                                     true, false);
                                     if (rc)
                                         LOGERR (klogInt, rc, "Failed to initialize decrypting file");

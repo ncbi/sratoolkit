@@ -252,11 +252,11 @@ LIB_EXPORT void CC RefIterRecordDestroy ( void *obj, void *data )
 }
 
 
-LIB_EXPORT size_t CC RefIterRecordSize ( struct VCursor const *curs,
-    int64_t row_id, void *data )
+LIB_EXPORT rc_t CC RefIterRecordSize ( struct VCursor const *curs,
+    int64_t row_id, size_t * size, void *data )
 {
     /* discover the size of the ref-iter-part to be allocated... */
-    return AlignIteratorRecordSize ( curs, row_id, data );
+    return AlignIteratorRecordSize ( curs, row_id, size, data );
 }
 
 

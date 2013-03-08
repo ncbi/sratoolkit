@@ -83,7 +83,7 @@ rc_t RestoreReadMake ( RestoreRead **objp, const VTable *tbl )
             VDatabaseRelease ( db );
             if ( rc == 0 ) {
                 /* create a cursor */
-                rc = VTableCreateCachedCursorRead(patbl, &obj->curs, 4*1024*1024);
+                rc = VTableCreateCachedCursorRead(patbl, &obj->curs, 256*1024*1024UL);
                 VTableRelease ( patbl );
                 if ( rc == 0 ) {
                     /* add columns to cursor */
@@ -110,7 +110,7 @@ static INSDC_4na_bin  map[]={
 /*3  0011 - 1100*/ 12,
 /*4  0100 - 0010*/ 2,
 /*5  0101 - 1010*/ 10,
-/*6  0110 - 0110*/ 6,
+/*  0110 - 0110*/ 6,
 /*7  0111 - 1110*/ 14,
 /*8  1000 - 0001*/ 1,
 /*9  1001 - 1001*/ 9,
@@ -163,13 +163,9 @@ rc_t CC seq_restore_read_impl ( void *data, const VXformInfo *info, int64_t row_
             memcpy(dst,src,len);
         } else for(i=0;i<num_reads && rc == 0;i++){ /*** checking read by read ***/
             if(align_id[i] > 0) {
-                /* set the starting row id */
-                rc = VCursorSetRowId ( self -> curs, align_id[i] );
-                if(rc==0) rc = VCursorOpenRow ( self -> curs );
-                if(rc==0){
                     const INSDC_4na_bin *r_src;
                     uint32_t             r_src_len;
-                    rc = VCursorCellData ( self -> curs, self -> read_idx, NULL, ( const void** ) & r_src, NULL, & r_src_len );
+                    rc = VCursorCellDataDirect ( self -> curs,  align_id[i], self -> read_idx, NULL, ( const void** ) & r_src, NULL, & r_src_len );
                     if(rc == 0){
                         if(r_src_len == read_len[i]){
                             if(read_type[i]&SRA_READ_TYPE_FORWARD){
@@ -186,8 +182,6 @@ rc_t CC seq_restore_read_impl ( void *data, const VXformInfo *info, int64_t row_
                             rc = RC(rcXF, rcFunction, rcExecuting, rcData, rcInconsistent);
                         }
                     }
-                    VCursorCloseRow ( self -> curs );			
-                }
             } else { /*** data is in READ column **/
                 if(src_len >= read_len[i]){
                     memcpy(dst,src,read_len[i]);
@@ -215,7 +209,7 @@ VTRANSFACT_IMPL ( ALIGN_seq_restore_read, 1, 0, 0 ) ( const void *Self, const VX
     if(rc == 0 ) {
         rslt->self = fself;
         rslt->u.ndf = seq_restore_read_impl;
-        rslt->variant = vftNonDetRow;
+        rslt->variant = vftRow;
         rslt -> whack = RestoreReadWhack;
     }
     return rc;

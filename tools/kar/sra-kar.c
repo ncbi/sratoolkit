@@ -119,6 +119,41 @@ rc_t run ( srakar_parms *pb )
     KFile * outfile;
     rc_t rc;
 
+    const SRAMgr *mgr;
+
+    rc = SRAMgrMakeRead ( & mgr );
+    if ( rc != 0 )
+        LOGERR ( klogInt, rc, "failed to open SRAMgr" );
+    else
+    {
+        const SRATable *tbl;
+        rc = SRAMgrOpenTableRead ( mgr, & tbl, pb -> src_path );
+        if ( rc != 0 )
+            PLOGERR ( klogInt, (klogInt, rc,
+                "failed to open SRATable '$(spec)'", "spec=%s",
+                pb -> src_path ));
+        else
+        {
+            rc = KDirectoryCreateFile (pb->dir, &outfile, false, 0446,
+                kcmParents | ( pb->force ? kcmInit : kcmCreate) , pb->dst_path);
+            if (rc == 0)
+            {
+                const KFile * archive;
+
+                rc = SRATableMakeSingleFileArchive (tbl, &archive, pb->lite,
+                    NULL);
+                if (rc == 0)
+                {
+                    rc = copy_file (archive, outfile);
+                    KFileRelease (archive);
+                }
+                KFileRelease (outfile);
+            }
+            SRATableRelease ( tbl );
+        }
+        SRAMgrRelease (mgr);
+    }
+/*
     rc = KDirectoryCreateFile (pb->dir, &outfile, false, 0446, kcmParents | ( pb->force ? kcmInit : kcmCreate) , pb->dst_path);
 
     if (rc == 0)
@@ -150,7 +185,7 @@ rc_t run ( srakar_parms *pb )
         }
         KFileRelease (outfile);
     }
-
+*/
     return rc;
 }
 

@@ -98,7 +98,7 @@ $(SUBDIRS_RUNTESTS):
 #-------------------------------------------------------------------------------
 # pass-through targets
 #
-COMPILERS = GCC ICC VC++ CLANG
+COMPILERS = GCC VC++ CLANG
 ARCHITECTURES = i386 x86_64 sparc32 sparc64
 CONFIG = debug profile release static dynamic
 PUBLISH = scm pubtools

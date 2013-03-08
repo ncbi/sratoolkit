@@ -229,8 +229,8 @@ KLIB_EXTERN int CC KDualRefDropDep ( const KDualRef *self, const char *clsname )
                                 "instance 0x%zX: initial refcount %d\n",  \
                                 clsname, op, name, instance, refcount ))
 #define CNTMSG( clsname, op, instance, refcount )                       \
-    DBGMSG ( REFMOD, REFCOND, ( "about to %s instance 0x%zX: prior refcount = %d\n", \
-                                op, instance, refcount ))
+    DBGMSG ( REFMOD, REFCOND, ( "about to %s instance 0x%zX: prior refcount = %d for %s\n", \
+                                op, instance, refcount, clsname ))
 #define REFMSG( clsname, op, instance ) \
     CNTMSG ( clsname, op, instance, atomic32_read ( instance ) )
 #define REFNEW_COMMA( clsname, op, name, instance, refcount ) \

@@ -48,6 +48,7 @@ struct KSysDir;
 #include <sysalloc.h>
 
 #include <stdio.h>
+#include <wchar.h>
 #include <stdarg.h>
 #include <assert.h>
 #include <WINDOWS.H>
@@ -280,6 +281,35 @@ rc_t translate_file_error( DWORD error, enum RCContext ctx )
 }
 
 
+/* helper */
+
+static rc_t print_error_for( const wchar_t * path, const char * function, enum RCContext ctx, KLogLevel level )
+{
+    DWORD error = GetLastError();
+    rc_t rc = translate_file_error( error, ctx );
+#if _DEBUGGING
+    char buffer[ 4096 ];
+    size_t src_size, dst_size, len;
+    wchar_cvt_string_measure ( path, &src_size, &dst_size );
+    len = wchar_cvt_string_copy ( buffer, sizeof buffer, path, src_size );
+    buffer[ len ] = 0;
+    PLOGERR ( level,
+              ( level, rc, "error $(F) - $(E) - $(C) for $(D)",
+                "F=%s,E=%!,C=%u,D=%s", function, error, error, buffer ) ); 
+#endif
+    return rc;
+}
+
+
+static void wchar_2_char( const wchar_t * path, char * buffer, size_t buflen )
+{
+    size_t src_size, dst_size, len;
+    wchar_cvt_string_measure ( path, &src_size, &dst_size );
+    len = wchar_cvt_string_copy ( buffer, buflen, path, src_size );
+    buffer[ len ] = 0;
+}
+
+
 static
 uint32_t KSysDirPathTypeFromFindData ( WIN32_FIND_DATA *find_data, 
                                        const wchar_t * path,
@@ -382,9 +412,7 @@ uint32_t KSysDirFullPathType ( const wchar_t *path )
             return KSysDirResolvePathAndDetectPathType ( path );
         default:
             DBGMSG ( DBG_KFS, DBG_FLAG_ANY, ( "FindFirstFileW: WARNING - unrecognized return code - %u.\n", status ) );
-            PLOGERR ( klogInfo,
-                     ( klogInfo, 0, "error FindFirstFileW - $(E) - $(C)",
-                      "E=%!,C=%u", status, status ) ); 
+            print_error_for( path, "FindFirstFileW", rcResolving, klogErr );
             return kptBadPath;
         }
     }
@@ -617,7 +645,7 @@ rc_t KSysDirMakePath ( const KSysDir* self, enum RCContext ctx, bool canon,
     return 0;
 }
 
-rc_t KSysDirRealPath ( const KSysDir *self,
+rc_t KSysDirOSPath ( const KSysDir *self,
     wchar_t *real, size_t real_size, const char *path, va_list args )
 {
     return KSysDirMakePath ( self, rcLoading, true, real, real_size, path, args );
@@ -872,7 +900,7 @@ rc_t KSysDirRelativePath ( const KSysDir *self, enum RCContext ctx,
     const wchar_t *root, wchar_t *path, size_t path_max )
 {
     size_t psize;
-    uint32_t backup, blength_in_chars;
+    uint32_t backup, blength_in_chars, dst, diff_from_here;
 
     const wchar_t *r = root + self->root;
     const wchar_t *p = path + self->root;
@@ -882,15 +910,6 @@ rc_t KSysDirRelativePath ( const KSysDir *self, enum RCContext ctx,
         /* disallow identical paths */
         if ( * r == 0 )
             return RC( rcFS, rcDirectory, ctx, rcPath, rcInvalid );
-    }
-
-    /* special case for windows: a network path like "\\panfs\traces01\" 
-       cannot be made relative to a working directory ! */
-
-    /* NB - THE BUG HERE IS THAT THE TWO PATHS MUST BE ON DIFFERENT FILE SYSTEMS */
-    if ( ( path[0] == '\\' ) && ( path[1] == '\\' ) )
-    {
-/*        return 0; */
     }
 
     /* paths are identical up to "r","p"
@@ -906,32 +925,35 @@ rc_t KSysDirRelativePath ( const KSysDir *self, enum RCContext ctx,
     blength_in_chars = backup * 3;
 
     /* align "p" to last directory separator */
-    if (p > path)
+    if ( p > path ) {
         while ( p [ -1 ] != '\\' ) -- p;
+    }
 
     /* the size of the remaining relative path */
     psize = wcslen ( p );
+    diff_from_here = ( uint32_t )( p - path );
 
     /* open up space if needed */
-    if ( (uint32_t)( p - path ) < blength_in_chars )
+    if ( diff_from_here < blength_in_chars )
     {
         /* prevent overflow */
         if ( ( blength_in_chars + psize ) * sizeof( *path ) >= path_max )
             return RC( rcFS, rcDirectory, ctx, rcPath, rcExcessive );
-        memmove ( path + blength_in_chars, p, psize * sizeof *p );
+        memmove ( & path[ blength_in_chars ], p, psize * ( sizeof *p ) );
     }
 
     /* insert backup sequences */
-    for ( blength_in_chars = 0; backup > 0; blength_in_chars += 3, -- backup )
+    for ( dst = 0; backup > 0; -- backup )
     {
-        path [ blength_in_chars + 0 ] = '.';
-        path [ blength_in_chars + 1 ] = '.';
-        path [ blength_in_chars + 2 ] = '\\';
+        path [ dst++ ] = '.';
+        path [ dst++ ] = '.';
+        path [ dst++ ] = '\\';
     }
 
     /* close gap */
-    if ( ( uint32_t) ( p - path ) > blength_in_chars )
+    if ( diff_from_here > blength_in_chars )
         wcscpy ( & path [ blength_in_chars ], p );
+    path[ blength_in_chars + psize ] = 0;
 
     return 0;
 }
@@ -959,9 +981,14 @@ rc_t CC KSysDirResolvePath ( const KSysDir *self, bool absolute,
     uint32_t temp_length;
 
     /* convert the utf8-input-parameter path into wchar_t */
-    rc_t rc = KSysDirMakePath( self, rcResolving, true, temp, sizeof temp, path, args);
+    rc_t rc = KSysDirMakePath ( self, rcResolving, true, temp, sizeof temp, path, args );
     if ( rc != 0 )
         return rc;
+
+    temp[ 0 ] = tolower( temp[ 0 ] ); /* this is important:
+                                         otherwise the comparison for is_on_same_drive_letter fails
+                                         AND
+                                         KSysDirRelativePath() fails too! */
 
     temp_length = wchar_string_measure ( temp, &temp_size );
     if ( absolute )
@@ -972,11 +999,26 @@ rc_t CC KSysDirResolvePath ( const KSysDir *self, bool absolute,
     }
     else
     {
-        rc = KSysDirRelativePath( self, rcResolving, self->path, temp, sizeof temp /* temp_size */ );
-        if ( rc == 0 )
+        /* we are on windows, only if the path has a drive letter and it is the same
+           one as in KSysDir itself, we should try to create a relative path */
+        wchar_t colon = ':';
+        bool is_on_same_drive_letter = ( iswascii ( temp[ 0 ] ) && iswascii ( self->path[ 0 ] ) &&
+                                         ( temp[ 1 ] == colon ) && ( self->path[ 1 ] == colon ) &&
+                                         ( temp[ 0 ] == self->path[ 0 ] ) );
+        if ( is_on_same_drive_letter )
         {
-            uint32_t temp_length = wchar_string_measure ( temp, &temp_size );
-            if ( temp_length >= rsize )
+            rc = KSysDirRelativePath( self, rcResolving, self->path, temp, sizeof temp );
+            if ( rc == 0 )
+            {
+                uint32_t temp_length = wchar_string_measure ( temp, &temp_size );
+                if ( temp_length >= rsize )
+                    return RC ( rcFS, rcDirectory, rcResolving, rcBuffer, rcInsufficient );
+            }
+        }
+        else
+        {
+            /* treat it as if absolute were requested ( see above ) */
+            if ( temp_length - self->root >= rsize )
                 return RC ( rcFS, rcDirectory, rcResolving, rcBuffer, rcInsufficient );
         }
     }
@@ -1446,9 +1488,7 @@ rc_t KSysDirRemoveEntry ( wchar_t *path, size_t path_max, bool force )
                         if ( !RemoveDirectoryW( path ) )
                         {
                             rc = RC ( rcFS, rcDirectory, rcRemoving, rcDirectory, rcUnauthorized );
-                            PLOGERR ( klogErr,
-                                      ( klogErr, rc, "error RemoveDirectoryW - $(E) - $(C)",
-                                       "E=%!,C=%u", error, error ) ); 
+                            print_error_for( path, "RemoveDirectoryW", rcRemoving, klogErr );
                         }
                     }
                     return rc;
@@ -1462,9 +1502,8 @@ rc_t KSysDirRemoveEntry ( wchar_t *path, size_t path_max, bool force )
             default :
                 rc = RC ( rcFS, rcDirectory, rcCreating, rcNoObj, rcUnknown );
             }
-            PLOGERR ( klogErr,
-                      ( klogErr, rc, "error RemoveDirectoryW - $(E) - $(C)",
-                       "E=%!,C=%u", error, error ) ); 
+
+            print_error_for( path, "RemoveDirectoryW", rcRemoving, klogInfo);
             return rc;
         }
     }
@@ -1548,11 +1587,8 @@ rc_t get_attributes ( const wchar_t * wpath, uint32_t * access, KTime_t * date )
         *access = 0;
     if ( date != NULL )
         *date = 0;
-    error = GetLastError();
-    rc = translate_file_error( error, rcAccessing );
-    PLOGERR ( klogErr,
-              ( klogErr, rc, "error FindFirstFile - $(E) - $(C)",
-               "E=%!,C=%u", error, error ) ); 
+
+    rc = print_error_for( wpath, "FindFirstFile", rcAccessing, klogErr );
     return rc;
 }
 
@@ -1765,12 +1801,10 @@ rc_t make_dir ( const wchar_t *path, uint32_t access )
     {
         DWORD error = GetLastError();
         rc = translate_file_error( error, rcCreating );
-        if ( error != ERROR_ALREADY_EXISTS )
-        {
-            PLOGERR ( klogErr,
-                      ( klogErr, rc, "error CreateDirectoryW - $(E) - $(C)",
-                        "E=%!,C=%u", error, error ) );
-        }
+/*
+        Do not print an error code here, it is valid that this can happen!
+        rc = print_error_for( path, "CreateDirectoryW", rcCreating, klogErr );
+*/
     }
     return rc;
 }
@@ -1974,19 +2008,17 @@ rc_t CC KSysDirOpenFileRead ( const KSysDir *self,
     rc_t rc = KSysDirMakePath( self, rcOpening, false, file_name, sizeof file_name, path, args );
     if ( rc == 0 )
     {
-        HANDLE file_handle = CreateFileW( file_name, GENERIC_READ, FILE_SHARE_READ, NULL, 
+        HANDLE file_handle = CreateFileW( file_name, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, 
                                 OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL );
         if ( file_handle == INVALID_HANDLE_VALUE )
         {
-            DWORD error = GetLastError();
-            rc = translate_file_error( error, rcOpening );
-            PLOGERR ( klogInfo,
-                      ( klogInfo, rc, "error CreateFileW - $(E) - $(C)",
-                        "E=%!,C=%u", error, error ) ); 
+            rc = print_error_for( file_name, "CreateFileW", rcOpening, klogInfo );
         }
         else
         {
-            rc = KSysFileMake ( ( KSysFile** ) f, file_handle, true, false );
+            char buffer[ MAX_PATH ];
+            wchar_2_char( file_name, buffer, sizeof buffer );
+            rc = KSysFileMake ( ( KSysFile** ) f, file_handle, buffer, true, false );
             if ( rc != 0 )
                 CloseHandle ( file_handle );
         }
@@ -2014,20 +2046,19 @@ rc_t CC KSysDirOpenFileWrite ( KSysDir *self,
     if ( rc == 0 )
     {
         DWORD dwDesiredAccess = update ? GENERIC_READ | GENERIC_WRITE : GENERIC_WRITE;
-        HANDLE file_handle = CreateFileW( file_name, dwDesiredAccess, 0, NULL, 
-                                OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL );
+        HANDLE file_handle = CreateFileW( file_name, dwDesiredAccess, FILE_SHARE_READ, NULL, 
+                                OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL );
 
         if ( file_handle == INVALID_HANDLE_VALUE )
         {
-            DWORD error = GetLastError();
-            rc = translate_file_error( error, rcAccessing );
-            PLOGERR ( klogErr,
-                      ( klogErr, rc, "error CreateFileW - $(E) - $(C)",
-                        "E=%!,C=%u", error, error ) ); 
+            rc = print_error_for( file_name, "CreateFileW", rcAccessing, klogErr );
+
         }
         else
         {
-            rc = KSysFileMake ( ( KSysFile** ) f, file_handle, update, true );
+            char buffer[ MAX_PATH ];
+            wchar_2_char( file_name, buffer, sizeof buffer );
+            rc = KSysFileMake ( ( KSysFile** ) f, file_handle, buffer, update, true );
             if ( rc != 0 )
                 CloseHandle ( file_handle );
         }
@@ -2099,17 +2130,29 @@ rc_t CC KSysDirCreateFile ( KSysDir *self, KFile **f, bool update,
 
             error = GetLastError();
             rc = translate_file_error( error, rcCreating );
+
+            /* disabled 12/12/2012 : it prints an error message, if vdb tries to open
+               the same reference-object twice via http. The lock-file for the 2nd try
+               does already exist. This is not an error, just a condition. */
+
+            /*
             PLOGERR ( klogErr,
                       ( klogErr, rc, "error CreateFileW - $(E) - $(C)",
                         "E=%!,C=%u", error, error ) ); 
+            */
+
             /* Unix code has a special case when creating an empty file, which is
                to say, creating a directory entry without needing to write to file */
             return rc;
         }
 
-        rc = KSysFileMake ( ( KSysFile** ) f, file_handle, update, true );
-        if ( rc != 0 )
-            CloseHandle ( file_handle );
+        {
+            char buffer[ MAX_PATH ];
+            wchar_2_char( file_name, buffer, sizeof buffer );
+            rc = KSysFileMake ( ( KSysFile** ) f, file_handle, path, update, true );
+            if ( rc != 0 )
+                CloseHandle ( file_handle );
+        }
     }
     return rc;
 }
@@ -2139,11 +2182,7 @@ rc_t CC KSysDirFileSize ( const KSysDir *self,
         }
         else
         {
-            DWORD error = GetLastError();
-            rc = translate_file_error( error, rcAccessing );
-            PLOGERR ( klogErr,
-                      ( klogErr, rc, "error GetFileAttributesEx - $(E) - $(C)",
-                        "E=%!,C=%u", error, error ) ); 
+            rc = print_error_for( file_name, "GetFileAttributesEx", rcAccessing, klogErr );
         }
     }
     return rc;
@@ -2186,11 +2225,7 @@ rc_t CC KSysDirSetFileSize ( KSysDir *self,
         }
         else
         {
-            DWORD error = GetLastError();
-            rc = translate_file_error( error, rcUpdating );
-            PLOGERR ( klogErr,
-                      ( klogErr, rc, "error CreateFileW - $(E) - $(C)",
-                        "E=%!,C=%u", error, error ) ); 
+            rc = print_error_for( file_name, "CreateFileW", rcUpdating, klogErr );
         }
     }
     return rc;
@@ -2385,11 +2420,7 @@ rc_t change_item_date( wchar_t *path, LPFILETIME win_time, bool dir_flag )
                                    OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL );
     if ( file_handle == INVALID_HANDLE_VALUE )
     {
-        DWORD error = GetLastError();
-        rc = translate_file_error( error, rcUpdating );
-        PLOGERR ( klogErr,
-                  ( klogErr, rc, "error CreateFileW - $(E) - $(C)",
-                    "E=%!,C=%u", error, error ) ); 
+        rc = print_error_for( path, "CreateFileW", rcUpdating, klogErr );
     }
     else
     {
@@ -2399,11 +2430,7 @@ rc_t change_item_date( wchar_t *path, LPFILETIME win_time, bool dir_flag )
         }
         else
         {
-            DWORD error = GetLastError();
-            rc = translate_file_error( error, rcUpdating );
-            PLOGERR ( klogErr,
-                      ( klogErr, rc, "error SetFileTime - $(E) - $(C)",
-                        "E=%!,C=%u", error, error ) ); 
+            rc = print_error_for( path, "SetFileTime", rcUpdating, klogErr );
         }
         CloseHandle ( file_handle );
     }
@@ -2734,4 +2761,32 @@ LIB_EXPORT rc_t CC KDirectoryNativeDir ( KDirectory **dirp )
     }
 
     return rc;
+}
+
+
+/* RealPath
+ *  exposes functionality of system directory
+ */
+LIB_EXPORT rc_t CC KSysDirRealPath ( struct KSysDir const *self,
+    char *real, size_t bsize, const char *path, ... )
+{
+    rc_t rc;
+    va_list args;
+
+    va_start ( args, path );
+    rc = KSysDirVRealPath ( self, real, bsize, path, args );
+    va_end ( args );
+
+    return rc;
+}
+
+LIB_EXPORT rc_t CC KSysDirVRealPath ( struct KSysDir const *self,
+    char *real, size_t bsize, const char *path, va_list args )
+{
+    /* Windows is ... challenged when it comes to answering
+       this question. What is needed is to 1) convert the path
+       to a Windows-style wchar path, then 2) resolve each of
+       its components, etc. to come up with a real path, then
+       3) rewrite the path as a UTF-8 POSIX path */
+    return KSysDirResolvePath ( self, true, real, bsize, path, args );
 }

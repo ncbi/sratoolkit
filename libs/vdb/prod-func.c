@@ -251,7 +251,7 @@ rc_t VProdResolveFuncParamExpr ( const VProdResolve *self, Vector *out,
                 assert ( name [ sprod -> name -> name . size ] == 0 );
             }
 
-            rc = VSimpleProdMake ( & prod, self -> owned,
+            rc = VSimpleProdMake ( & prod, self -> owned, self-> curs,
                 prodSimpleCast, name,fd, & desc, NULL, prod, self -> chain);
             if ( rc == 0 )
             {
@@ -405,7 +405,7 @@ rc_t VProdResolveScriptExpr ( const VProdResolve *self,
 
                 /* by this time, we have bound all parameters */
                 VScriptProd *script;
-                rc = VScriptProdMake ( & script, self -> owned,
+                rc = VScriptProdMake ( & script, self -> owned, self->curs,
                     prodScriptFunction, name, & fd, & desc, self -> chain );
                 if ( rc == 0 )
                 {
@@ -766,7 +766,7 @@ rc_t VProdResolveEncodingExpr ( const VProdResolve *self,
                     {
                         VScriptProd *script;
                         const char *name = sphys -> name -> name . addr;
-                        rc = VScriptProdMake ( & script, self -> owned,
+                        rc = VScriptProdMake ( & script, self -> owned, self->curs,
                             prodScriptFunction, name, & fd, NULL, self -> chain );
                         if ( rc == 0 )
                         {

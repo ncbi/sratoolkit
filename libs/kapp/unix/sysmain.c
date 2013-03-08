@@ -43,6 +43,10 @@
 #include <errno.h>
 #include <assert.h>
 
+#if ! _DEBUGGING && ! defined CATCH_SIGSEGV
+#define CATCH_SIGSEGV 1
+#endif
+
 /*--------------------------------------------------------------------------
  * Main
  */
@@ -161,6 +165,7 @@ void SigQuitHandler ( int sig )
 
 /* SigSegvHandler
  */
+#if CATCH_SIGSEGV
 static
 void SigSegvHandler ( int sig )
 {
@@ -169,6 +174,7 @@ void SigSegvHandler ( int sig )
     abort ();
     exit ( 1 );
 }
+#endif
 
 /* main
  *  Unix specific main entrypoint
@@ -184,7 +190,9 @@ int main ( int argc, char *argv [] )
         { SigHupHandler, SIGHUP },
         { SigQuitHandler, SIGINT },
         { SigQuitHandler, SIGQUIT },
+#if CATCH_SIGSEGV
         { SigSegvHandler, SIGSEGV },
+#endif
         { SigQuitHandler, SIGTERM }
     };
 

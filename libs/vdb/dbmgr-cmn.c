@@ -713,3 +713,35 @@ LIB_EXPORT rc_t CC VDBManagerListExternalSchemaModules ( const VDBManager *self,
 
     return rc;
 }
+
+
+/* PathType
+ *  check the path type of an object/directory path.
+ *
+ *  this is an extension of the KDirectoryPathType ( see <kdb/manager.h> )
+ *  and will return the KDirectory values if a path type is not specifically
+ *  a VDB or KDB object.
+ */
+LIB_EXPORT int CC VDBManagerPathType ( const VDBManager * self,
+    const char *path, ... )
+{
+    int type;
+
+    va_list args;
+    va_start ( args, path );
+
+    type = VDBManagerVPathType ( self, path, args );
+
+    va_end ( args );
+
+    return type;
+}
+
+LIB_EXPORT int CC VDBManagerVPathType ( const VDBManager * self,
+    const char *path, va_list args )
+{
+    if ( self != NULL )
+        return KDBManagerVPathType ( self -> kmgr, path, args );
+
+    return kptBadPath;
+}

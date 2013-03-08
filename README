@@ -32,26 +32,8 @@ http://trace.ncbi.nlm.nih.gov/Traces/sra/std
 The SRA Toolkit and SDK from NCBI is a collection of tools and
 libraries for using data in the INSDC Sequence Read Archives.
 
-With this release, NCBI has implemented Compression by Reference, a
-sequence alignment compression process for storing sequence data.
-Currently BAM, Complete Genomics and Illumina export.txt formats
-contain alignment information. Compression by Reference only stores
-the difference in base pairs between sequence data and the segments it
-aligns to.  The decompression process to restore original data such as
-fastq-dump would require fast access to the actual sequences of the
-references. NCBI recommends that SRA users dedicate local disk space
-to store local references downloaded from the NCBI SRA site. Linked
-references should be in a location accessible by the SRA Reader
-software.
-
-Older files in the NCBI system may not have been compressed using
-Compression by Reference.  For more information on how to use
-Reference-based compressed files, download local references, and use
-related tools please refer to Compression by Reference file on the
-NCBI SRA website:
-
-    "http://trace.ncbi.nlm.nih.gov/Traces/sra/sra.cgi?view=softwareReadme"
-
+With this release, NCBI has implemented Automatic Remote Access by accession,
+making it possible to access data using NCBI servers without prior download.
 
 For additional information on using and building the toolkit,
 please visit our web site at:

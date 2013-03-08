@@ -271,18 +271,18 @@ bool CC SequenceWasPaired     ( const Sequence *self )
     return self->vt.v1->wasPaired(self);
 }
 
-bool CC SequenceSelfIsReverse( const Sequence *self )
+int CC SequenceGetOrientationSelf( const Sequence *self )
 {
     assert(self);
-    assert(self->vt.v1->selfIsReverse);
-    return self->vt.v1->selfIsReverse(self);
+    assert(self->vt.v1->orientationSelf);
+    return self->vt.v1->orientationSelf(self);
 }
-
-bool CC SequenceMateIsReverse( const Sequence *self )
+ 
+int CC SequenceGetOrientationMate( const Sequence *self )
 {
     assert(self);
-    assert(self->vt.v1->mateIsReverse);
-    return self->vt.v1->mateIsReverse(self);
+    assert(self->vt.v1->orientationMate);
+    return self->vt.v1->orientationMate(self);
 }
 
 bool CC SequenceIsFirst       ( const Sequence *self )
@@ -499,6 +499,7 @@ rc_t CC RejectedInit ( Rejected *self )
     self->message = 0;
     self->column = 0;
     self->line = 0;
+    self->fatal = false;
     return 0;
 }
 
@@ -535,7 +536,7 @@ rc_t CC RejectedRelease ( const Rejected *self )
     return 0;
 }
 
-rc_t CC RejectedGetError( const Rejected* self, const char** text, uint64_t* line, uint64_t* column )
+rc_t CC RejectedGetError( const Rejected* self, const char** text, uint64_t* line, uint64_t* column, bool* fatal )
 {
     assert(self);
     assert(text);
@@ -544,6 +545,7 @@ rc_t CC RejectedGetError( const Rejected* self, const char** text, uint64_t* lin
     *text = self->message;
     *line = self->line;
     *column = self->column;
+    *fatal = self->fatal;
     return 0;
 }
 

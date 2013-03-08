@@ -41,12 +41,20 @@
 extern "C" {
 #endif
 
+#ifndef USE_VRESOLVER
+#define USE_VRESOLVER 1
+#endif
+
 #ifndef SUPPORT_FILE_URL
 #define SUPPORT_FILE_URL 1
 #endif
 
 #ifndef USE_EXPERIMENTAL_CODE
 #define USE_EXPERIMENTAL_CODE 1
+#endif
+
+#ifndef USE_VPATH_OPTIONS_STRINGS
+#define USE_VPATH_OPTIONS_STRINGS 0
 #endif
 
 #ifdef _DEBUGGING
@@ -56,10 +64,6 @@ extern "C" {
 #endif
 #define OFF_PATH_DEBUG(msg)
 
-#define NCBI_FILE_SCHEME      "ncbi-file"
-#define NCBI_ACCENSION_SCHEME "ncbi-acc"
-#define HTTP_SCHEME           "http"
-#define FTP_SCHEME            "ftp"
 
 typedef struct VPOption VPOption;
 struct VPOption
@@ -72,6 +76,17 @@ struct VPOption
 
 struct VPath
 {
+#if USE_VPATH_OPTIONS_STRINGS
+    const VPath * root;
+
+    KRefcount refcount;
+
+    String fullpath;
+
+    String scheme;
+
+
+#else
     const VPath * root;
     KRefcount refcount;
     String path;
@@ -82,6 +97,7 @@ struct VPath
     size_t asciz_size;  /* doubles as allocated size -1 if less than the size of the buffer below */
     VPUri_t scheme;
     char * storage;
+#endif
 };
 
 

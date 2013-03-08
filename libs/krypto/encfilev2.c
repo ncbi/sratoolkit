@@ -174,7 +174,7 @@ rc_t KEncFileBufferRead (KEncFile * self, uint64_t offset, void * buffer,
 
 /* ----------
  * BufferWrite
- *    write to an encrypted file, makr it as changed and update size if warranted
+ *    write to an encrypted file, mark it as changed and update size if warranted
  */
 static
 rc_t KEncFileBufferWrite (KEncFile * self, uint64_t offset, const void * buffer,
@@ -943,16 +943,24 @@ rc_t KEncFileBlockRead (KEncFile * self, KEncFileBlock * block,
                 }
                 u.b.id = block_id;
                 u.b.u.valid = sizeof u.b.data;
+                /* if we can only learn of the size by reading and are thus scanning
+                 * through the current decrypt position must be the current known
+                 * decrypted side size
+                 */
                 if (!self->size_known)
                 {
                     assert (dpos == self->dec_size);
                     self->dec_size = dpos + sizeof u.b.data;
                 }
-                else if (self->dec_size < dpos + sizeof u.b.data)
-                {
-                    assert (self->dec_size > dpos);
-                    u.b.u.valid  = (uint16_t)(self->dec_size > dpos);
-                }
+                /*
+                 * if we know the decrypted size and it is less than what we
+                 * read, adjust the valid.  BUT this must not be for the block read
+                 * for the last block to know the decrypted size. A chicken and egg
+                 * problem.
+                 */
+                else if ((self->dec_size >= dpos) &&
+                         (self->dec_size < dpos + sizeof u.b.data))
+                    u.b.u.valid  = (uint16_t)(self->dec_size - dpos);
             }
 
             /* we read a full block that wasn't all zeroes */
@@ -1993,7 +2001,7 @@ rc_t KEncFileMakeInt (KEncFile ** pself, KFile * encrypted,
         else
         {
             /* all KFiles get this initialization */
-            rc = KFileInit (&self->dad, (const KFile_vt*)&vtKEncFile, r, w);
+            rc = KFileInit (&self->dad, (const KFile_vt*)&vtKEncFile, "KEncFile", "no-name", r, w);
             if (rc)
                 LOGERR (klogInt, rc, "error with init for encrypted file");
 
@@ -2228,6 +2236,10 @@ LIB_EXPORT rc_t CC KEncFileMakeUpdate_v2 (KFile ** pself,
 {
     KEncFile * self;
     rc_t rc;
+
+/*     static int count = 0; */
+
+/*     KOutMsg ("%s: %d\n",__func__,++count); */
 
     rc = KEncFileMakeCmn (&self, (KFile *)encrypted, key, true, true);
     if (rc)

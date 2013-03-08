@@ -36,6 +36,7 @@ struct NCBISRAPath;
 
 #include "libsrapath.vers.h"
 
+#include <vfs/manager.h>
 #include <sra/srapath.h>
 #include <kfs/directory.h>
 #include <kfs/file.h>
@@ -845,6 +846,75 @@ rc_t SRAPathFullREFSEQ ( const NCBISRAPath *self, const char *rep, const char *v
 }
 
 /*
+ * Try to locate in RefSeq Archives:
+ * check for pattern '(\w{4}\d{2})[\.\d]+'; the archive is $1
+ * use the scheme "x-ncbi-legrefseq" for vfs to recognize special case
+ */
+static
+rc_t SRAPathFullREFSEQArchive(NCBISRAPath const *self,
+                              char const rep[],
+                              char const vol[],
+                              char const accession[],
+                              char path[],
+                              size_t path_max
+                             )
+{
+    size_t const rep_sz = strlen(rep);
+    size_t const vol_sz = strlen(vol);
+    char const *const rep_sep = (rep_sz > 0 && rep[rep_sz - 1] != '/') ? "/" : "";
+    char const *const vol_sep = (vol_sz > 0 && vol[vol_sz - 1] != '/') ? "/" : "";
+    size_t sz;
+    unsigned i;
+    VFSManager *vfs;
+    rc_t rc = VFSManagerMake(&vfs);
+    VPath *vpath;
+    KDirectory const *dir;
+    KPathType type;
+    
+    if (rc)
+        return rc;
+    
+    for (i = 0; i < 4; ++i) {
+        int const ch = accession[i];
+        
+        if (ch == 0 || !isalpha(ch))
+            return RC(rcSRA, rcMgr, rcAccessing, rcPath, rcIncorrect);
+    }
+    for ( ; ; ++i) {
+        int const ch = accession[i];
+        
+        if (ch == 0)
+            break;
+        if (ch != '.' && !isdigit(ch))
+            return RC(rcSRA, rcMgr, rcAccessing, rcPath, rcIncorrect);
+    }
+    if (i < 8)
+        return RC(rcSRA, rcMgr, rcAccessing, rcPath, rcIncorrect);
+    
+    rc = string_printf(path, path_max, &sz, "x-ncbi-legrefseq:%s%s%s%s%.6s", rep, rep_sep, vol, vol_sep, accession);
+    if (rc) return rc;
+    i = sz;
+    
+    rc = VPathMake(&vpath, path + 17);
+    if (rc) return rc;
+
+    rc = VFSManagerOpenDirectoryRead(vfs, &dir, vpath);
+    VPathRelease(vpath);
+    VFSManagerRelease(vfs);
+    if (rc) return rc;
+    
+    type = KDirectoryPathType(dir, "tbl/%s", accession);
+    KDirectoryRelease(dir);
+    
+    if (type != kptDir)
+        return RC(rcSRA, rcMgr, rcAccessing, rcPath, rcIncorrect);
+
+    rc = string_printf(path + i, path_max - i, &sz, "#tbl/%s", accession);
+    
+    return rc;
+}
+
+/*
 * WGS style naming: accession name ABCD01 resolves into WGS/AB/CD/ABCD01
 */
 static
@@ -940,8 +1010,7 @@ rc_t ApplyAlg( const NCBISRAPath *self, const char *rep, const char *vol,
                 {
                 case kptNotFound:
                 case kptBadPath:
-                    /* use bank size 1000 */
-                    return SRAPathFullInt( self, rep, vol, accession, path, path_max, 1000 );
+                    return SRAPathFullREFSEQArchive( self, rep, vol, accession, path, path_max );
                 default:
                 	return 0;
                 }
@@ -1120,8 +1189,11 @@ rc_t SRAPathFindOnServer ( const NCBISRAPath *self, const NCBIRepository *repo, 
                     {
                     case kptNotFound:
                     case kptBadPath:
-                        /* use bank size 1000 */
-                        rc=SRAPathFullInt( self, srv->path, vol->path, accession, path, path_max, 1000 );
+                        rc = SRAPathFullREFSEQArchive( self, srv -> path, vol -> path, accession, path, path_max );
+                        if (rc == 0) {
+                            PATH_DEBUG (("SRAPathFindOnServer: found(%s)\n", path));
+                            return 0;
+                        }
                         break;
                     default:
                     	return 0;

@@ -260,6 +260,7 @@ rc_t CC VPathTransformSysPath (VPath * self)
     {
         pc[1] = pc[0];
         pc[0] = '/';
+        self->scheme = vpuri_ncbi_vfs;
     }
     return 0;
 }

@@ -33,6 +33,7 @@
 #include <klib/log.h>
 #include <klib/rc.h>
 #include <klib/printf.h>
+#include <klib/status.h>
 
 #include <kdb/btree.h>
 
@@ -52,6 +53,42 @@
 #include <loader/common-writer.h>
 #include <loader/common-reader-priv.h>
 
+/*--------------------------------------------------------------------------
+ * ctx_value_t, FragmentInfo
+ */
+typedef struct {
+    uint32_t primaryId[2];
+    uint32_t spotId;
+    uint32_t fragmentId;
+    uint8_t  platform;
+    uint8_t  pId_ext[2];
+    uint8_t  spotId_ext;
+    uint8_t  alignmentCount[2]; /* 0..254; 254: saturated max; 255: special meaning "too many" */
+    uint8_t  unmated: 1,
+             pcr_dup: 1,
+             has_a_read: 1,
+             unaligned_1: 1,
+             unaligned_2: 1;
+} ctx_value_t;
+
+#define CTX_VALUE_SET_P_ID(O,N,V) do { int64_t tv = (V); (O).primaryId[N] = (uint32_t)tv; (O).pId_ext[N] = tv >> 32; } while(0);
+#define CTX_VALUE_GET_P_ID(O,N) ((((int64_t)((O).pId_ext[N])) << 32) | (O).primaryId[N])
+
+#define CTX_VALUE_SET_S_ID(O,V) do { int64_t tv = (V); (O).spotId = (uint32_t)tv; (O).spotId_ext = tv >> 32; } while(0);
+#define CTX_VALUE_GET_S_ID(O) ((((int64_t)(O).spotId_ext) << 32) | (O).spotId)
+
+typedef struct FragmentInfo {
+    uint64_t ti;
+    uint32_t readlen;
+    uint8_t  aligned;
+    uint8_t  is_bad;
+    uint8_t  orientation;
+    uint8_t  otherReadNo;
+    uint8_t  sglen;
+    uint8_t  cskey;
+} FragmentInfo;
+
+
 rc_t OpenKBTree(const CommonWriterSettings* settings, struct KBTree **const rslt, unsigned n, unsigned max)
 {
     size_t const cacheSize = (((settings->cache_size - (settings->cache_size / 2) - (settings->cache_size / 8)) / max)
@@ -60,12 +97,13 @@ rc_t OpenKBTree(const CommonWriterSettings* settings, struct KBTree **const rslt
     KDirectory *dir;
     char fname[4096];
     rc_t rc;
-    
+
     rc = KDirectoryNativeDir(&dir);
     if (rc)
         return rc;
     
     rc = string_printf(fname, sizeof(fname), NULL, "%s/key2id.%u.%u", settings->tmpfs, settings->pid, n); if (rc) return rc;
+    STSMSG(1, ("Path for scratch files: %s\n", fname));
     rc = KDirectoryCreateFile(dir, &file, true, 0600, kcmInit, fname);
     KDirectoryRemove(dir, 0, fname);
     KDirectoryRelease(dir);
@@ -327,17 +365,21 @@ static rc_t OpenMBankFile(const CommonWriterSettings* settings, SpotAssembler *c
     return rc;
 }
 
-rc_t SetupContext(const CommonWriterSettings* settings, SpotAssembler *ctx, unsigned numfiles)
+rc_t SetupContext(const CommonWriterSettings* settings, SpotAssembler *ctx)
 {
     rc_t rc = 0;
 
     memset(ctx, 0, sizeof(*ctx));
+    
+    ctx->pass = 1;
     
     if (settings->mode == mode_Archive) {
         KDirectory *dir;
         size_t fragSizeBoth; /*** temporary hold for first side of mate pair with both sides aligned**/
         size_t fragSizeOne; /*** temporary hold for first side of mate pair with one side aligned**/
 
+        STSMSG(1, ("Cache size: %uM\n", settings->cache_size / 1024 / 1024));
+        
         fragSizeBoth    =   (settings->cache_size / 8);
         fragSizeOne     =   (settings->cache_size / 2);
 
@@ -346,7 +388,7 @@ rc_t SetupContext(const CommonWriterSettings* settings, SpotAssembler *ctx, unsi
         rc = KLoadProgressbar_Make(&ctx->progress[2], 0); if (rc) return rc;
         rc = KLoadProgressbar_Make(&ctx->progress[3], 0); if (rc) return rc;
         
-        KLoadProgressbar_Append(ctx->progress[0], 100 * numfiles);
+        KLoadProgressbar_Append(ctx->progress[0], 100 * settings->numfiles);
         
         rc = KDirectoryNativeDir(&dir);
         if (rc == 0)
@@ -747,48 +789,73 @@ static uint8_t GetMapQ(Alignment const *rec)
     return mapQ;
 }
 
-static
+INSDC_SRA_platform_id PlatformToId(const char* name)
+{
+    if (name != NULL)
+    {
+        switch (toupper(name[0])) {
+        case 'C':
+            if (platform_cmp(name, "COMPLETE GENOMICS") || platform_cmp(name, "COMPLETE_GENOMICS"))
+                return SRA_PLATFORM_COMPLETE_GENOMICS;
+            if (platform_cmp(name, "CAPILLARY"))
+                return SRA_PLATFORM_SANGER;
+            break;
+        case 'H':
+            if (platform_cmp(name, "HELICOS"))
+                return SRA_PLATFORM_HELICOS;
+            break;
+        case 'I':
+            if (platform_cmp(name, "ILLUMINA"))
+                return SRA_PLATFORM_ILLUMINA;
+            if (platform_cmp(name, "IONTORRENT"))
+                return SRA_PLATFORM_ION_TORRENT;
+            break;
+        case 'L':
+            if (platform_cmp(name, "LS454"))
+                return SRA_PLATFORM_454;
+            break;
+        case 'P':
+            if (platform_cmp(name, "PACBIO"))
+                return SRA_PLATFORM_PACBIO_SMRT;
+            break;
+        case 'S':
+            if (platform_cmp(name, "SOLID"))
+                return SRA_PLATFORM_ABSOLID;
+            break;
+        default:
+            break;
+        }
+    }
+    return SRA_PLATFORM_UNDEFINED;
+}
+
 INSDC_SRA_platform_id GetINSDCPlatform(ReferenceInfo const *ref, char const name[]) {
     if (ref != NULL && name != NULL) {
         ReadGroup rg;
 
         rc_t rc = ReferenceInfoGetReadGroupByName(ref, name, &rg);
-        if (rc == 0 && rg.platform) {
-            switch (toupper(rg.platform[0])) {
-            case 'C':
-                if (platform_cmp(rg.platform, "COMPLETE GENOMICS"))
-                    return SRA_PLATFORM_COMPLETE_GENOMICS;
-                if (platform_cmp(rg.platform, "CAPILLARY"))
-                    return SRA_PLATFORM_SANGER;
-                break;
-            case 'H':
-                if (platform_cmp(rg.platform, "HELICOS"))
-                    return SRA_PLATFORM_HELICOS;
-                break;
-            case 'I':
-                if (platform_cmp(rg.platform, "ILLUMINA"))
-                    return SRA_PLATFORM_ILLUMINA;
-                if (platform_cmp(rg.platform, "IONTORRENT"))
-                    return SRA_PLATFORM_ION_TORRENT;
-                break;
-            case 'L':
-                if (platform_cmp(rg.platform, "LS454"))
-                    return SRA_PLATFORM_454;
-                break;
-            case 'P':
-                if (platform_cmp(rg.platform, "PACBIO"))
-                    return SRA_PLATFORM_PACBIO_SMRT;
-                break;
-            case 'S':
-                if (platform_cmp(rg.platform, "SOLID"))
-                    return SRA_PLATFORM_ABSOLID;
-                break;
-            default:
-                break;
-            }
-        }
+        if (rc == 0 && rg.platform) 
+            return PlatformToId(rg.platform) ;
     }
     return SRA_PLATFORM_UNDEFINED;
+}
+
+static const int8_t toPhred[] =
+{
+              0, 1, 1, 2, 2, 3, 3,
+     4, 4, 5, 5, 6, 7, 8, 9,10,10,
+    11,12,13,14,15,16,17,18,19,20,
+    21,22,23,24,25,26,27,28,29,30,
+    31,32,33,34,35,36,37,38,39,40
+};
+
+static int8_t LogOddsToPhred ( int8_t logOdds )
+{ /* conversion table copied from interface/ncbi/seq.vschema */
+    if (logOdds < -6)
+        return 0;
+    if (logOdds > 40)
+        return 40;
+    return toPhred[logOdds + 6];
 }
 
 rc_t ArchiveFile(const struct ReaderFile *reader, 
@@ -897,6 +964,7 @@ rc_t ArchiveFile(const struct ReaderFile *reader,
         bool hasCG;
         uint64_t ti = 0;
         uint32_t csSeqLen = 0;
+        int readOrientation;
         
         const Record* record;
         const Sequence* sequence = NULL;
@@ -906,17 +974,50 @@ rc_t ArchiveFile(const struct ReaderFile *reader,
         rc = ReaderFileGetRecord(reader, &record);
         if (rc || record == 0)
             break;
-            
+
+        {
+            const Rejected* rej;
+            rc = RecordGetRejected(record, &rej);
+            if (rc)
+            {
+                (void)LOGERR(klogErr, rc, "ArchiveFile: RecordGetSequence failed");
+                break;
+            }
+            if (rej != NULL)
+            {
+                const char* message;
+                uint64_t line;
+                uint64_t col;
+                bool fatal;
+                rc = RejectedGetError(rej, &message, &line, &col, &fatal);
+                if (rc)
+                {
+                    (void)LOGERR(klogErr, rc, "ArchiveFile: RejectedGetError failed");
+                    break;
+                }
+                (void)PLOGMSG(klogErr, (klogErr, "$(file):$(l):$(c):$(msg)", "file=%s,l=%lu,c=%lu,msg=%s", ReaderFileGetPathname(reader), line, col, message));
+                rc = CheckLimitAndLogError(G);
+                RejectedRelease(rej);
+                
+                if (fatal)
+                {
+                    rc = RC(rcExe, rcFile, rcParsing, rcFormat, rcUnsupported);
+                    break;
+                }
+                    
+                goto LOOP_END;
+            }
+        }
         rc = RecordGetSequence(record, &sequence);
         if (rc)
         {
-            (void)LOGERR(klogErr, rc, "ProcessBAM: RecordGetSequence failed");
+            (void)LOGERR(klogErr, rc, "ArchiveFile: RecordGetSequence failed");
             break;
         }
         rc = RecordGetAlignment(record, &alignment);
         if (rc)
         {
-            (void)LOGERR(klogErr, rc, "ProcessBAM: RecordGetAlignment failed");
+            (void)LOGERR(klogErr, rc, "ArchiveFile: RecordGetAlignment failed");
             break;
         }
         if (alignment != NULL)
@@ -924,7 +1025,7 @@ rc_t ArchiveFile(const struct ReaderFile *reader,
             rc = AlignmentGetCGData(alignment, &cg);      
             if (rc)
             {
-                (void)LOGERR(klogErr, rc, "ProcessBAM: AlignmentGetCG failed");
+                (void)LOGERR(klogErr, rc, "ArchiveFile: AlignmentGetCG failed");
                 break;
             }
         }
@@ -1023,12 +1124,31 @@ rc_t ArchiveFile(const struct ReaderFile *reader,
                 (void)PLOGERR(klogErr, (klogErr, rc, "Spot '$(name)': length of original quality does not match sequence", "name=%s", name));
                 goto LOOP_END;
             }
-            if (qoffset) {
-                for (i = 0; i != readlen; ++i)
-                    qual[i] = squal[i] - qoffset;
+            if (squal != NULL)
+            {  
+                switch (qualType)
+                {
+                case QT_LogOdds:
+                    for (i = 0; i != readlen; ++i)
+                        qual[i] = LogOddsToPhred(squal[i]);
+                    break;
+                    
+                case QT_Phred:
+                    if (qoffset) {
+                        for (i = 0; i != readlen; ++i)
+                            qual[i] = squal[i] - qoffset;
+                    }
+                    else
+                        memcpy(qual, squal, readlen);
+                    break;
+                    
+                default:
+                    memcpy(qual, squal, readlen);
+                    break;
+                }
             }
             else
-                memcpy(qual, squal, readlen);
+                memset(qual, 0, readlen);
         }
         if (hasCG) {
             rc = CGDataGetSeqQual(cg, seqDNA, qual);
@@ -1061,14 +1181,15 @@ rc_t ArchiveFile(const struct ReaderFile *reader,
             SequenceGetSpotGroup(sequence, &rgname, &rgnamelen);
             if (rgname)
             {
-                string_copy(spotGroup, sizeof(spotGroup), rgname, namelen);
-                spotGroup[namelen] = '\0';
+                string_copy(spotGroup, sizeof(spotGroup), rgname, rgnamelen);
+                spotGroup[rgnamelen] = '\0';
             }
             else
                 spotGroup[0] = '\0';
         }}        
-        AR_REF_ORIENT(data) = SequenceSelfIsReverse(sequence);
-        isPrimary = alignment != 0 && ! AlignmentIsSecondary(alignment);
+        readOrientation = SequenceGetOrientationSelf(sequence);
+        AR_REF_ORIENT(data) = readOrientation == ReadOrientationReverse;
+        isPrimary = alignment == 0 || ! AlignmentIsSecondary(alignment);
         if (G->noSecondary && !isPrimary)
             goto LOOP_END;
         originally_aligned = (alignment != 0);
@@ -1177,6 +1298,8 @@ rc_t ArchiveFile(const struct ReaderFile *reader,
             value->unmated = !mated;
             value->pcr_dup = SequenceIsDuplicate(sequence);
             value->platform = GetINSDCPlatform(header, spotGroup);
+            if (value->platform == SRA_PLATFORM_UNDEFINED)
+                value->platform = G->platform;
         }
         else {
             if (!G->acceptBadDups && value->pcr_dup != SequenceIsDuplicate(sequence)) {
@@ -1275,7 +1398,7 @@ rc_t ArchiveFile(const struct ReaderFile *reader,
                     for (i = 0; i < csSeqLen; ++i)
                         qual[i] = squal[i] - qoffset;
                 }
-                else
+                else if (squal != NULL)
                     memcpy(qual, squal, csSeqLen);
                 readlen = csSeqLen;
             }
@@ -1332,7 +1455,7 @@ rc_t ArchiveFile(const struct ReaderFile *reader,
                     memset(&fi, 0, sizeof(fi));
                     fi.aligned = aligned;
                     fi.ti = ti;
-                    fi.orientation = AR_REF_ORIENT(data);
+                    fi.orientation = readOrientation;
                     fi.otherReadNo = AR_READNO(data);
                     fi.sglen   = strlen(spotGroup);
                     fi.readlen = readlen;
@@ -1369,9 +1492,9 @@ rc_t ArchiveFile(const struct ReaderFile *reader,
                         uint8_t *dst = (uint8_t*) fragBuf.base;
                         memcpy(dst,&fi,sizeof(fi));
                         dst += sizeof(fi);
-                        COPY_READ((char *)dst, seqDNA, fi.readlen, (isColorSpace && !aligned) ? 0 : fi.orientation);
+                        COPY_READ((char *)dst, seqDNA, fi.readlen, (isColorSpace && !aligned) ? 0 : fi.orientation == ReadOrientationReverse);
                         dst += fi.readlen;
-                        COPY_QUAL(dst, qual, fi.readlen, (isColorSpace && !aligned) ? 0 : fi.orientation);
+                        COPY_QUAL(dst, qual, fi.readlen, (isColorSpace && !aligned) ? 0 : fi.orientation == ReadOrientationReverse);
                         dst += fi.readlen;
                         memcpy(dst,spotGroup,fi.sglen);
                     }}
@@ -1437,9 +1560,15 @@ rc_t ArchiveFile(const struct ReaderFile *reader,
                         memcpy(srec.qual + srec.readStart[read1], src, fip->readlen);
                         src += fip->readlen;
                         
-                        srec.orientation[read2] = AR_REF_ORIENT(data);
-                        COPY_READ(srec.seq + srec.readStart[read2], seqDNA, srec.readLen[read2], (isColorSpace && !aligned) ? 0 : srec.orientation[read2]);
-                        COPY_QUAL(srec.qual + srec.readStart[read2], qual, srec.readLen[read2],  (isColorSpace && !aligned) ? 0 : srec.orientation[read2]);
+                        srec.orientation[read2] = readOrientation;
+                        COPY_READ(srec.seq + srec.readStart[read2], 
+                                  seqDNA, 
+                                  srec.readLen[read2], 
+                                  (isColorSpace && !aligned) ? 0 : srec.orientation[read2] == ReadOrientationReverse);
+                        COPY_QUAL(srec.qual + srec.readStart[read2], 
+                                  qual, 
+                                  srec.readLen[read2],  
+                                  (isColorSpace && !aligned) ? 0 : srec.orientation[read2] == ReadOrientationReverse);
 
                         srec.keyId = keyId;
                         srec.is_bad[read2] = SequenceIsLowQuality(sequence);
@@ -1496,7 +1625,7 @@ rc_t ArchiveFile(const struct ReaderFile *reader,
                         if (rc_temp == 0) {
                             data.mate_ref_pos = mpos;
                             data.template_len = tlen;
-                            data.mate_ref_orientation = SequenceMateIsReverse(sequence);
+                            data.mate_ref_orientation = (SequenceGetOrientationMate(sequence) == ReadOrientationReverse);
                         }
                         else {
                             (void)PLOGERR(klogWarn, (klogWarn, rc_temp, "Failed to get refID for $(name)", "name=%s", mref.name));
@@ -1520,10 +1649,10 @@ rc_t ArchiveFile(const struct ReaderFile *reader,
             srec.ti[0] = ti;
             srec.aligned[0] = aligned;
             srec.is_bad[0] = SequenceIsLowQuality(sequence);
-            srec.orientation[0] = AR_REF_ORIENT(data);
+            srec.orientation[0] = readOrientation;
             srec.cskey[0] = cskey;
-            COPY_READ(srec.seq  + srec.readStart[0], seqDNA, readlen, (isColorSpace && !aligned) ? 0 : srec.orientation[0]);
-            COPY_QUAL(srec.qual + srec.readStart[0], qual, readlen, (isColorSpace && !aligned) ? 0 : srec.orientation[0]);
+            COPY_READ(srec.seq  + srec.readStart[0], seqDNA, readlen, (isColorSpace && !aligned) ? 0 : srec.orientation[0] == ReadOrientationReverse);
+            COPY_QUAL(srec.qual + srec.readStart[0], qual, readlen, (isColorSpace && !aligned) ? 0 : srec.orientation[0] == ReadOrientationReverse);
          
             srec.keyId = keyId;
             
@@ -1577,7 +1706,8 @@ rc_t ArchiveFile(const struct ReaderFile *reader,
         
     LOOP_END:
         RecordRelease(record);
-        SequenceRelease(sequence);
+        if (sequence != NULL)
+            SequenceRelease(sequence);
         if (alignment != NULL)
             AlignmentRelease(alignment);
         if (cg != NULL)
@@ -1628,18 +1758,16 @@ rc_t CommonWriterInit(CommonWriter* self, struct VDBManager *mgr, struct VDataba
     self->ref = malloc(sizeof(*self->ref));
     if (self->ref == 0)
         return RC(rcAlign, rcArc, rcAllocating, rcMemory, rcExhausted);
-    if (self->settings.refFiles != 0)
-    {
-        rc = ReferenceInit(self->ref, 
-                           mgr, 
-                           db, 
-                           self->settings.expectUnsorted, 
-                           self->settings.acceptHardClip, 
-                           self->settings.refXRefPath, 
-                           self->settings.inpath, 
-                           self->settings.maxSeqLen, 
-                           self->settings.refFiles);
-    }
+        
+    rc = ReferenceInit(self->ref, 
+                       mgr, 
+                       db, 
+                       self->settings.expectUnsorted, 
+                       self->settings.acceptHardClip, 
+                       self->settings.refXRefPath, 
+                       self->settings.inpath, 
+                       self->settings.maxSeqLen, 
+                       self->settings.refFiles);
     if (rc == 0)
     {
         self->seq = malloc(sizeof(*self->seq));
@@ -1662,49 +1790,109 @@ rc_t CommonWriterInit(CommonWriter* self, struct VDBManager *mgr, struct VDataba
             
             return RC(rcAlign, rcArc, rcAllocating, rcMemory, rcExhausted);
         }
+        
+        rc = SetupContext(&self->settings, &self->ctx);
+        if (rc != 0)
+        {
+            ReferenceWhack(self->ref, false, 0);
+            free(self->ref);
+            
+            SequenceWhack(self->seq, false);
+            free(self->seq);
+            
+            AlignmentWhack(self->align, false);
+        }
     }
     if (self->settings.tmpfs == NULL)
         self->settings.tmpfs = "/tmp";
+
+    self->commit = true;
     
     return rc;
 }
 
-rc_t CommonWriterArchive(CommonWriter* self, const struct ReaderFile* reader, bool *had_alignments, bool *had_sequences)
+rc_t CommonWriterArchive(CommonWriter* self, const struct ReaderFile* reader)
 {
+    rc_t rc;
     assert(self);
-    return ArchiveFile(reader, 
+    rc = ArchiveFile(reader, 
                        &self->settings,
                        &self->ctx, 
                        self->ref,
                        self->seq,
                        self->align,
-                       had_alignments, 
-                       had_sequences);
+                       &self->had_alignments, 
+                       &self->had_sequences);
+    if (rc)
+        self->commit = false;
+    
+    self->err_count += self->settings.errCount;
+    return rc;
 }
 
-rc_t CommonWriterWhack(CommonWriter* self, bool commit)
+rc_t CommonWriterComplete(CommonWriter* self, bool quitting)
+{
+    rc_t rc=0;
+    /*** No longer need memory for key2id ***/
+    size_t i;
+    for (i = 0; i != self->ctx.key2id_count; ++i) {
+        KBTreeDropBacking(self->ctx.key2id[i]);
+        KBTreeRelease(self->ctx.key2id[i]);
+        self->ctx.key2id[i] = NULL;
+    }
+    free(self->ctx.key2id_names);
+    self->ctx.key2id_names = NULL;
+    /*******************/
+
+    if (self->had_sequences) {
+        if (!quitting) {
+            (void)LOGMSG(klogInfo, "Writing unpaired sequences");
+            rc = WriteSoloFragments(&self->settings, &self->ctx, self->seq);
+            ContextReleaseMemBank(&self->ctx);
+            if (rc == 0) {
+                rc = SequenceDoneWriting(self->seq);
+                if (rc == 0) {
+                    (void)LOGMSG(klogInfo, "Updating sequence alignment info");
+                    rc = SequenceUpdateAlignInfo(&self->ctx, self->seq);
+                }
+            }
+        }
+        else
+            ContextReleaseMemBank(&self->ctx);
+    }
+    
+    if (self->had_alignments && !quitting) {
+        (void)LOGMSG(klogInfo, "Writing alignment spot ids");
+        rc = AlignmentUpdateSpotInfo(&self->ctx, self->align);
+    }
+
+    return rc;
+}
+
+rc_t CommonWriterWhack(CommonWriter* self)
 {
     rc_t rc = 0;
     assert(self);
     
+    ContextRelease(&self->ctx);
+    
     if (self->align)
-        rc = AlignmentWhack(self->align, commit);
+        rc = AlignmentWhack(self->align, self->commit);
         
     if (self->seq)
     {
-        SequenceWhack(self->seq, commit);
+        SequenceWhack(self->seq, self->commit);
         free(self->seq);
     }
 
     if (self->ref)
     {
-        rc_t rc2 = ReferenceWhack(self->ref, commit, self->settings.maxSeqLen);
+        rc_t rc2 = ReferenceWhack(self->ref, self->commit, self->settings.maxSeqLen);
         if (rc == 0)
             rc = rc2;
         free(self->ref);
     }
 
-    free(self);
     return rc;
 }
 

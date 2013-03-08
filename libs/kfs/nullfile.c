@@ -111,6 +111,7 @@ rc_t KNullFileMake (KNullFile ** self, bool write_allowed)
     {
 	rc = KFileInit (&pF->dad,			/* initialize base class */
 			(const KFile_vt*)&vtKNullFile, 	/* VTable for KNullFile */
+            "KNullFile", "no-name",
 			true,				/* read allowed */
 			write_allowed);
 	if (rc == 0)

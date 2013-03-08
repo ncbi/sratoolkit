@@ -955,7 +955,7 @@ LIB_EXPORT rc_t CC ReferenceObj_External( const ReferenceObj* cself, bool* exter
             if ( rc == 0 )
             {
                 *path = NULL;
-                rc = RefSeqMgr_Exists( rmgr, cself->seqid, strlen( cself->seqid ), path );
+                rc = RefSeqMgr_Exists( rmgr, cself->seqid, strlen( cself->seqid ), NULL );
                 if ( GetRCObject( rc ) == rcTable && GetRCState( rc ) == rcNotFound )
                 {
                     rc = 0;
@@ -1014,6 +1014,44 @@ LIB_EXPORT rc_t CC ReferenceObj_Read( const ReferenceObj* cself, INSDC_coord_zer
     ALIGN_DBGERR( rc );
     return rc;
 }
+
+
+LIB_EXPORT rc_t CC ReferenceObj_GetIdCount( const ReferenceObj* cself, int64_t row_id, uint32_t *count )
+{
+    rc_t rc = 0;
+
+    if ( cself == NULL || count == NULL )
+    {
+        rc = RC ( rcAlign, rcType, rcAccessing, rcParam, rcInvalid );
+    }
+    else if ( cself->mgr == NULL )
+    {
+        rc = RC ( rcAlign, rcType, rcAccessing, rcItem, rcInvalid );
+    }
+    else
+    {
+        *count = 0;
+
+        if ( cself->mgr->reader == NULL )
+            rc = ReferenceList_OpenCursor( cself->mgr );
+
+        if ( rc == 0 )
+        {
+            rc = TableReader_ReadRow( cself->mgr->reader, row_id );
+            if ( rc == 0 )
+            {
+                TableReaderColumn *col = &( cself->mgr->reader_cols[ ereflst_cn_PRIMARY_ALIGNMENT_IDS ] );
+                count[ 0 ] = col->len;
+                col = &( cself->mgr->reader_cols[ ereflst_cn_SECONDARY_ALIGNMENT_IDS ] );
+                count[ 1 ] = col->len;
+                col = &( cself->mgr->reader_cols[ ereflst_cn_EVIDENCE_INTERVAL_IDS ] );
+                count[ 2 ] = col->len;
+            }
+        }
+    }
+    return rc;
+}
+
 
 typedef struct PlacementRecExtensionInfo PlacementRecExtensionInfo;
 struct PlacementRecExtensionInfo
@@ -1118,10 +1156,9 @@ struct PlacementIterator
     INSDC_coord_zero ref_window_start;
     INSDC_coord_len ref_window_len;
 
-    int64_t first_row_of_reference;
-    int64_t last_row_of_window;
-    int64_t current_reference_row_offset;
-    int64_t rowcount_of_reference;
+    int64_t last_ref_row_of_window_rel;     /* relative to start of reference, not window */
+    int64_t cur_ref_row_rel;                /* current row relative to start of reference */
+    int64_t rowcount_of_ref;                /* precomputed: how many rows does this reference has */
 
     /* own reader in case of ref cursor based construction */
     const TableReader* ref_reader;
@@ -1174,6 +1211,60 @@ static void enter_spotgroup ( PlacementIterator *iter, const char * spot_group )
             iter->spot_group = calloc( 1, 1 );
         }
     }
+}
+
+
+static int64_t calc_overlaped( PlacementIterator * o, align_id_src ids )
+{
+    int64_t res = o->ref_window_start;
+    bool from_ref_table = false;
+
+/*
+    uint32_t ofs = 0;
+    switch ( ids )
+    {
+        case primary_align_ids   : ofs = 0; break;
+        case secondary_align_ids : ofs = 1; break;
+        case evidence_align_ids  : ofs = 2; break;
+    }
+
+    if ( o->ref_cols[ ereflst_cn_OVERLAP_REF_LEN ].idx != 0 && 
+         o->ref_cols[ ereflst_cn_OVERLAP_REF_LEN ].len > ofs )
+    {
+        INSDC_coord_len overlap_ref_len = o->ref_cols[ ereflst_cn_OVERLAP_REF_LEN ].base.coord_len[ ofs ];
+        if ( overlap_ref_len < o->obj->mgr->max_seq_len )
+        {
+            if ( o->ref_cols[ ereflst_cn_OVERLAP_REF_POS ].idx != 0 && 
+                 o->ref_cols[ ereflst_cn_OVERLAP_REF_POS ].len > ofs )
+            {
+                res = o->ref_cols[ereflst_cn_OVERLAP_REF_POS].base.coord0[ ofs ];
+                from_ref_table = true;
+            }
+        }
+    }
+*/
+
+    if ( !from_ref_table )
+    {
+        /* default is step back 10 rows/50k bases */
+        int64_t ref_pos_lookback = ( 10 * o->obj->mgr->max_seq_len );
+        if ( o->obj->circular )
+        {
+            int64_t const half = ( o->obj->seq_len / 2 );
+
+            if ( ref_pos_lookback > half )
+            {
+                /* go back no more than one full length */
+                ref_pos_lookback = half;
+            }
+            res = ( o->ref_window_start - ref_pos_lookback ); /* could become negative */
+        }
+        else
+        {
+            res = ( o->ref_window_start < ref_pos_lookback ? 0 : ( o->ref_window_start - ref_pos_lookback ) );
+        }
+    }
+    return res;
 }
 
 
@@ -1230,7 +1321,7 @@ LIB_EXPORT rc_t CC ReferenceObj_MakePlacementIterator ( const ReferenceObj* csel
 
             if ( ref_cur == NULL )
             {
-                if ( mgr->reader == 0 )
+                if ( mgr->reader == NULL )
                 {
                     rc = ReferenceList_OpenCursor( mgr );
                 }
@@ -1271,65 +1362,36 @@ LIB_EXPORT rc_t CC ReferenceObj_MakePlacementIterator ( const ReferenceObj* csel
 
             if ( rc == 0 )
             {
-                int64_t ref_pos_overlapped = 0;
-                int64_t row = cself->start_rowid + ( ref_window_start / mgr->max_seq_len );
+                int64_t first_ref_row_of_window_rel = ( ref_window_start / mgr->max_seq_len );
+                int64_t first_ref_row_of_window_abs = ( cself->start_rowid + first_ref_row_of_window_rel );
 
                 /* in bases */
                 o->ref_window_start = ref_window_start;
                 o->ref_window_len = ref_window_len;
 
                 /* in reference-rows */
-                o->first_row_of_reference = cself->start_rowid;
-                o->last_row_of_window  = ( ref_window_start + ref_window_len ) / mgr->max_seq_len;
-                o->rowcount_of_reference = ( cself->end_rowid - cself->start_rowid );
+                o->last_ref_row_of_window_rel = ( ( ref_window_start + ref_window_len ) / mgr->max_seq_len );
+                o->rowcount_of_ref = ( cself->end_rowid - cself->start_rowid );
 
                 /* get effective starting offset based on overlap
                    from alignments which started before the requested pos */
-                rc = TableReader_ReadRow( o->ref_reader, row );
+                rc = TableReader_ReadRow( o->ref_reader, first_ref_row_of_window_abs );
                 if ( rc == 0 )
                 {
-                    if ( o->ref_cols[ereflst_cn_OVERLAP_REF_LEN].idx != 0 &&
-                         o->ref_cols[ereflst_cn_OVERLAP_REF_LEN].base.coord_len[0] < ( ref_window_start % mgr->max_seq_len) )
-                    {
-                        /* position beyond known overlap */
-                        ref_pos_overlapped = ref_window_start;
-                    }
-                    else if ( o->ref_cols[ereflst_cn_OVERLAP_REF_POS].idx != 0 )
-                    {
-                        /* start with offset where earliest alignment begins */
-                        ref_pos_overlapped = o->ref_cols[ereflst_cn_OVERLAP_REF_POS].base.coord0[0];
-                    }
-                    else
-                    {
-                        /* default is step back 10 rows/50k bases */
-                        int64_t ref_pos_lookback = 10 * mgr->max_seq_len;
+                    int64_t ref_pos_overlapped = calc_overlaped( o, ids );
+                    ALIGN_DBG( "ref_pos_overlapped: %li", ref_pos_overlapped );
 
-                        if ( cself->circular )
-                        {
-                            int64_t const half = cself->seq_len / 2;
-
-                            if ( ref_pos_lookback > half )
-                            {
-                                /* go back no more than one full length */
-                                ref_pos_lookback = half;
-                            }
-                            ref_pos_overlapped = ref_window_start - ref_pos_lookback; /* could become negative */
-                        }
-                        else
-                        {
-                            ref_pos_overlapped = ref_window_start < ref_pos_lookback ? 0 : ( ref_window_start - ref_pos_lookback );
-                        }
-                    }
-
-                    /* in reference-rows */
-                    o->current_reference_row_offset = ( ref_pos_overlapped / mgr->max_seq_len ) - 1;
-
-/*                    o->current_reftable_row = cself->start_rowid - 1 + ( ref_pos_overlapped / mgr->max_seq_len ); */
+                    /* the absolute row where we are reading from */
+                    o->cur_ref_row_rel = ( ref_pos_overlapped / mgr->max_seq_len ) - 1;
 
                     VectorInit( &o->ids, 0, 100 );
 
                     o->ids_col = &o->ref_cols[ids == primary_align_ids ? ereflst_cn_PRIMARY_ALIGNMENT_IDS :
                             ( ids == secondary_align_ids ? ereflst_cn_SECONDARY_ALIGNMENT_IDS : ereflst_cn_EVIDENCE_INTERVAL_IDS ) ];
+
+                    ALIGN_DBG( "iter.last_ref_row_of_window_rel: %li", o->last_ref_row_of_window_rel );
+                    ALIGN_DBG( "iter.rowcount_of_ref: %li", o->rowcount_of_ref );
+                    ALIGN_DBG( "iter.cur_ref_row_rel: %li", o->cur_ref_row_rel );
                 }
             }
         }
@@ -1433,7 +1495,7 @@ LIB_EXPORT rc_t CC PlacementIteratorRefObj( const PlacementIterator * self,
 static void CC PlacementRecordVector_dump( void *item, void *data )
 {
     const PlacementRecord* i = ( const PlacementRecord* )item;
-    ALIGN_DBG(" {%u, %u, %li}", i->pos, i->len, i->id);
+    ALIGN_DBG( " {%u, %u, %li}", i->pos, i->len, i->id );
 }
 #endif
 
@@ -1501,11 +1563,24 @@ static rc_t allocate_populate_rec( const PlacementIterator *cself,
         }
 
         /* use callback or fixed size to discover the size of portions 0 and 1 */
-        size0 = ( ( cself->ext_0.alloc_size != NULL ) ?
-                    cself->ext_0.alloc_size( curs, id, cself->ext_0.data ) : cself->ext_0.fixed_size );
-        size1 = ( ( cself->ext_1.alloc_size != NULL ) ?
-                    cself->ext_1.alloc_size( curs, id, cself->ext_1.data ) : cself->ext_1.fixed_size );
+        if ( cself->ext_0.alloc_size != NULL )
+        {
+            rc = cself->ext_0.alloc_size( curs, id, &size0, cself->ext_0.data );
+            if ( rc != 0 )
+                return rc;
+        }
+        else
+            size0 = cself->ext_0.fixed_size;
 
+        if ( cself->ext_1.alloc_size != NULL )
+        {
+            rc = cself->ext_1.alloc_size( curs, id, &size1, cself->ext_1.data );
+            if ( rc != 0 )
+                return rc;
+        }
+        else
+            size1 = cself->ext_1.fixed_size;
+        
         /* allocate the record ( or take it from a pool ) */
         total_size = ( sizeof **rec ) + spot_group_len + ( 2 * ( sizeof *ext_info ) ) + size0 + size1;
         *rec = calloc( 1, total_size );
@@ -1562,6 +1637,11 @@ static rc_t allocate_populate_rec( const PlacementIterator *cself,
                                             cself->ref_window_start,
                                             cself->ref_window_len,
                                             cself->ext_0.data );
+                if ( rc != 0 && cself->ext_0.destroy != NULL )
+                {
+                    void *obj = PlacementRecordCast ( pr, placementRecordExtension0 );
+                    cself->ext_0.destroy( obj, cself->ext_0.data );
+                }
             }
 
             if ( rc == 0 && cself->ext_1.populate != NULL )
@@ -1573,22 +1653,25 @@ static rc_t allocate_populate_rec( const PlacementIterator *cself,
                                             cself->ext_1.data );
                 if ( rc != 0 )
                 {
-                    /* destroy ext_0 */
+                    if ( cself->ext_1.destroy != NULL )
+                    {
+                        void *obj = PlacementRecordCast ( pr, placementRecordExtension1 );
+                        cself->ext_1.destroy( obj, cself->ext_1.data );
+                    }
                     if ( cself->ext_0.destroy != NULL )
                     {
                         void *obj = PlacementRecordCast ( pr, placementRecordExtension0 );
                         cself->ext_0.destroy( obj, cself->ext_0.data );
                     }
+
                 }
             }
 
             if ( rc != 0 )
             {
                 /* free */
-                free( pr );
+                free( *rec );
                 *rec = NULL;
-                /* let the caller continue with the next alignment */
-                rc = RC( rcAlign, rcType, rcAccessing, rcId, rcIgnored );
             }
         }
     }
@@ -1638,7 +1721,7 @@ static rc_t read_alignments( PlacementIterator *self )
             INSDC_coord_len alen  = self->align_cols[ eplacementiter_cn_REF_LEN ].base.coord_len[ 0 ];
             /*ALIGN_DBG("align row: {%li, %u, %u}", cself->ids_col->base.i64[i], apos, alen);*/
 
-            if ( self->current_reference_row_offset < 0 )
+            if ( self->cur_ref_row_rel < 0 )
                 apos -= self->obj->seq_len;
 
             /* at this point we have the position of the alignment.
@@ -1714,20 +1797,18 @@ LIB_EXPORT rc_t CC PlacementIteratorNextAvailPos( const PlacementIterator *cself
         {
             /* read ids */
 
-            self->current_reference_row_offset++;   /* increment row offset */
+            self->cur_ref_row_rel++;   /* increment row offset */
 
             ALIGN_DBG( "ref row: %li-%li-%li",
-                       self->obj->start_rowid,
-                       self->current_reference_row_offset,
-                       self->last_row_of_window );
+                       self->obj->start_rowid, self->cur_ref_row_rel, self->last_ref_row_of_window_rel );
 
-            if ( self->current_reference_row_offset > self->last_row_of_window )
+            if ( self->cur_ref_row_rel > self->last_ref_row_of_window_rel )
                 rc = SILENT_RC( rcAlign, rcType, rcSelecting, rcRange, rcDone );
             else
             {
-                int64_t row = self->first_row_of_reference + self->current_reference_row_offset;
-                if ( self->current_reference_row_offset < 0 )
-                    row += self->rowcount_of_reference;
+                int64_t row = ( self->obj->start_rowid + self->cur_ref_row_rel );
+                if ( self->cur_ref_row_rel < 0 )
+                    row += self->rowcount_of_ref;
 
                 rc = TableReader_ReadRow( self->ref_reader, row );
                 if ( rc == 0 )
@@ -1773,6 +1854,7 @@ LIB_EXPORT rc_t CC PlacementIteratorNextAvailPos( const PlacementIterator *cself
     return rc;
 }
 
+
 LIB_EXPORT rc_t CC PlacementIteratorNextRecordAt( PlacementIterator *cself,
     INSDC_coord_zero pos, const PlacementRecord **rec )
 {
@@ -1790,7 +1872,7 @@ LIB_EXPORT rc_t CC PlacementIteratorNextRecordAt( PlacementIterator *cself,
             PlacementRecord* r = VectorLast( &cself->ids );
             if ( r->pos == pos )
             {
-                VectorRemove( &((PlacementIterator*)cself)->ids, vlen - 1, (void**)rec );
+                VectorRemove( &cself->ids, vlen - 1, (void**)rec );
             }
         }
     }

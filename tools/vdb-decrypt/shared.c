@@ -31,6 +31,7 @@
 
 #include <klib/rc.h>
 #include <klib/out.h>
+#include <klib/status.h>
 #include <klib/log.h>
 #include <klib/debug.h> /* DBGMSG */
 #include <klib/status.h>
@@ -57,6 +58,9 @@
 #include <string.h>
 #include <stdint.h>
 
+#ifndef RIGOROUS_SRA_CHECK
+#define RIGOROUS_SRA_CHECK 0
+#endif
 
 #define OPTION_FORCE   "force"
 #define OPTION_SRA     "decrypt-sra-files"
@@ -70,6 +74,7 @@ bool ForceFlag = false;
 bool TmpFoundFlag = false;
 bool UseStdin = false;
 bool UseStdout = false;
+bool IsArchive = false;
 
 /* for wga decrypt */
 char Password [4096 + 2];
@@ -79,14 +84,13 @@ size_t PasswordSize;
 KKey Key;
 
 const char * ForceUsage[] = 
-{ "force overwrite of existing files", NULL };
+{ "Force overwrite of existing files", NULL };
 
 /*
  * option  control flags
  */
 
-static const char EncExt1[] = ".nenc";
-static const char EncExt2[] = ".ncbi_enc";
+const char EncExt[] = ".ncbi_enc";
 static const char TmpExt[] = ".vdb-decrypt-tmp";
 static const char TmpLockExt[] = ".vdb-decrypt-tmp.lock";
 
@@ -133,7 +137,7 @@ rc_t CC Usage (const Args * args)
     char const *const dir_crypt  = de[0] == 'd'
                                  ? "directory to decrypt"
                                  : "directory to encrypt";
-    char const *const pline[] = {
+    const char * const pline[] = {
         file_crypt, NULL,
         "name of resulting file", NULL,
         "directory of resulting file", NULL,
@@ -161,63 +165,65 @@ rc_t CC Usage (const Args * args)
     CryptOptionLines ();
     HelpOptionsStandard ();
 
-    {   /* forcing editor alignment */
-        /*   12345678901234567890123456789012345678901234567890123456789012345678901234567890*/
-        KOutMsg (
-            "\n"
-            "Details:\n"
-            "  With a single parameter, %scryptions are in place, replacing files with\n"
-            "  new files that are %scrypted, unless the files are already %scrypted.\n"
-            "\n", de, de, de);
-        KOutMsg (
-            "  With two parameters, %scrypted copies of files are created, without\n"
-            "  changing the original files. If a file is already %scrypted, it will\n"
-            "  only be copied.\n"
-            "\n", de, de);
-#if 0
-        KOutMsg (
-            "  When a single file is specified, it is replaced with its %scrypted copy.\n"
-            "\n", de);
-        KOutMsg (
-            "  A single directory can be specified and all files within that directory\n"
-            "  and all subdirectories will be replaced with %scrypted versions.\n"
-            "\n", de);
-        KOutMsg (
-            "  Files that are already %scrypted will remain unchanged\n"
-            "\n", de);
-#endif
-        if (de[0] == 'd') KOutMsg (
-            "  NCBI Archive files that contain NCBI database objects will not be\n"
-            "  decrypted unless the %s option is used. As these objects can be used without\n"
-            "  decryption it is recommended they remain encrypted.\n"
-            "\n", OPTION_SRA);
-        KOutMsg (
-            "  Hidden files (that begin with a '.') having the extension %s or\n"
-            "  %s are considered temporary files used by %s and\n"
-            "  are not %scrypted. If encountered during in-place %scryption, these files\n"
-            "  will be considered busy and skipped, unless the --%s option was given.\n"
-            "\n", TmpExt, TmpLockExt, progname, de, de, OPTION_FORCE);
-        KOutMsg (
-            "  In all other cases no file extensions are considered or changed.\n"
-            "\n");
-        KOutMsg (
-            "  Missing directories in the destination path will be created.\n"
-            "\n");
-        KOutMsg (
-            "  Already existing destination files will cause the program to end with\n"
-            "  an error and will be left unchanged unless the --%s option is used to\n"
-            "  force the files to be overwritten.\n"
-            "\n", OPTION_FORCE);
-        KOutMsg ("\n"
-                 "Password:\n"
-                 "  The password is not given on the command line. It must be in a\n"
-                 "  a file that should be readable only by the user running the program.\n"
-                 "\n"
-                 "  The location of that file is looked for in these places, in this order:\n"
-                 "    1. An environment variable VDB_PWFILE\n"
-                 "    2. The VDB Configuration file option 'krypto/pwfile'\n"
-                 "\n");
-    }
+    /* forcing editor alignment */
+    /*   12345678901234567890123456789012345678901234567890123456789012345678901234567890*/
+    KOutMsg (
+        "\n"
+        "Details:\n"
+        "  All %scryptions are non-destructive until successful. No files are deleted or\n"
+        "  replaced until the %scryptions are complete.\n"
+        "\n", de, de);
+
+    KOutMsg (
+        "  The extension '.ncbi_enc' will be %s when a file is %scrypted.\n"
+        "\n", Decrypting ? "removed" : "added", de);
+
+    if (Decrypting) KOutMsg (
+        "  NCBI Archive files that contain NCBI database objects will not be decrypted\n"
+        "  unless the %s option is used. As these objects can be used without\n"
+        "  decryption it is recommended they remain encrypted.\n"
+        "\n", OPTION_SRA);
+    else KOutMsg (
+        "  NCBI Archive files that contain NCBI database objects will not have the\n"
+        "  .ncbi_enc extension added.\n\n");
+
+
+    KOutMsg (
+        "  If the only parameter is a file name then it will be replaced by a file that\n"
+        "  is %scrypted with a possible changed extension.\n"
+        "  \n", de);
+
+    KOutMsg (
+        "  If the only parameter is a directory, all files in that directory including\n"
+        "  all files in subdirectories will be replaced with a possible change\n"
+        "  in the extension.\n"
+        "\n");
+
+    KOutMsg (
+        "  If there are two parameters  a copy is made but the copy will be %scrypted.\n"
+        "  If the second parameter is a directory the new file might have a different\n"
+        "  extension. If it is not a directory, the extension will be as given in the\n"
+        "  the parameter.\n"
+        "\n", de);
+
+    KOutMsg (
+        "  Missing directories in the destination path will be created.\n"
+        "\n");
+
+    KOutMsg (
+        "  Already existing destination files will cause the program to end with\n"
+        "  an error and will be left unchanged unless the --%s option is used to\n"
+        "  force the files to be overwritten.\n"
+        "\n", OPTION_FORCE);
+
+    KOutMsg (
+        "Encryption key (file password):\n"
+        "  The encryption key or file password is handled by configuration. If not yet\n"
+        "  set, this program will fail.\n\n"
+        "  You can set the encryption key by running:\n\n"
+        "    perl configuration-assistant.perl\n"
+        "\n");
+
     HelpVersion (fullpath, KAppVersion());
 
     return rc;
@@ -240,6 +246,7 @@ ArcScheme ArchiveTypeCheck (const KFile * f)
     rc_t rc;
     char head [128];
 
+    IsArchive = false;
     rc = KFileReadAll (f, 0, head, sizeof head, &num_read);
     if (rc)
     {
@@ -249,8 +256,17 @@ ArcScheme ArchiveTypeCheck (const KFile * f)
 
     rc = KFileIsSRA (head, num_read);
     if (rc == 0)
-        return arcSRAFile;
+    {
 
+/*         OUTMSG (("+++++ ARCHIVE\n")); */
+
+
+        /* a hack... */
+
+        IsArchive = true;
+        return arcSRAFile;
+    }
+/*     OUTMSG (("----- not an archive\n")); */
     return arcNone;
 }
 
@@ -319,7 +335,6 @@ rc_t CopyFile (const KFile * src, KFile * dst, const char * source, const char *
 /*
  * determine the encryption type for KFile f with pathname name
  */
-static
 rc_t EncryptionTypeCheck (const KFile * f, const char * name, EncScheme * scheme)
 {
     size_t num_read;
@@ -340,7 +355,9 @@ rc_t EncryptionTypeCheck (const KFile * f, const char * name, EncScheme * scheme
 
     rc = KFileIsEnc (head, num_read);
     if (rc == 0)
+    {
         *scheme = encEncFile;
+    }
     else
     {
         rc = KFileIsWGAEnc (head, num_read);
@@ -379,16 +396,20 @@ bool IsTmpFile (const char * path)
 
 
 static
-rc_t FileInPlace (KDirectory * cwd, const char * leaf)
+rc_t FileInPlace (KDirectory * cwd, const char * leaf, bool try_rename)
 {
     rc_t rc;
     bool is_tmp;
+
+    STSMSG (1, ("%scrypting file in place %s",De,leaf));
 
     rc = 0;
     is_tmp = IsTmpFile (leaf);
 
     if (is_tmp)
     {
+        STSMSG (1, ("%s is a vdb-decrypt/vdb-encrypt temporary file and will "
+                    "be ignored", leaf));
         TmpFoundFlag = true;
         if (ForceFlag)
             ; /* LOG OVERWRITE */
@@ -439,18 +460,36 @@ rc_t FileInPlace (KDirectory * cwd, const char * leaf)
                     rc = EncryptionTypeCheck (infile, leaf, &scheme);
                     if (rc == 0)
                     {
+                        ArcScheme ascheme;
+                        bool changed;
                         bool do_this_file;
+                        char new_name [MY_MAX_PATH + sizeof EncExt];
 
-                        do_this_file = DoThisFile (infile, scheme);
+                        do_this_file = DoThisFile (infile, scheme, &ascheme);
+                        strcpy (new_name, leaf);
+                        if (try_rename)
+                            changed = NameFixUp (new_name);
+                        else
+                            changed = false;
+/*                         KOutMsg ("### %d \n", changed); */
 
-                        if (do_this_file)
+                        if (!do_this_file)
+                        {
+                            if (changed)
+                            {
+                                STSMSG (1, ("renaming %s to %s", leaf, new_name));
+                                rc = KDirectoryRename (cwd, false, leaf, new_name);
+                            }
+                            else
+                                STSMSG (1, ("skipping %s",leaf));
+                        }
+                        else
                         {
                             KFile * outfile;
 
                             rc = KDirectoryCreateExclusiveAccessFile (cwd, &outfile,
                                                                       false, 0600, kcm,
                                                                       temp);
-
                             if (rc)
                                 ;
                             else
@@ -462,6 +501,8 @@ rc_t FileInPlace (KDirectory * cwd, const char * leaf)
 
                                 if (rc == 0)
                                 {
+                                    STSMSG (1, ("copying %s to %s", leaf, temp));
+
                                     rc = CopyFile (Infile, Outfile, leaf, temp);
 
                                     if (rc == 0)
@@ -480,15 +521,20 @@ rc_t FileInPlace (KDirectory * cwd, const char * leaf)
 
                                         if (rc == 0)
                                         {
-                                            rc = KDirectoryRename (cwd, true, temp, leaf);
+                                            STSMSG (1, ("renaming %s to %s", temp, new_name));
+
+                                            rc = KDirectoryRename (cwd, true, temp, new_name);
                                             if (rc)
                                                 LOGERR (klogErr, rc, "error renaming");
                                             else
                                             {
+                                                if (changed)
+                                                    KDirectoryRemove (cwd, false, "%s", leaf);
+
                                                 /*rc =*/
                                                 KDirectorySetAccess (cwd, false, access,
-                                                                     0777, "%s", leaf);
-                                                KDirectorySetDate (cwd, false, date, "%s", leaf);
+                                                                     0777, "%s", new_name);
+                                                KDirectorySetDate (cwd, false, date, "%s", new_name);
                                                 /* gonna ignore an error here I think */
                                                 return rc;
                                             }
@@ -510,17 +556,27 @@ rc_t FileInPlace (KDirectory * cwd, const char * leaf)
 
 static
 rc_t FileToFile (const KDirectory * sd, const char * source, 
-                 KDirectory *dd, const char * dest)
+                 KDirectory *dd, const char * dest_, bool try_rename,
+                 char * base)
 {
     const KFile * infile;
     rc_t rc;
     uint32_t access;
     KTime_t date;
     bool is_tmp;
+    char dest [MY_MAX_PATH + sizeof EncExt];
 
+    strcpy (dest, dest_);
+    if (try_rename)
+        NameFixUp (dest);
 
     if ((sd == dd) && (strcmp (source, dest) == 0))
-        return FileInPlace (dd, dest);
+        return FileInPlace (dd, dest, try_rename);
+
+    if (base == NULL)
+        STSMSG (1, ("%scrypting file %s to %s", De, source, dest));
+    else
+        STSMSG (1, ("%scrypting file %s to %s/%s", De, source, base, dest));
 
     /*
      * A Hack to make stdin/stout work within KFS
@@ -613,11 +669,16 @@ rc_t FileToFile (const KDirectory * sd, const char * source,
                                 rc = CopyFile (Infile, Outfile, source, dest);
                                 if (rc == 0)
                                 {
-                                    rc = KDirectorySetAccess (dd, false, access, 0777,
-                                                              "%s", dest);
+                                    if (UseStdin || UseStdout)
+                                        ;
+                                    else
+                                    {
+                                        rc = KDirectorySetAccess (dd, false, access, 0777,
+                                                                  "%s", dest);
 
-                                    if (rc == 0 && date != 0)
-                                        rc = KDirectorySetDate (dd, false, date, "%s", dest);
+                                        if (rc == 0 && date != 0)
+                                            rc = KDirectorySetDate (dd, false, date, "%s", dest);
+                                    }
                                 }
                                 KFileRelease (Infile);
                                 KFileRelease (Outfile);
@@ -676,9 +737,9 @@ rc_t DoDir (const KDirectory * sd, KDirectory * dd)
 
                     case kptFile:
                         if (sd == dd)
-                            rc = FileInPlace (dd, name);
+                            rc = FileInPlace (dd, name, true);
                         else
-                            rc = FileToFile (sd, name, dd, name);
+                            rc = FileToFile (sd, name, dd, name, true, NULL);
                         break;
 
                     case kptDir:
@@ -690,7 +751,9 @@ rc_t DoDir (const KDirectory * sd, KDirectory * dd)
                             else
                             {
                                 /* RECURSION */
+                                STSMSG (1, ("%scrypting directory %s", De, name));
                                 rc = DoDir (ndd, ndd);
+                                STSMSG (1, ("done with directory %s", name));
                                 KDirectoryRelease (ndd);
                             }
                         }
@@ -712,7 +775,9 @@ rc_t DoDir (const KDirectory * sd, KDirectory * dd)
                                     else
                                     {
                                         /* RECURSION */
+                                        STSMSG (1, ("%scrypting directory %s", De, name));
                                         rc = DoDir (nsd, ndd);
+                                        STSMSG (1, ("done with directory %s", name));
 
                                         KDirectoryRelease (ndd);
                                     }
@@ -739,13 +804,14 @@ rc_t Start (KDirectory * cwd, const char * src, const char * dst)
     char dpath [MY_MAX_PATH];
     char spath [MY_MAX_PATH];
     rc_t rc;
-    bool using_stdin, using_stdout;
+    bool using_stdin, using_stdout, try_rename;
 
     /* limited anti oops checks */
-    if (dst != NULL)
+    try_rename = (dst == NULL);
+    if (!try_rename)
     {
         /* try to prevent file to file clash */
-        if(strcmp (src,dst) == 0)
+        if (strcmp (src,dst) == 0)
             dst = NULL;
 
         /* try to prevent file to dir clash */
@@ -760,9 +826,13 @@ rc_t Start (KDirectory * cwd, const char * src, const char * dst)
             {
                 if (string_cmp (src, s, dst, d, d) == 0)
                 {
-                    if ((src[d] == '/') ||
-                        (src[d-1] == '/'))
+                    if ((strchr (src+d+1, '/') == NULL) &&
+                        ((src[d] == '/') ||
+                         (src[d-1] == '/')))
+                    {
+                        try_rename = true;
                         dst = NULL;
+                    }
                 }
             }
         }
@@ -785,10 +855,9 @@ rc_t Start (KDirectory * cwd, const char * src, const char * dst)
         stype = kptFile;
         strcpy (spath, src);
         UseStdin = true;
+        STSMSG (1, ("reading console / stdin as input"));
         goto stdin_shortcut;
     }
-
-/* TBD handle aliases */
 
     rc = KDirectoryResolvePath (cwd, false, spath, sizeof spath, "%s", src);
     if (rc)
@@ -829,8 +898,15 @@ rc_t Start (KDirectory * cwd, const char * src, const char * dst)
         return rc;
     }
 
+    /*
+     * In Place Operation
+     */
     if (dst == NULL)
     {
+
+        /*
+         * Input is a file
+         */
         if (stype == kptFile)
         {
             KDirectory * ndir;
@@ -857,10 +933,13 @@ rc_t Start (KDirectory * cwd, const char * src, const char * dst)
 
             if (rc == 0)
             {
-                rc = FileInPlace (ndir, pc);
+                rc = FileInPlace (ndir, pc, try_rename);
                 KDirectoryRelease (ndir);
             }
         }
+        /*
+         * Input is a directory
+         */
         else
         {
             KDirectory * ndir;
@@ -870,11 +949,17 @@ rc_t Start (KDirectory * cwd, const char * src, const char * dst)
                 ;
             else
             {
+                STSMSG (1, ("%scrypting directory %s", De, spath));
                 rc = DoDir (ndir, ndir);
+                STSMSG (1, ("done with directory %s", spath));
                 KDirectoryRelease (ndir);
             }
         }
     }
+
+    /*
+     * 'Copy' Operation
+     */
     else
     {
     stdin_shortcut:
@@ -884,6 +969,7 @@ rc_t Start (KDirectory * cwd, const char * src, const char * dst)
             dtype = kptFile;
             strcpy (dpath, dst);
             UseStdout = true;
+            STSMSG (1, ("writing console / stdout as output"));
             goto do_file;
         }
         rc = KDirectoryResolvePath (cwd, false, dpath, sizeof dpath, "%s", dst);
@@ -933,7 +1019,7 @@ rc_t Start (KDirectory * cwd, const char * src, const char * dst)
         do_file:
             if (stype == kptFile)
             {
-                rc = FileToFile (cwd, spath, cwd, dpath);
+                rc = FileToFile (cwd, spath, cwd, dpath, try_rename, NULL);
             }
             else
             {
@@ -944,6 +1030,9 @@ rc_t Start (KDirectory * cwd, const char * src, const char * dst)
 
         do_dir:
         case kptDir:
+            /*
+             * Input is a directory
+             */
             if (stype == kptDir)
             {
 #if DIRECTORY_TO_DIRECTORY_SUPPORTED
@@ -956,8 +1045,11 @@ rc_t Start (KDirectory * cwd, const char * src, const char * dst)
                 else
                 {
                     if (dtype == kptNotFound)
+                    {
+                        STSMSG (1, ("creating output directory %s", dpath));
                         rc = KDirectoryCreateDir (cwd, 0775, kcmCreate|kcmParents,
                                                   "%s", dpath);
+                    }
                     if (rc == 0)
                     {
                         rc = KDirectoryOpenDirUpdate (cwd, &ddir, false, dpath);
@@ -965,7 +1057,9 @@ rc_t Start (KDirectory * cwd, const char * src, const char * dst)
                             ;
                         else
                         {
+                            STSMSG (1, ("%scrypting directory %s to %s", De, spath, dpath));
                             rc = DoDir (sdir, ddir);
+                            STSMSG (1, ("done with directory %s to %s", spath, dpath));
                             KDirectoryRelease (ddir);
                         }
                     }
@@ -976,16 +1070,24 @@ rc_t Start (KDirectory * cwd, const char * src, const char * dst)
                 LOGERR (klogErr, rc, "Can't do directory to directory");
 #endif
             }
+            /*
+             * Input is a file
+             */
             else
             {
                 KDirectory * ndir;
                 const char * pc;
 
                 if (dtype == kptNotFound)
+                {
+                    STSMSG (1, ("creating output directory %s", dpath));
                     rc = KDirectoryCreateDir (cwd, 0775, kcmCreate|kcmParents,
                                               "%s", dpath);
+                }
                 if (rc == 0)
                 {
+
+                    STSMSG (1, ("opening output directory %s", dpath));
                     rc = KDirectoryOpenDirUpdate (cwd, &ndir, false, dpath);
                     if (rc)
                         ;
@@ -997,7 +1099,7 @@ rc_t Start (KDirectory * cwd, const char * src, const char * dst)
                         else
                             ++pc;
 
-                        rc = FileToFile (cwd, spath, ndir, pc);
+                        rc = FileToFile (cwd, spath, ndir, pc, true, dpath);
 
                         KDirectoryRelease (ndir);
                     }

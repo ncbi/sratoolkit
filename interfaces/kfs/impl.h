@@ -74,7 +74,7 @@ struct KFile
 {
     const KFile_vt *vt;
     const KDirectory *dir;
-    atomic32_t refcount;
+    KRefcount refcount;
     uint8_t read_enabled;
     uint8_t write_enabled;
     uint8_t align [ 2 ];
@@ -122,6 +122,7 @@ union KFile_vt
  *  initialize a newly allocated file object
  */
 KFS_EXTERN rc_t CC KFileInit ( KFile *self, const KFile_vt *vt,
+    const char *classname, const char *fname,
     bool read_enabled, bool write_enabled );
 
 /* Destroy
@@ -253,6 +254,14 @@ KFS_EXTERN rc_t CC KDirectoryDestroyFile ( const KDirectory *self, KFile *f );
  */
 KFS_EXTERN struct KSysDir* CC KDirectoryGetSysDir ( const KDirectory *self );
 
+
+/* RealPath
+ *  exposes functionality of system directory
+ */
+KFS_EXTERN rc_t CC KSysDirRealPath ( struct KSysDir const *self,
+    char *real, size_t bsize, const char *path, ... );
+KFS_EXTERN rc_t CC KSysDirVRealPath ( struct KSysDir const *self,
+    char *real, size_t bsize, const char *path, va_list args );
 
 
 /*--------------------------------------------------------------------------

@@ -39,8 +39,7 @@ extern "C" {
  * KCurlFile
  *  a remote file, fetched (in parts) via http using libcurl
  */
-
-KNS_EXTERN rc_t CC KCurlFileMake( const struct KFile **self, const char * url, bool verbose );
+KNS_EXTERN rc_t CC KCurlFileMake ( struct KFile const **self, const char * url, bool verbose );
 
 
 #ifdef __cplusplus

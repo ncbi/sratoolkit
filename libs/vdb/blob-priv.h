@@ -69,6 +69,26 @@ struct BlobHeaders;
 struct VProduction;
 struct VBlobPageMapCache;
 
+typedef struct PageMapProcessRequest{
+    struct PageMap *pm;        /**** deserialized form **/
+    KDataBuffer data;   /**** serialized   form **/
+    uint32_t    row_count;
+    uint64_t    elem_count;
+    rc_t rc;            /**** results **/
+
+    volatile enum {
+        ePMPR_STATE_NONE=0,
+        ePMPR_STATE_SERIALIZE_REQUESTED,
+        ePMPR_STATE_DESERIALIZE_REQUESTED,
+        ePMPR_STATE_SERIALIZE_DONE,
+        ePMPR_STATE_DESERIALIZE_DONE,
+	ePMPR_STATE_EXIT
+    } state;            /**** request state      **/
+    struct KLock      *lock;
+    struct KCondition *cond;
+} PageMapProcessRequest;
+
+
 /*--------------------------------------------------------------------------
  * VBlob
  */
@@ -131,7 +151,8 @@ rc_t VBlobCreateFromData(
                          struct VBlob **lhs,
                          int64_t start_id, int64_t stop_id,
                          const KDataBuffer *src,
-                         uint32_t elem_bits
+                         uint32_t elem_bits,
+			 PageMapProcessRequest const *pmpr
 );
 
 rc_t VBlobCreateFromSingleRow(
@@ -168,6 +189,9 @@ VBlobMRUCache * VBlobMRUCacheMake(uint64_t capacity );
 void VBlobMRUCacheDestroy( VBlobMRUCache *self );
 const VBlob* VBlobMRUCacheFind(const VBlobMRUCache *cself, uint32_t col_idx, int64_t row_id);
 rc_t VBlobMRUCacheSave(const VBlobMRUCache *cself, uint32_t col_idx, const VBlob *blob);
+
+
+rc_t PageMapProcessGetPagemap(const PageMapProcessRequest *self,struct PageMap **pm);
 
 
 #ifdef __cplusplus

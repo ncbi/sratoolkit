@@ -734,7 +734,7 @@ LIB_EXPORT rc_t CC KQueueFileMakeRead ( const KFile **qfp, uint64_t pos,
                 rc = RC ( rcApp, rcFile, rcConstructing, rcMemory, rcExhausted );
             else
             {
-                rc = KFileInit ( & qf -> dad, ( const KFile_vt* ) & KQueueFileRead_vt_v1, true, false );
+                rc = KFileInit ( & qf -> dad, ( const KFile_vt* ) & KQueueFileRead_vt_v1, "KQueueFile", "no-name", true, false );
                 if ( rc == 0 )
                 {
                     qf -> f = ( KFile* ) src;
@@ -859,7 +859,7 @@ LIB_EXPORT rc_t CC KQueueFileMakeWrite ( KFile **qfp,
                 rc = RC ( rcApp, rcFile, rcConstructing, rcMemory, rcExhausted );
             else
             {
-                rc = KFileInit ( & qf -> dad, ( const KFile_vt* ) & KQueueFileWrite_vt_v1, false, true );
+                rc = KFileInit ( & qf -> dad, ( const KFile_vt* ) & KQueueFileWrite_vt_v1, "KQueueFile", "no-name", false, true );
                 if ( rc == 0 )
                 {
                     qf -> f = dst;

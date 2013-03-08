@@ -200,8 +200,9 @@ rc_t CGWriterEvdDnbs_Write(const CGWriterEvdDnbs* cself, const TEvidenceInterval
             if( (rc = ReferenceMgr_Compress(cself->rmgr, 0, cself->data.dnbs[i].chr,
                                             cself->data.dnbs[i].offset_in_reference, read, read_len,
                                             cself->data.dnbs[i].allele_alignment, cself->data.dnbs[i].allele_alignment_length,
-                                            cself->data.dnbs[i].offset_in_reference - cself->data.dnbs[i].offset_in_allele,
+                                            ref->offset,
                                             ref->allele[ai], ref->allele_length[ai],
+					    cself->data.dnbs[i].offset_in_allele,
                                             ref->allele_alignment[ai], ref->allele_alignment_length[ai],
                                             &self->algn)) == 0 ) {
                 self->match.mapq = cself->data.dnbs[i].mapping_quality - 33;

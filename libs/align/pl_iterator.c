@@ -383,6 +383,25 @@ static void CC pi_ref_whacker( DLNode *n, void *data )
 }
 
 
+static void pl_set_iter_clear_curr_ref_window( PlacementSetIterator *self )
+{
+    if ( self->current_window != NULL )
+    {
+        pi_window_whacker( (DLNode *)self->current_window, NULL );
+        self->current_window = NULL;
+    }
+}
+
+
+static void pl_set_iter_clear_curr_ref( PlacementSetIterator *self )
+{
+    if ( self->current_ref != NULL )
+    {
+        pi_ref_whacker( (DLNode *)self->current_ref, NULL );
+        self->current_ref = NULL;
+    }
+}
+
 /* =================================================================================================== */
 
 
@@ -396,9 +415,15 @@ LIB_EXPORT rc_t CC PlacementSetIteratorRelease ( const PlacementSetIterator *cse
         if ( KRefcountDrop( &cself->refcount, "PlacementSetIterator" ) == krefWhack )
         {
             PlacementSetIterator * self = ( PlacementSetIterator * ) cself;
+
+            pl_set_iter_clear_curr_ref_window( self );
+            pl_set_iter_clear_curr_ref( self );
+
             /* release the DLList of pi-ref's and the pi's in it... */
             DLListWhack ( &self->pi_refs, pi_ref_whacker, NULL );
+
             AlignMgrRelease ( self->amgr );
+
             free( self );
         }
     }
@@ -415,11 +440,9 @@ LIB_EXPORT rc_t CC PlacementSetIteratorNextReference ( PlacementSetIterator *sel
     if ( self == NULL )
         return RC( rcAlign, rcIterator, rcReleasing, rcSelf, rcNull );
 
-    self->current_window = NULL;    /* what is the current window, we are handling ? */
+    pl_set_iter_clear_curr_ref_window( self );
+    pl_set_iter_clear_curr_ref( self );
     self->current_entry = NULL;     /* what is the current pi-entry, we are handling ? */
-
-    if ( self->current_ref != NULL )
-        pi_ref_whacker( (DLNode *)self->current_ref, NULL );
 
     /* !!! here we are taking the next reference from the top of the list */
     self->current_ref = ( pi_ref * )DLListPopHead ( &self->pi_refs );
@@ -466,8 +489,7 @@ LIB_EXPORT rc_t CC PlacementSetIteratorNextWindow ( PlacementSetIterator *self,
         return SILENT_RC( rcAlign, rcIterator, rcAccessing, rcOffset, rcDone );
     }
 
-    if ( self->current_window != NULL )
-        pi_window_whacker( (DLNode *)self->current_window, NULL );
+    pl_set_iter_clear_curr_ref_window( self );
 
     /* !!! here we are taking the next window from the top of the list */
     self->current_window = ( pi_window * )DLListPopHead ( &(self->current_ref->pi_windows) );

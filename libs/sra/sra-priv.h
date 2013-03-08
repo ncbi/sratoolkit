@@ -59,6 +59,7 @@ struct VTable;
 struct VCursor;
 struct VTypedecl;
 struct VTypedef;
+struct VResolver;
 
 #define CSRA_EXT(lite) (lite ? ".lite.sra" : ".sra")
 #define SRA_EXT(lite) (lite ? ".lite.sra" : ".sra")
@@ -70,7 +71,11 @@ struct SRAMgr
 {
     struct VDBManager KONST *vmgr;
     struct VSchema const *schema;
-    struct SRAPath *pmgr;
+#if OLD_SRAPATH_MGR
+    struct SRAPath volatile *_pmgr;
+#else
+    struct VResolver volatile *_pmgr;
+#endif
     KRefcount refcount;
     KCreateMode mode;
     bool read_only;
@@ -86,6 +91,13 @@ rc_t SRAMgrMake ( SRAMgr **mgr,
  */
 SRAMgr *SRAMgrAttach ( const SRAMgr *self );
 rc_t SRAMgrSever ( const SRAMgr *self );
+
+
+/* AccessSRAPath
+ *  returns a new reference to SRAPath
+ *  do NOT access "pmgr" directly
+ */
+struct SRAPath *SRAMgrAccessSRAPath ( const SRAMgr *self );
 
 
 /*--------------------------------------------------------------------------

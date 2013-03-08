@@ -155,7 +155,7 @@ VTRANSFACT_IMPL ( ALIGN_ref_restore_read, 1, 0, 0 ) ( const void *Self, const VX
     if(rc == 0 ) {
         rslt->self = fself;
         rslt->u.ndf = ref_restore_read_impl;
-        rslt->variant = vftNonDetRow;
+        rslt->variant = vftRow;
         rslt -> whack = RestoreReadWhack;
     }
     return rc;

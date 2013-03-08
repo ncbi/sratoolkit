@@ -134,7 +134,7 @@ VTRANSFACT_IMPL ( NCBI_refSeq_stats, 1, 0, 0 ) ( const void *self, const VXfactI
             if( rc == 0 ) {
                 rslt->self = data;
                 rslt->whack = refseq_meta_stats_whack;
-                rslt->variant = vftNonDetRow;
+                rslt->variant = vftRow;
                 rslt->u.rf = refseq_meta_stats;
                 data->crc32 = 0;
                 CRC32Init();

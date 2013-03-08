@@ -61,6 +61,7 @@
  */
 rc_t VCursorWhack ( VCursor *self )
 {
+    VCursorTerminatePagemapThread(self);
     return VCursorDestroy ( self );
 }
 

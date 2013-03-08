@@ -107,6 +107,21 @@ rc_t CC SignalNoHup ( void )
     return 0;
 }
 
+
+BOOL CC Our_HandlerRoutine( DWORD dwCtrlType )
+{
+    BOOL res = FALSE;
+    switch( dwCtrlType )
+    {
+    case CTRL_C_EVENT : ReportSilence ();
+                        atomic32_inc ( & quitting );
+                        res = TRUE;
+                        break;
+    }
+    return res;
+}
+
+
 /* main
  *  Windows specific main entrypoint
  */
@@ -114,6 +129,8 @@ static
 int main2 ( int argc, char *argv [] )
 {
     rc_t rc;
+
+    SetConsoleCtrlHandler( ( PHANDLER_ROUTINE ) Our_HandlerRoutine, TRUE );
 
     /* run this guy */
     rc = KMane ( argc, argv );
@@ -211,6 +228,7 @@ char *rewrite_arg ( const wchar_t *arg )
 
     return utf8;
 }
+
 
 int __cdecl wmain ( int argc, wchar_t *wargv [], wchar_t *envp [] )
 {

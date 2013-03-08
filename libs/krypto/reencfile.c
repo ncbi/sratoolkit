@@ -47,7 +47,6 @@
 
 #include <klib/out.h>
 
-/* #define USE_MISSING_VECTOR true */
 #define USE_MISSING_VECTOR false
 
 /* ----------------------------------------------------------------------
@@ -73,11 +72,6 @@ struct KReencFile
 /* block id's can not max out a 64 bit number as that is a file that is 32K times too big */
 #define NO_CURRENT_BLOCK (~(uint64_t)0)
     uint64_t      block_id;
-#if USE_MISSING_VECTOR
-    KVector *     missing;       /* tracks those blocks not yet seen */
-    uint64_t      next_block;   /* one more than the highest block id yet seen */
-    uint64_t      seek_block;   /* this is kinda like next block when we don't know where the footer is */
-#endif
     uint64_t      footer_block; /* if zero, still unknown */
 
     uint64_t      size;         /* size as known from the original file [see known_size] */
@@ -108,7 +102,7 @@ rc_t CC KReencFileDestroy (KReencFile *self)
 {
     if (self)
     {
-        rc_t rc1, rc2, rc3, rc4, rc5;
+        rc_t rc1, rc2, rc3, rc4;
 
         rc1 = KFileRelease (self->encrypted);
         if (rc1)
@@ -126,21 +120,12 @@ rc_t CC KReencFileDestroy (KReencFile *self)
         if (rc4)
             LOGERR (klogInt, rc4, "Re-enc failed to release encryptor");
 
-#if USE_MISSING_VECTOR
-        rc5 = KVectorRelease (self->missing);
-        if (rc5)
-            LOGERR (klogInt, rc5, "Re-enc failed to destroy unread vector");
-#else
-        rc5 = 0;
-#endif
-
         free (self);
 
         return (rc1 ? rc1 :
                 rc2 ? rc2 :
                 rc3 ? rc3 :
-                rc4 ? rc4 :
-                rc5);
+                rc4);
     }
     return 0;
 }
@@ -199,6 +184,36 @@ rc_t CC KReencFileSize (const KReencFile *self, uint64_t *size)
      * about knowing the size
      */
     return KFileSize (self->encrypted, size);
+}
+
+
+static
+rc_t CC KEncryptFileSize (const KReencFile *self, uint64_t *size)
+{
+    uint64_t z;
+    rc_t rc;
+
+    assert (self != NULL);
+    assert (self->encrypted != NULL);
+
+    /* -----
+     * the re-encrypted file will be the same size as the 
+     * previously encrypted file and we have the same understanding
+     * about knowing the size
+     */
+    rc = KFileSize (self->encrypted, &z);
+
+    if (rc == 0)
+    {
+        uint64_t bid;
+
+        bid = DecryptedPos_to_BlockId (z, NULL);
+
+        *size = BlockId_to_EncryptedPos (bid + 1) + sizeof (KEncFileFooter);
+    }
+    else
+        *size = z;
+    return rc;
 }
 
 
@@ -343,42 +358,15 @@ rc_t KReencFileReadHandleHeader (KReencFile *self,
 
 
 /*
- * Mark all Blocks from the current 'next expected block id' [inclusive] through
- * the parameter to [exclusive] into the mssing list
- *
- * This is used both in handling a block or a footer 
- */
-#if USE_MISSING_VECTOR
-static __inline__
-rc_t KReencFileAddMissing (KReencFile * self,
-                           uint64_t to)
-{
-    rc_t rc = 0;
-
-/* KOutMsg ("%s: '%lu' to '%lu'\n", __func__, self->next_block, to);    */
-
-    for (; self->next_block < to; ++self->next_block)
-    {
-/* KOutMsg ("%s: to '%lu'\n", __func__, self->next_block); */
-
-        rc = KVectorSetBool (self->missing, self->next_block, true);
-        if (rc)
-        {
-            LOGERR (klogInt, rc, "Re-enc error setting missing block");
-            break;
-        }
-    }
-    return rc;
-}
-#endif
-
-/*
  * Read the requested block form the source encrypted file
  */
 static
 rc_t KReencFileReadABlock (KReencFile * self, uint64_t block_id)
 {
     rc_t rc;
+
+
+/*     OUTMSG (("%s: block_id %lu\n",__func__,block_id)); */
 
     if (block_id + 1 == self->footer_block)
         memset (self->plain_text, 0, sizeof self->plain_text);
@@ -457,6 +445,12 @@ rc_t KReencFileWriteABlock (KReencFile * self, uint64_t block_id)
         LOGERR (klogErr, rc, "re-enc failure encrypting all of block");
     }
 
+    /* trigger a flush */
+/*     if (rc == 0) */
+/*         rc = KFileWriteAll (self->enc, BlockId_to_DecryptedPos (block_id^1), */
+/*                          self->plain_text, self->num_read, &self->num_writ); */
+
+
     return rc;
 }
 
@@ -534,110 +528,6 @@ rc_t KReencFileReencBlock (KReencFile * self, uint64_t block_id, bool new_block)
 
 
 /*
- * Call back for KReencFileReadMissing
- *
- * It re-encrypts one block without putting it to the callers read buffer
- */
-#if USE_MISSING_VECTOR
-static
-rc_t CC HandleOneMissing (uint64_t key, bool value, void * user_data)
-{
-    rc_t rc = 0;
-    /*
-     * The Call back parameters are now:
-     *    key is block_id
-     *    value is actually missing or not
-     *    user_data is the KReencFile self from the KFileRead
-     */
-/*     KOutMsg ("%s: key %lu value %u\n", __func__, key, value); */
-    if (value)
-    {
-        KReencFile * self = user_data;
-
-        rc = KVectorSetBool (self->missing, key, false);
-        if (rc)
-        {
-            LOGERR (klogInt, rc, "re-enc error clearing missing bit");
-        }
-
-        else if (self->footer_block <= value)
-        {
-            rc = RC (rcKrypto, rcFile, rcReading, rcSize, rcInvalid);
-            LOGERR (klogInt, rc, "re-enc bad value set in missing list");            
-        }
-
-        else
-        {
-            /* true is that this is a first time seeing this block */
-            rc = KReencFileReencBlock (user_data, key, true);
-            if (rc)
-            {
-                LOGERR (klogErr, rc, "re-enc error handling a missing block");
-            }
-        }
-    }
-/*     KOutMsg ("%s: rc '%R'\n",__func__, rc); */
-    return rc;
-}
-#endif
-
-
-/* 
- * For every block in the missing list re-encrypt it without writing it
- * to the callers output buffer
- */
-#if USE_MISSING_VECTOR
-static
-rc_t KReencFileReadMissing (KReencFile * self)
-{
-    rc_t rc;
-
-#if 1 /* KVectorVisitBool doesn' work */
-    uint64_t limit;
-    uint64_t ix;
-
-    limit = self->footer_block;
-    for (ix = 0; ix < limit; ++ix)
-    {
-        bool b;
-
-        rc = KVectorGetBool (self->missing, ix, &b);
-
-        if (rc == 0)
-        {
-            if (b)
-            {
-                rc = HandleOneMissing (ix, b, self);
-/*                 KOutMsg ("%lu ", ix); */
-                if (rc)
-                    break;
-            }
-        }
-        else if (GetRCState(rc) == rcNotFound)
-            rc = 0;
-        else
-            break;
-    }
-/*     KOutMsg ("\n"); */
-#else
-
-    /*
-     * visit each element in the vector table
-     * we rely on KVector to not suck too much CPU
-     *
-     * Visit parameters:
-     * Missing vector, not reverse, callback, and the callback data is just self
-     */
-    rc = KVectorVisitBool (self->missing, false, HandleOneMissing, self);
-    if (rc)
-        LOGERR (klogErr, rc, "re-enc error reading missing blocks");
-#endif
-    return rc;
-}
-#endif
-
-
-/*
  * Handle Read within the Encrypted file footer
  */
 static __inline__
@@ -680,50 +570,27 @@ rc_t KReencFileReadHandleFooter (KReencFile *self,
 
 /* KOutMsg ("%s: self->next_block %lu\n",__func__, self->next_block); */
 
-#if USE_MISSING_VECTOR
-    if (block_id > self->next_block)
-    {
-        rc = KReencFileAddMissing (self, block_id);
-        if (rc)
-            LOGERR (klogInt, rc, "re-enc failed trying to mark missing blocks");
-    }
-#else
     self->foot.foot.block_count = block_id;
     self->foot.foot.crc_checksum = 0;
-#endif
 
     if (rc == 0)
     {
-        /* to generate the right footer we have to re-encrypt every block
-         * so go back and get those we've missed seeing
-         */
+        uint64_t header_pos;
 
-/* KOutMsg ("%s: call ReadMissing\n", __func__); */
-#if USE_MISSING_VECTOR
-        rc = KReencFileReadMissing (self);
-        if (rc)
-            LOGERR (klogErr, rc, "re-enc failed to re-encrypt "
-                    "blocks from missing list");
-        else
-#endif
-        {
-            uint64_t header_pos;
+        header_pos = BlockId_to_EncryptedPos(block_id);
 
-            header_pos = BlockId_to_EncryptedPos(block_id);
+        assert (header_pos <= pos);
+        assert (pos - header_pos <= sizeof self->foot);
 
-            assert (header_pos <= pos);
-            assert (pos - header_pos <= sizeof self->foot);
-
-            rc = KReencFileReadFooterOut (self, (size_t)(pos - header_pos),
-                                          buffer, bsize, num_read);
+        rc = KReencFileReadFooterOut (self, (size_t)(pos - header_pos),
+                                      buffer, bsize, num_read);
 
 /*             KOutMsg ("%s: footer '%lu' '%lx'\n",__func__, */
 /*                      self->foot.foot.block_count, */
 /*                      self->foot.foot.crc_checksum); */
 
-            if (rc)
-                LOGERR (klogInt, rc, "re-enc failed to output footer");
-        }
+        if (rc)
+            LOGERR (klogInt, rc, "re-enc failed to output footer");
     }
     return rc;
 }
@@ -758,28 +625,7 @@ rc_t KReencFileReadHandleBlock (KReencFile *self,
 
     if (block_id != self->block_id)
     {
-
-#if USE_MISSING_VECTOR
-        /* are we reading a block earlier than the currently expected one? */
-        if (block_id < self->next_block)
-        {
-            /* Is it a new read or a reread? */
-            rc = KVectorGetBool (self->missing, block_id, &new_block);
-            if (rc)
-                LOGERR (klogInt, rc, "re-enc failed pulling from missing list");
-
-            /* if it was in the missing list, take it out of the missing list */
-            else if (new_block)
-            {
-                rc = KVectorSetBool (self->missing, block_id, false);
-                if (rc)
-                    LOGERR (klogInt, rc,
-                            "re-enc failure to fetch previously read state");
-            }
-        }
-        else
-#endif
-            new_block = true;
+        new_block = true;
 
         if (rc == 0)
         {
@@ -790,19 +636,7 @@ rc_t KReencFileReadHandleBlock (KReencFile *self,
                 LOGERR (klogErr, rc,
                         "re-enc failure re-encryptinng a requested block");
             }
-            /* -----
-             * Have we skipped over some blocks between expected next high block
-             * and the requested block? Flag them if so.
-             */
-#if USE_MISSING_VECTOR
-            else if (block_id > self->next_block)
-                rc = KReencFileAddMissing (self, block_id);
-#endif
         }
-#if USE_MISSING_VECTOR
-        if ((rc == 0) && (new_block != false))
-            self->next_block = block_id + 1;
-#endif
     }
     if (rc == 0)
     {
@@ -1106,7 +940,7 @@ LIB_EXPORT rc_t CC KReencFileMakeRead (const KFile ** pself,
     
     if (rc)
     {
-        LOGERR (klogErr, rc, "Unable to attempt to seize encrypted file for reencryption");
+        LOGERR (klogErr, rc, "Unable to attempt to size encrypted file for reencryption");
         return rc;
     }
 
@@ -1125,7 +959,8 @@ LIB_EXPORT rc_t CC KReencFileMakeRead (const KFile ** pself,
     if (size < sizeof (KEncFileHeader) + sizeof (KEncFileBlock) + sizeof (KEncFileFooter))
     {
         rc = RC (rcKrypto, rcFile, rcConstructing, rcSize, rcTooShort);
-        LOGERR (klogErr, rc, "ecnrypted file too short to be valied for re-encryption");
+        LOGERR (klogErr, rc, "encrypted file too short to be valied for re-encryption");
+        KFileRelease (encrypted);
         return rc;
     }
 
@@ -1137,7 +972,8 @@ LIB_EXPORT rc_t CC KReencFileMakeRead (const KFile ** pself,
         if ((block_count * sizeof (KEncFileBlock)) != temp)
         {
             rc = RC (rcKrypto, rcFile, rcConstructing, rcSize, rcInvalid);
-            LOGERR (klogErr, rc, "ecnrypted file invalid size for re-encryption");
+            LOGERR (klogErr, rc, "encrypted file invalid size for re-encryption");
+            KFileRelease (encrypted);
             return rc;
         }
     }
@@ -1152,7 +988,7 @@ LIB_EXPORT rc_t CC KReencFileMakeRead (const KFile ** pself,
     }
     else
     {
-        rc = KFileInit (&self->dad, (const KFile_vt*)&vtKReencFileRead, true, false);
+        rc = KFileInit (&self->dad, (const KFile_vt*)&vtKReencFileRead, "KReencFile", "no-name", true, false);
         if (rc)
             LOGERR (klogInt, rc, "failed in initialize reenc base class");
         else
@@ -1168,17 +1004,9 @@ LIB_EXPORT rc_t CC KReencFileMakeRead (const KFile ** pself,
             self->size = size;
             self->known_size = true; /* obsolete */
             /* plain_text and block stay 0 */
-#if USE_MISSING_VECTOR
-            /* foot stays 0 */
-#else
             self->foot.foot.block_count = self->footer_block;
-#endif
 
-#if USE_MISSING_VECTOR
             rc = KEncFileMakeRead (&self->dec, encrypted, deckey);
-#else
-            rc = KEncFileMakeRead_v2 (&self->dec, encrypted, deckey);
-#endif
             if (rc)
                 LOGERR (klogErr, rc, "Failed to create re-enc decryptor");
 
@@ -1191,23 +1019,145 @@ LIB_EXPORT rc_t CC KReencFileMakeRead (const KFile ** pself,
                             "Failed to create re-enc encryptor");
                 else
                 {
-                    rc = KEncFileMakeUpdate_v1 (&self->enc, self->ram, enckey);
+
+                    rc = KEncFileMakeWriteBlock (&self->enc, self->ram, enckey);
                     if (rc)
                         LOGERR (klogErr, rc,
                                 "Failed to create RAM file for reenc");
                     else
                     {
-#if USE_MISSING_VECTOR
-                        rc = KVectorMake (&self->missing);
-                        if (rc)
-                            LOGERR (klogErr, rc,
-                                    "Failed in initialize Missing Vector");
-                        else
-#endif
-                        {
-                            *pself = &self->dad;
-                            return 0;
-                        }
+                        *pself = &self->dad;
+                        return 0;
+                    }
+                    KFileRelease (self->ram);
+                }
+                KFileRelease (self->dec);
+            }
+        }
+        free (self);
+    }
+    KFileRelease (encrypted);
+    return rc;
+}
+
+
+static const KFile_vt_v1 vtKEncryptFileRead =
+{
+    /* version */
+    1, 1,
+
+    /* 1.0 */
+    KReencFileDestroy,
+    KReencFileGetSysFileUnsupported,
+    KReencFileRandomAccess,
+    KEncryptFileSize,
+    KReencFileSetSizeUnsupported,
+    KReencFileRead,
+    KReencFileWriteUnsupported,
+
+    /* 1.1 */
+    KReencFileType
+};
+
+
+LIB_EXPORT rc_t CC KEncryptFileMakeRead (const KFile ** pself, 
+                                         const KFile * encrypted,
+                                         const KKey * enckey)
+{
+    KReencFile * self;
+    uint64_t rawsize;
+    uint64_t size;
+    uint64_t block_count;
+    rc_t rc;
+
+    rc = KReencFileMakeParamValidate (pself, encrypted, enckey, enckey);
+    if (rc)
+    {
+        LOGERR (klogErr, rc, "error constructing decryptor");
+        return rc;
+    }
+
+    rc = KFileSize (encrypted, &rawsize);
+    if (GetRCState (rc) == rcUnsupported)
+    {
+        size = 0;
+        rc = RC (rcKrypto, rcFile, rcConstructing, rcSize, rcUnsupported);
+        LOGERR (klogErr, rc, "Can't encrypt files that don't support KFileSize");
+        return rc;
+    }
+    
+    if (rc)
+    {
+        LOGERR (klogErr, rc, "Unable to attempt to size encrypted file for encryption");
+        return rc;
+    }
+
+    rc = KFileAddRef (encrypted);
+    if (rc)
+    {
+        LOGERR (klogErr, rc, "Unable to add reference to unencrypted file for encryptor");
+        return rc;
+    }
+
+    if (rawsize == 0)
+    {
+        *pself = encrypted;
+        return rc;
+    }
+
+    self = calloc (1,sizeof (*self));
+
+    if (self == NULL)
+    {
+        rc = RC (rcFS, rcFile, rcConstructing, rcMemory, rcExhausted);
+        LOGERR (klogSys, rc,
+                "out of memory creating encrypter and/or decryptor");
+    }
+    else
+    {
+        rc = KFileInit (&self->dad, (const KFile_vt*)&vtKEncryptFileRead, "KEncryptFile", "no-path", true, false);
+        if (rc)
+            LOGERR (klogInt, rc, "failed in initialize reenc base class");
+        else
+        {
+            self->encrypted = encrypted;
+            /* dec, enc, ram need to be Make */
+            /* num_read, num_write stay 0 */
+            self->block_id = NO_CURRENT_BLOCK;
+            /* missing needs to be Made */
+            /* next_block stays 0 */
+            /* seek_block stays 0 - obsolete */
+            block_count = DecryptedPos_to_BlockId (rawsize, NULL);
+            size = BlockId_to_EncryptedPos (block_count + 1) + sizeof (KEncFileFooter);
+
+            self->footer_block = block_count + 1;
+            self->size = size;
+            self->known_size = true; /* obsolete */
+            /* plain_text and block stay 0 */
+            self->foot.foot.block_count = self->footer_block;
+
+            rc = KFileAddRef (self->dec = encrypted);
+            if (rc)
+                LOGERR (klogErr, rc, "Unable to add reference to unencrypted file for encryptor");
+
+            else
+            {
+                rc = KRamFileMakeUpdate (&self->ram, self->block.text, 
+                                         sizeof self->block.text);
+                if (rc)
+                    LOGERR (klogErr, rc, 
+                            "Failed to create ram file for encryptor");
+                else
+                {
+                    
+                    rc = KEncFileMakeWriteBlock (&self->enc, self->ram, enckey);
+                    if (rc)
+                        LOGERR (klogErr, rc,
+                                "Failed to create RAM file for enc");
+                    else
+                    {
+                        *pself = &self->dad;
+                        return 0;
                     }
                     KFileRelease (self->ram);
                 }

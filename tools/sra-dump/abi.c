@@ -158,8 +158,8 @@ rc_t Absolid2BioFilterFactory_Make(const SRASplitterFactory** cself, const char*
 typedef struct AbsolidLabelerFilter_struct {
     const AbsolidReader* reader;
     bool is_platform_cs_native;
-    SRASplitter_Keys keys[4];
-    size_t key_sz[4];
+    SRASplitter_Keys keys[7];
+    size_t key_sz[7];
 } AbsolidLabelerFilter;
 
 static
@@ -257,10 +257,16 @@ rc_t AbsolidLabelerFilterFactory_NewObj(const SRASplitterFactory* cself, const S
             ((AbsolidLabelerFilter*)(*splitter))->keys[1].key = "R3";
             ((AbsolidLabelerFilter*)(*splitter))->keys[2].key = "F5-P2";
             ((AbsolidLabelerFilter*)(*splitter))->keys[3].key = "F5-BC";
+            ((AbsolidLabelerFilter*)(*splitter))->keys[4].key = "F5-RNA";
+            ((AbsolidLabelerFilter*)(*splitter))->keys[5].key = "F5-DNA";
+            ((AbsolidLabelerFilter*)(*splitter))->keys[6].key = "F3-DNA";
             ((AbsolidLabelerFilter*)(*splitter))->key_sz[0] = 2;
             ((AbsolidLabelerFilter*)(*splitter))->key_sz[1] = 2;
             ((AbsolidLabelerFilter*)(*splitter))->key_sz[2] = 5;
             ((AbsolidLabelerFilter*)(*splitter))->key_sz[3] = 5;
+            ((AbsolidLabelerFilter*)(*splitter))->key_sz[4] = 6;
+            ((AbsolidLabelerFilter*)(*splitter))->key_sz[5] = 6;
+            ((AbsolidLabelerFilter*)(*splitter))->key_sz[6] = 6;
         }
     }
     return rc;

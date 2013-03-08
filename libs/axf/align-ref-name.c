@@ -62,7 +62,7 @@ void CC RefNameWhack ( void *obj )
 }
 
 static
-rc_t RefNameMake ( RefName **objp, const VTable *tbl )
+rc_t RefNameMake ( RefName **objp, const VTable *tbl, const VCursor *native_curs )
 {
     rc_t rc;
 
@@ -71,28 +71,23 @@ rc_t RefNameMake ( RefName **objp, const VTable *tbl )
     if ( obj == NULL ) {
         rc = RC ( rcXF, rcFunction, rcConstructing, rcMemory, rcExhausted );
     } else {
-        /* open the reference table */
-        const VTable *reftbl;
-        if( (rc = AlignRefTable(tbl, &reftbl)) == 0 ) {
-            /* create a cursor */
-            rc = VTableCreateCachedCursorRead(reftbl, &obj->curs, 8*1024u * 1024u);
-            VTableRelease ( reftbl );
-            if( rc == 0 ) {
+	obj->curs=NULL;
+        /* open the reference cursor */
+	rc = AlignRefTableCursor(tbl, native_curs, &obj->curs, NULL);
+	if(rc == 0){
                 /* add columns to cursor */
-                if( (rc = VCursorAddColumn(obj->curs, &obj->name_idx, "(utf8)REF_NAME")) == 0 ) {
-                    rc = VCursorOpen(obj->curs);
-                }
-                if( GetRCObject(rc) == rcColumn && GetRCState(rc) == rcNotFound ) {
-                    if( (rc = VCursorAddColumn(obj->curs, &obj->name_idx, "(utf8)NAME")) == 0 ) {
-                        rc = VCursorOpen(obj->curs);
-                    }
-                }
+		rc = VCursorAddColumn(obj->curs, &obj->name_idx, "(utf8)REF_NAME");
+		if( GetRCObject(rc) == rcColumn && GetRCState(rc) == rcNotFound ) {
+			rc = VCursorAddColumn(obj->curs, &obj->name_idx, "(utf8)NAME");
+		}
+		if(GetRCState(rc) == rcExists){
+			rc = 0;
+		}
                 if( rc == 0 ) {
                     *objp = obj;
                     return 0;
                 }
                 VCursorRelease ( obj -> curs );
-            }
         }
         free ( obj );
     }
@@ -150,7 +145,7 @@ VTRANSFACT_IMPL ( NCBI_align_ref_name, 1, 0, 0 ) ( const void *self, const VXfac
     VFuncDesc *rslt, const VFactoryParams *cp, const VFunctionParams *dp )
 {
     RefName *fself;
-    rc_t rc = RefNameMake ( & fself, info -> tbl );
+    rc_t rc = RefNameMake ( & fself, info -> tbl,(const VCursor*)info->parms  );
     if ( rc == 0 )
     {
         rslt -> self = fself;

@@ -697,7 +697,7 @@ LIB_EXPORT rc_t CC KFileMakeBzip2ForRead (const struct KFile **pnew_obj,
         else
         {
             rc = KFileInit(&obj->dad, (const KFile_vt*) &KBZipFile_vt_v1,
-                           true, false);
+                           "KBZipFile", "no-name", true, false);
             if (rc == 0)
             {
                 bz_stream * strm;
@@ -778,7 +778,7 @@ LIB_EXPORT rc_t CC KFileMakeBzip2ForWrite (struct KFile **pnew_obj,
         else
         {
             rc = KFileInit(&obj->dad, (const KFile_vt*)&KBZipFile_vt_v1,
-                           false, true);
+                           "KBZipFile", "no-name", false, true);
             if (rc == 0)
             {
                 bz_stream* strm;

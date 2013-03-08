@@ -26,6 +26,7 @@
 
 #include <kfs/extern.h>
 
+
 /*--------------------------------------------------------------------------
  * forwards
  */
@@ -38,12 +39,222 @@ struct KSysFile;
 #include <klib/text.h>
 #include <sysalloc.h>
 
+/* temporary */
+/* #include <klib/out.h> */
+
+
+
 #include <Windows.h>
+/* #include <WinIoCtl.h> nested include in Windows.h? */
 
 /*--------------------------------------------------------------------------
  * KSysFile
  *  a Windows file
  */
+
+/* minimum set size or write beyond size difference to trigger setting sparse */
+/* tune this if too many or too few sparse files */
+#define MIN_SET_SPARSE_DIFF   (16*1024)
+#define MIN_SPARSE_BLOCK_DIFF  (4*1024)
+
+
+/* ----------
+ * Some functions to isolate the calls to Windows functions as I feel dirty
+ * just using them.
+ * really its to isolate some calls the very different style of parmaters
+ * for the calls from the usualy project approach.
+ *
+ * if the compiler inlines them it's all good.
+ */
+
+/*
+ * Get file size 
+ */
+static rc_t get_file_size (const KSysFile * self, uint64_t * size)
+{
+    LARGE_INTEGER sz;
+
+    if ( GetFileSizeEx ( self -> handle, & sz ) == 0 )
+    {
+        rc_t rc;
+        DWORD last_error;
+
+        last_error = GetLastError ();
+        switch ( last_error )
+        {
+        case ERROR_INVALID_HANDLE:
+            rc = RC ( rcFS, rcFile, rcAccessing, rcFileDesc, rcInvalid );
+            break;
+        default:
+            rc = RC ( rcFS, rcFile, rcAccessing, rcNoObj, rcUnknown );
+            break;
+        }
+        PLOGERR (klogErr,
+                 (klogErr, rc, "error accessing file system status - $(E)($(C))",
+                  "E=%!,C=%u", last_error, last_error)); 
+        return rc;
+    }
+    *size = sz.QuadPart;
+
+    return 0;
+}
+
+
+/* returns (and side effect sets in structure)
+ * if the file is already a sparse file
+ */
+static bool check_if_sparse (KSysFile * self)
+{
+    BY_HANDLE_FILE_INFORMATION info;
+    BOOL worked;
+
+    if (self->is_sparse)
+        return true;
+
+    /*
+     * we don't use the GetFileInformationBy HandleEx as we don't want to 
+     * exclude Win XP yet.
+     */
+    worked = GetFileInformationByHandle (self->handle, &info);
+
+    self->is_sparse = 
+        ((info.dwFileAttributes & FILE_ATTRIBUTE_SPARSE_FILE)
+         == FILE_ATTRIBUTE_SPARSE_FILE);
+
+    return self->is_sparse;
+}
+
+/*
+ * make a file sparse set_it == true
+ * return is like Windows funcs with true being good
+ *
+ * we can't set if the Windows Volume doesn't allow it
+ * but we'll let the function fail rather than try to get the value at 
+ * CREATE (open) time because we'd be then checking at all file CREATE
+ * whether we'd ever make it sparse or not
+ */
+static
+bool set_sparse (KSysFile * self)
+{
+    FILE_SET_SPARSE_BUFFER b = { true };
+    DWORD ret;
+    BOOL worked;
+    bool rreett = false;
+
+    /* don't duplicate effort */
+    if (self->is_sparse)
+        rreett =  true;
+
+    else if (self->failed_set_sparse)
+        rreett = false;
+
+    else
+    {
+        worked = DeviceIoControl (self->handle, FSCTL_SET_SPARSE, &b, sizeof b,
+                              NULL, 0, &ret, NULL);
+/*         KOutMsg ("%s: %u\n",__func__,worked); */
+
+        /* not trusting bool is BOOL cause I don't trust Microsoft */
+        self->failed_set_sparse = (worked == 0);
+        self->is_sparse = !self->failed_set_sparse;
+        rreett =  self->is_sparse;
+    }
+/*     KOutMsg ("%s: %d\n",__func__,rreett); */
+    return rreett;
+}
+
+
+static bool set_not_sparse (KSysFile * self)
+{
+    FILE_SET_SPARSE_BUFFER b = { false };
+    DWORD ret;
+    BOOL worked;
+
+    /* don't duplicate effort */
+    if (!check_if_sparse (self))
+        return true;
+
+    if (self->failed_set_sparse)
+        return false;
+
+    worked = DeviceIoControl (self->handle, FSCTL_SET_SPARSE, &b, sizeof b,
+                              NULL, 0, &ret, NULL);
+
+    /* not trusting bool is BOOL cause I don't trust Microsoft */
+    self->failed_set_sparse = (worked == 0);
+    self->is_sparse = self->failed_set_sparse;
+    return ! self->is_sparse;
+}
+
+/*
+ * this one works for non-sparse files too but what evs.
+ */
+static rc_t set_zero_region (KSysFile * self, uint64_t start, uint64_t size)
+{
+    FILE_ZERO_DATA_INFORMATION b = { start, start + size };
+    DWORD ret;
+    BOOL worked;
+
+    worked = DeviceIoControl (self->handle, FSCTL_SET_ZERO_DATA,
+                            &b, sizeof b,
+                            NULL, 0,
+                            &ret, NULL);
+
+    /* TODO: check error codes with GetLastError and better rc values */
+    return (worked != 0) ? 0 : RC (rcFS, rcFile, rcWriting, rcBuffer, rcUnexpected);
+}
+
+
+/*
+ * returns true if we can convert this file into a non-sparse file
+ *
+ * We went simple and fast.  We ask about zero regions.
+ * if we specifically get back that there are none we say true
+ * otherwise we say false.
+ *
+ * self can be modified so it can not be const
+ */
+static bool can_be_made_not_sparse (KSysFile * self     )
+{
+#if 1
+    return false;
+#else
+    /* this is backwards - the list of os non-zero regions not zero regions */
+    LARGE_INTEGER fo;
+    LARGE_INTEGER l;
+    uint64_t size;
+    FILE_ALLOCATED_RANGE_BUFFER i;
+    FILE_ALLOCATED_RANGE_BUFFER o [16]; /* some none 0 number */
+    uint64_t count;
+    DWORD ret;
+    BOOL worked;
+    rc_t rc;
+
+    /* if is isn't sparse we can't make it not sparse */
+    /* first might be not yet set */
+    if (!check_if_sparse (self))
+        return true;
+
+    /* we can't scan for zero regions if we can't get a size */
+    rc = get_file_size (self, &size);
+    if (rc)
+        return false;
+
+    /* Microsoft APIs can be fairly odd */
+    fo.QuadPart = 0;
+    l.QuadPart = size;
+    i.FileOffset = fo;
+    i.Length = l;
+
+    worked = DeviceIoControl (self->handle, FSCTL_QUERY_ALLOCATED_RANGES,
+                              &i, sizeof i, o, sizeof o, & ret, NULL);
+    /* we can't change to non-sparse if we can't scan for zero regions */
+    if (worked == 0)
+        return false;
+
+    return (ret == 0);
+#endif
+}
 
 
 /* Destroy
@@ -142,6 +353,11 @@ uint32_t CC KSysFileType ( const KSysFile *self )
 static
 rc_t CC KSysDiskFileSize ( const KSysFile *self, uint64_t *size )
 {
+#if 1
+/*     KOutMsg ("%s:\n",__func__); */
+    return get_file_size (self, size);
+#else
+
     LARGE_INTEGER sz;
 
     if ( GetFileSizeEx ( self -> handle, & sz ) == 0 )
@@ -167,6 +383,7 @@ rc_t CC KSysDiskFileSize ( const KSysFile *self, uint64_t *size )
 
     *size = sz . QuadPart;
     return 0;
+#endif
 }
 
 
@@ -189,6 +406,14 @@ rc_t CC KSysDiskFileSetSize ( KSysFile *self, uint64_t size )
 {
     rc_t rc = 1;
     LARGE_INTEGER p;
+    uint64_t prev_size;
+
+/*     KOutMsg ("%s:\n",__func__); */
+    /* get previous size for setting or clearing sparse */
+    rc = get_file_size ( self, &prev_size);
+    if (rc)
+        return rc;
+/*     KOutMsg ("%s: %lu\n",__func__, prev_size); */
 
     p . QuadPart = size;
 
@@ -201,6 +426,7 @@ rc_t CC KSysDiskFileSetSize ( KSysFile *self, uint64_t size )
         }
     }
 
+    /* failure to set size*/
     if ( rc != 0 )
     {
         DWORD last_error;
@@ -213,10 +439,44 @@ rc_t CC KSysDiskFileSetSize ( KSysFile *self, uint64_t size )
         default:
             rc = RC ( rcFS, rcFile, rcUpdating, rcNoObj, rcUnknown );
         }
-        PLOGERR (klogErr,
-                 (klogErr, rc, "error accessing file system status - $(E)($(C))",
-                  "E=%!,C=%u", last_error, last_error)); 
+        PLOGERR ( klogErr,
+                 ( klogErr, rc, "error setting filesize - $(E) - $(C) to $(D)",
+                   "E=%!,C=%u,D=%lu", last_error, last_error, size ) ); 
     }
+
+    /* check for wanting to be sparse file */
+    if (size > prev_size)
+    {
+        uint64_t diff;
+
+/*         KOutMsg ("%s: size(%lu) larger than prev_size(%lu)\n",__func__, size, prev_size); */
+
+        diff = size - prev_size;
+
+        /* if block size if big enough we'll try to make it a sparse block */
+        if (diff >= MIN_SPARSE_BLOCK_DIFF)
+        {
+/*             KOutMsg ("%s: diff(%lu) larger than block constant(%lu)\n",__func__, diff, MIN_SPARSE_BLOCK_DIFF); */
+            /* set sparse? */
+            if (!check_if_sparse(self)) /* isn't sparse now */
+            {
+                if (diff >= MIN_SET_SPARSE_DIFF)
+                {
+/*                     KOutMsg ("%s: diff(%lu) larger than sparse constant(%lu)\n",__func__, diff, MIN_SET_SPARSE_DIFF); */
+                    (void)set_sparse (self);
+                }
+            }
+            /* ordered to try to set before looking to set the zero region */
+            if (self->is_sparse)
+            {
+                /* set sparse region at end */
+                set_zero_region (self, prev_size, diff);
+            }
+        }
+    }
+    else if (can_be_made_not_sparse (self))
+        (void)set_not_sparse (self);
+
     return rc;
 }
 
@@ -301,16 +561,17 @@ rc_t CC KSysDiskFileRead ( const KSysFile *cself, uint64_t pos,
                 rc = RC ( rcFS, rcFile, rcPositioning, rcNoObj, rcUnknown );
                 break;
             }
-            PLOGERR (klogErr,
-                     (klogErr, rc, "error positioning system file - $(E)($(C))",
-                      "E=%!,C=%u", last_error, last_error)); 
+            PLOGERR ( klogErr,
+                     ( klogErr, rc, "error positioning system file - $(E)($(C)) to $(D)",
+                       "E=%!,C=%u,D=%u", last_error, last_error, pos ) ); 
             return rc;
         }
 
-        /* if we try to read behind the end of the file... */
-        if ( pos > p . QuadPart )
-        {
-            return RC ( rcFS, rcFile, rcPositioning, rcFileDesc, rcInvalid );
+        /* if we try to read beyond the end of the file... */
+        if ( pos >= p . QuadPart )
+        {   /* We've defined reading beyond EOF as return RC of 0 but bytes read as 0 */
+            /*return RC ( rcFS, rcFile, rcPositioning, rcFileDesc, rcInvalid );*/
+            return 0;
         }
 
         p . QuadPart = pos;
@@ -330,9 +591,9 @@ rc_t CC KSysDiskFileRead ( const KSysFile *cself, uint64_t pos,
                 return rc;
             default:
                 rc = RC ( rcFS, rcFile, rcPositioning, rcNoObj, rcUnknown );
-                PLOGERR (klogErr,
-                         (klogErr, rc, "error positioning system file - $(E)($(C))",
-                          "E=%!,C=%u", last_error, last_error)); 
+                PLOGERR ( klogErr,
+                          ( klogErr, rc, "error positioning system file - $(E)($(C)) to $(D)",
+                            "E=%!,C=%u,D=%lu", last_error, last_error, pos ) ); 
                 return rc;
             }
         }
@@ -461,15 +722,28 @@ static
 rc_t CC KSysDiskFileWrite ( KSysFile *self, uint64_t pos,
     const void *buffer, size_t size, size_t *num_writ)
 {
+    rc_t rc;
     if ( self -> pos != pos )
     {
         LARGE_INTEGER p;
+        uint64_t curr_size;
+
+        rc = get_file_size ( self, &curr_size );
+        if ( rc != 0 )
+            return rc;
+
+        if ( curr_size < pos )
+        {
+            rc = KSysDiskFileSetSize (self, pos);
+            if (rc)
+                return rc;
+        }
+
 
         p . QuadPart = pos;
 
         if ( SetFilePointerEx ( self -> handle, p, & p, FILE_BEGIN ) == 0 )
         {
-            rc_t rc;
             DWORD last_error;
 
             last_error = GetLastError ();
@@ -597,7 +871,7 @@ static const KFile_vt_v1 vtKSysStdIOOtherFile =
 
 
 static
-rc_t KSysFileMakeVT ( KSysFile **fp, HANDLE fd, const KFile_vt *vt,
+rc_t KSysFileMakeVT ( KSysFile **fp, HANDLE fd, const KFile_vt *vt, const char *path,
     uint64_t initial_pos, bool read_enabled, bool write_enabled )
 {
     rc_t rc;
@@ -611,11 +885,13 @@ rc_t KSysFileMakeVT ( KSysFile **fp, HANDLE fd, const KFile_vt *vt,
         rc = RC(rcFS, rcFile, rcConstructing, rcMemory, rcExhausted);
     else
     {
-        rc = KFileInit ( & f -> dad, vt, read_enabled, write_enabled );
+        rc = KFileInit ( & f -> dad, vt, "KSysFile", path, read_enabled, write_enabled );
         if ( rc == 0 )
         {
             f -> handle = fd;
-	    f -> pos = initial_pos;
+            f -> pos = initial_pos;
+            f -> failed_set_sparse = f->is_sparse = false;
+            check_if_sparse (f);
             *fp = f;
             return 0;
         }
@@ -630,7 +906,7 @@ rc_t KSysFileMakeVT ( KSysFile **fp, HANDLE fd, const KFile_vt *vt,
 #define ISSTDIO 2
 
 static
-rc_t KSysFileMakeInt ( KSysFile **fp, HANDLE fd, bool read_enabled, bool write_enabled, unsigned flags )
+rc_t KSysFileMakeInt ( KSysFile **fp, HANDLE fd, const char *path, bool read_enabled, bool write_enabled, unsigned flags )
 {
     DWORD ret;
     const KFile_vt * vt;
@@ -647,7 +923,7 @@ rc_t KSysFileMakeInt ( KSysFile **fp, HANDLE fd, bool read_enabled, bool write_e
     {
     case FILE_TYPE_DISK:
         flags |= ISDISK;
-	initial_pos = -1;
+        initial_pos = -1;
         break;
 
     case FILE_TYPE_UNKNOWN:
@@ -663,12 +939,12 @@ rc_t KSysFileMakeInt ( KSysFile **fp, HANDLE fd, bool read_enabled, bool write_e
             break;
         }
 
-	initial_pos = 0;
+        initial_pos = 0;
         flags &= ~ISDISK;
         break;
 
     default:
-	initial_pos = 0;
+        initial_pos = 0;
         flags &= ~ISDISK;
         break;
     }
@@ -692,13 +968,13 @@ rc_t KSysFileMakeInt ( KSysFile **fp, HANDLE fd, bool read_enabled, bool write_e
         break;
     }
 
-    return KSysFileMakeVT ( fp, fd, vt, initial_pos, read_enabled, write_enabled );
+    return KSysFileMakeVT ( fp, fd, vt, path, initial_pos, read_enabled, write_enabled );
 }
 
 /* extern, but internal to libkfs */
-rc_t KSysFileMake ( KSysFile **fp, HANDLE fd, bool read_enabled, bool write_enabled )
+rc_t KSysFileMake ( KSysFile **fp, HANDLE fd, const char *path, bool read_enabled, bool write_enabled )
 {
-    return KSysFileMakeInt ( fp, fd, read_enabled, write_enabled, 0 );
+    return KSysFileMakeInt ( fp, fd, path, read_enabled, write_enabled, 0 );
 }
 
 
@@ -708,7 +984,7 @@ rc_t KSysFileMake ( KSysFile **fp, HANDLE fd, bool read_enabled, bool write_enab
 LIB_EXPORT rc_t CC KFileMakeStdIn ( const KFile **fp )
 {
     HANDLE fd = GetStdHandle ( STD_INPUT_HANDLE );
-    return KSysFileMakeInt ( (KSysFile**)fp, fd, true, false, ISSTDIO );
+    return KSysFileMakeInt ( (KSysFile**)fp, fd, "stdin", true, false, ISSTDIO );
 }
 
 /* MakeStdOut
@@ -718,13 +994,13 @@ LIB_EXPORT rc_t CC KFileMakeStdIn ( const KFile **fp )
 LIB_EXPORT rc_t CC KFileMakeStdOut ( KFile **fp )
 {
     HANDLE fd = GetStdHandle ( STD_OUTPUT_HANDLE );
-    return KSysFileMakeInt ( (KSysFile**)fp, fd, false, true, ISSTDIO );
+    return KSysFileMakeInt ( (KSysFile**)fp, fd, "stdout", false, true, ISSTDIO );
 }
 
 LIB_EXPORT rc_t CC KFileMakeStdErr ( KFile **fp )
 {
     HANDLE fd = GetStdHandle ( STD_ERROR_HANDLE );
-    return KSysFileMakeInt ( (KSysFile**)fp, fd, false, true, ISSTDIO );
+    return KSysFileMakeInt ( (KSysFile**)fp, fd, "stderr", false, true, ISSTDIO );
 }
 
 /* MakeFDFile

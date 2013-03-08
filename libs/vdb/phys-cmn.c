@@ -415,7 +415,7 @@ rc_t VPhysicalReadKColumn ( VPhysical *self, VBlob **vblob, int64_t id, uint32_t
                     num_read = 2;
 
                 /* create data buffer */
-                rc = KDataBufferMakeBytes ( & buffer, (uint32_t)( num_read + remaining ) );
+                rc = KDataBufferMakeBytes ( & buffer, num_read + remaining );
                 if ( rc == 0 )
                 {
                     /* read entire blob */
@@ -520,13 +520,14 @@ rc_t VPhysicalReadStatic ( VPhysical *self, VBlob **vblob, int64_t id, uint32_t 
 
                         /* copy out single row */
                         memcpy ( buffer . base, base, bytes );
+                        self->fixed_len = buffer.elem_count;
 
                         /* limit row range */
                         if ( ( ( sstop_id - sstart_id ) >> 32 ) != 0 )
                         {
-			    sstart_id  =   ((id-1) &  ~0x7fffffffUL ) + 1;  /** Truncate to the nearest 2 billion **/
-			    if ( ( ( sstop_id - sstart_id ) >> 32 ) != 0 ) /** still not enough ***/
-				sstop_id = sstart_id + 0x80000000UL ; /** leave only 2 billion */
+                            sstart_id  =   ((id-1) &  ~0x7fffffffUL ) + 1;  /** Truncate to the nearest 2 billion **/
+                            if ( ( ( sstop_id - sstart_id ) >> 32 ) != 0 ) /** still not enough ***/
+                                sstop_id = sstart_id + 0x80000000UL ; /** leave only 2 billion */
                         }
 
                         rc = VBlobCreateFromSingleRow ( vblob,
@@ -551,9 +552,16 @@ rc_t VPhysicalReadBlob ( VPhysical *self, VBlob **vblob, int64_t id, uint32_t el
     {
         return VPhysicalReadStatic ( self, vblob, id, elem_bits );
     }
-
+    {
     /* need to read from kcolumn path */
-    return VProductionReadBlob ( self -> b2p, vblob, id , 1, NULL);
+	rc_t rc = VProductionReadBlob ( self -> b2p, vblob, id , 1, NULL);
+	if(rc == 0){
+	    if((*vblob)->pm==NULL){
+		rc = PageMapProcessGetPagemap(&self->curs->pmpr,&(*vblob)->pm);
+	    }
+	}
+	return rc;
+   }
 }
 
 

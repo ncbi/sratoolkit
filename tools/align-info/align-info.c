@@ -142,8 +142,6 @@ const char UsageDefaultName[] = "align-info";
 
 ver_t CC KAppVersion(void) { return ALIGN_INFO_VERS; }
 
-static rc_t ArgsRelease(Args* self) { return ArgsWhack(self); }
-
 static rc_t bam_header(const VDatabase* db) {
     rc_t rc = 0;
     const char path[] = "BAM_HEADER";

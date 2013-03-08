@@ -101,6 +101,8 @@ static void vdco_init_values( p_dump_context ctx )
     ctx->without_sra_types = false;
     ctx->dont_check_accession = false;
     ctx->print_num_elem = false;
+    ctx->objver_requested = false;
+    ctx->objtype_requested = false;
 }
 
 rc_t vdco_init( dump_context **ctx )
@@ -405,6 +407,7 @@ static void vdco_evaluate_options( const Args *my_args,
     ctx->column_enum_short = vdco_get_bool_option( my_args, OPTION_COLUMN_SHORT, false );
     ctx->print_dna_bases = vdco_get_bool_option( my_args, OPTION_DNA_BASES, false );
     ctx->objver_requested = vdco_get_bool_option( my_args, OPTION_OBJVER, false );
+    ctx->objtype_requested = vdco_get_bool_option( my_args, OPTION_OBJTYPE, false );
     ctx->max_line_len = vdco_get_uint16_option( my_args, OPTION_MAX_LINE_LEN, 0 );
     ctx->indented_line_len = vdco_get_uint16_option( my_args, OPTION_LINE_INDENT, 0 );
     ctx->id_range_requested = vdco_get_bool_option( my_args, OPTION_ID_RANGE, false );

@@ -555,7 +555,7 @@ rc_t KDBManagerVCreateColumnInt ( KDBManager *self,
     {
         KDirectory *dir;
 
-        switch ( KDBPathType ( wd, NULL, colpath ) )
+        switch ( KDBPathType ( /*NULL,*/ wd, NULL, colpath ) )
         {
         case kptNotFound:
             /* first good path */
@@ -615,7 +615,7 @@ rc_t KDBManagerVCreateColumnInt ( KDBManager *self,
 	case kptFile | kptAlias:
 	    /* if we find a file, vary the failure if it is an archive that is a column
 	     * or a non related file */
-	    if ( KDBOpenPathTypeRead ( wd, colpath, NULL, kptColumn, NULL, false ) == 0 )
+	    if ( KDBOpenPathTypeRead ( self, wd, colpath, NULL, kptColumn, NULL, false ) == 0 )
 		return RC ( rcDB, rcMgr, rcCreating, rcDirectory, rcUnauthorized );
 	    /* fall through */
         default:
@@ -833,7 +833,7 @@ rc_t KDBManagerVOpenColumnReadInt ( const KDBManager *cself,
             if ( cached != NULL )
                 *cached = false;
 
-            rc = KDBOpenPathTypeRead ( wd, path, &dir, kptColumn, NULL, try_srapath );
+            rc = KDBOpenPathTypeRead ( cself, wd, path, &dir, kptColumn, NULL, try_srapath );
 
             if ( rc == 0 )
             { 
@@ -988,7 +988,7 @@ rc_t KDBManagerVOpenColumnUpdateInt ( KDBManager *self,
             return RC ( rcDB, rcMgr, rcOpening, obj, rcBusy );
         }
         /* only open existing dbs */
-        switch (KDBPathType ( wd, NULL, colpath ) )
+        switch (KDBPathType ( /*NULL,*/ wd, NULL, colpath ) )
         {
         case kptNotFound:
             return RC ( rcDB, rcMgr, rcOpening, rcColumn, rcNotFound );
@@ -1001,7 +1001,7 @@ rc_t KDBManagerVOpenColumnUpdateInt ( KDBManager *self,
 	     * this should be changed to a readonly as it is not possible not 
 	     * disallowed.  rcReadonly not rcUnauthorized
 	     */
-	    if ( KDBOpenPathTypeRead ( wd, colpath, NULL, kptColumn, NULL, try_srapath ) == 0 )
+	    if ( KDBOpenPathTypeRead ( self, wd, colpath, NULL, kptColumn, NULL, try_srapath ) == 0 )
 		return RC ( rcDB, rcMgr, rcOpening, rcDirectory, rcUnauthorized );
 	    /* fall through */
         default:
@@ -1146,8 +1146,8 @@ bool KTableColumnNeedsReindex ( KTable *self, const char *colname )
     if ( self != NULL )
     {
         char path [ 256 ];
-        rc_t rc = KDBVMakeSubPath ( self -> dir,
-            path, sizeof path, "col", 3, colname, NULL );
+        rc_t rc = KDBMakeSubPath ( self -> dir,
+            path, sizeof path, "col", 3, colname );
         if ( rc == 0 )
         {
             uint64_t idx0_size;

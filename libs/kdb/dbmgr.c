@@ -29,12 +29,21 @@
 #include <kdb/extern.h>
 #include "libkdb.vers.h"
 
+#include <vfs/manager.h>
+#include <vfs/resolver.h>
+#include <vfs/path.h>
+#include <vfs/path-priv.h>
+#include <kfs/directory.h>
+
 #define KONST const
 #include "dbmgr-priv.h"
 #include "kdb-priv.h"
+#include "kdbfmt-priv.h"
 #include <klib/checksum.h>
 #include <klib/rc.h>
 #undef KONST
+
+#include <klib/text.h>
 
 #include <sysalloc.h>
 
@@ -61,6 +70,161 @@ LIB_EXPORT rc_t CC KDBManagerMakeRead ( const KDBManager **mgrp, const KDirector
 {
     return KDBManagerMake ( ( KDBManager** ) mgrp, wd, "make-read" );
 }
+
+
+/*
+ * Resolve using manager, possibly against this directory, using or not uri
+ * accession resolution of those dangerous formatted path thingies
+ *
+
+
+
+ * 1. If naked accession or uri accession resolve to local, 
+
+
+ * self                         = a kdbmanager
+ * disable_accession_resolution = turn off VResolver usage for accessions
+ *                                read versus create/upate 
+ * resolved+path                = a vpath created based on text path
+ * fmt                          = our scary interface that is 'sprintf'ish
+ * args                         = goes with the fmt
+ *
+ * NOTE: as usual a path with a '%' becomes broken at unsuspected times
+ */
+rc_t KDBManagerResolveVPathInt (const KDBManager * self, 
+                                bool disable_accession_resolution,
+                                VPath ** resolved_path, 
+                                const VPath * path)
+{
+    uint32_t flags;
+
+    assert (self != NULL);
+    assert (resolved_path != NULL);
+    assert (path != NULL);
+
+    flags = disable_accession_resolution
+        ? vfsmgr_rflag_no_acc
+        : vfsmgr_rflag_kdb_acc;
+
+    return VFSManagerResolvePath (self->vfsmgr, 
+                                  flags,
+                                  path, resolved_path);
+}
+
+
+rc_t KDBManagerVResolveVPath (const KDBManager * self, 
+                                bool disable_accession_resolution,
+                                VPath ** resolved_path, 
+                                const VPath * path)
+{
+    return KDBManagerResolveVPathInt (self, disable_accession_resolution,
+                                      resolved_path, path);
+}
+
+
+rc_t KDBManagerVResolvePath (const KDBManager * self, 
+                             bool disable_accession_resolution,
+                             VPath ** resolved_path, 
+                             const char * fmt, va_list args)
+{
+    VPath * p;
+    rc_t rc;
+
+    if (resolved_path == NULL)
+        return RC (rcDB, rcMgr, rcResolving, rcParam, rcNull);
+
+    *resolved_path = NULL;
+
+    if (self == NULL)
+        return RC (rcDB, rcMgr, rcResolving, rcSelf, rcNull);
+
+    if ((fmt == NULL) || (fmt[0] == '\0'))
+        return RC (rcDB, rcMgr, rcResolving, rcParam, rcNull);
+
+    rc = VPathMakeFmt (&p, fmt, args);
+    if (rc == 0)
+    {
+        rc = KDBManagerVResolveVPath (self, disable_accession_resolution,
+                                      resolved_path, p);
+        VPathRelease (p);
+    }
+    return rc;
+}
+
+rc_t KDBManagerVResolvePathRelativeDir (const KDBManager * self, const KDirectory * dir,
+                                        bool disable_accession_resolution,
+                                        VPath ** resolved_path, 
+                                        const char * fmt, va_list args)
+{
+    VPath * p;
+    rc_t rc;
+
+    if (resolved_path == NULL)
+        return RC (rcDB, rcMgr, rcResolving, rcParam, rcNull);
+
+    *resolved_path = NULL;
+
+    if (self == NULL)
+        return RC (rcDB, rcMgr, rcResolving, rcSelf, rcNull);
+
+    if ((fmt == NULL) || (fmt[0] == '\0'))
+        return RC (rcDB, rcMgr, rcResolving, rcParam, rcNull);
+
+    rc = VPathMakeFmt (&p, fmt, args);
+    if (rc == 0)
+    {
+        rc = KDBManagerVResolveVPath (self, disable_accession_resolution,
+                                      resolved_path, p);
+        VPathRelease (p);
+    }
+    return rc;
+}
+
+
+rc_t KDBManagerResolvePathRelativeDir (const KDBManager * self,
+                                       const KDirectory * dir,
+                                       bool disable_accession_resolution,
+                                       VPath ** resolved_path, const char * fmt, ...)
+{
+    va_list args;
+    rc_t rc;
+
+    va_start (args, fmt);
+
+    rc = KDBManagerVResolvePathRelativeDir (self, dir, 
+                                            disable_accession_resolution,
+                                            resolved_path, fmt, args);
+    va_end (args);
+    return rc;
+}
+
+
+
+/* KDBHdrValidate
+ *  validates that a header sports a supported byte order
+ *  and that the version is within range
+ */
+rc_t KDBHdrValidate ( const KDBHdr *hdr, size_t size,
+    uint32_t min_vers, uint32_t max_vers )
+{
+    assert ( hdr != NULL );
+
+    if ( size < sizeof * hdr )
+        return RC ( rcDB, rcHeader, rcValidating, rcData, rcCorrupt );
+
+    if ( hdr -> endian != eByteOrderTag )
+    {
+        if ( hdr -> endian == eByteOrderReverse )
+            return RC ( rcDB, rcHeader, rcValidating, rcByteOrder, rcIncorrect );
+        return RC ( rcDB, rcHeader, rcValidating, rcData, rcCorrupt );
+    }
+
+    if ( hdr -> version < min_vers || hdr -> version > max_vers )
+        return RC ( rcDB, rcHeader, rcValidating, rcHeader, rcBadVersion );
+
+    return 0;
+}
+
 
 
 /* Writable
@@ -138,21 +302,88 @@ LIB_EXPORT rc_t CC KDBManagerRunPeriodicTasks ( const KDBManager *self )
  *  this is an extension of the KDirectoryPathType and will return
  *  the KDirectory values if a path type is not specifically a
  *  kdb object
- *
- * THIS IS A BADLY DESIGNED INTERFACE
- *  it used to die terribly if a NULL self were passed in, and has
- *  no way to indicate this type of error.
  */
+LIB_EXPORT int CC KDBManagerPathTypeVP ( const KDBManager * self, const VPath * path )
+{
+    VPath * rpath;
+    int path_type;
+    rc_t rc;
+
+    path_type = kptBadPath;
+    if ((self != NULL) && (path != NULL))
+    {
+        /*
+         * resolve the possible relative path or accession into
+         * a final path we can open directly
+         */
+        rc = KDBManagerResolveVPathInt (self, false, &rpath, path);
+        if (rc == 0)
+        {
+            const KDirectory * dir;
+
+            /*
+             * Most KDBPathType values are based on 'directories'
+             * so try to open the resolved path as a directory
+             */
+            rc = VFSManagerOpenDirectoryReadDecrypt (self->vfsmgr, &dir, rpath);
+            if (rc == 0)
+            {
+                path_type = KDBPathTypeDir (dir, kptDir, NULL, ".");
+                KDirectoryRelease (dir);
+            }
+            /*
+             * If we couldn't open the path as a directory we 'might'
+             * have a KDB idx but we will only try that for a limitted
+             * set of uri schemes.
+             */
+            else
+            {
+                VPUri_t t;
+
+                rc = VPathGetScheme_t (rpath, &t);
+                if (rc == 0)
+                {
+                    switch (t)
+                    {
+                    default:
+                        break;
+                    case vpuri_ncbi_vfs:
+                    case vpuri_file:
+                    case vpuri_none:
+                    {
+                        char b [4 * 1024];
+                        size_t z;
+                        rc = VPathReadPath (path, b, sizeof b, &z);
+                        if (rc == 0)
+                            path_type = KDBPathType (self->wd, false, b);
+                        break;
+                    }}
+                }
+            }
+            VPathRelease (rpath);
+        }
+    }
+    return path_type;
+}
+
+
 LIB_EXPORT int CC KDBManagerVPathType ( const KDBManager * self, const char *path, va_list args )
 {
-    if ( self != NULL )
+    int path_type = kptBadPath;
+
+    if ((self != NULL) && (path != NULL))
     {
-        char full [ 4096 ];
-        rc_t rc = KDirectoryVResolvePath ( self -> wd, true, full, sizeof full, path, args );
-        if ( rc == 0 )
-            return KDBPathType ( self -> wd, NULL, full );
+        VPath * vp;
+        rc_t rc;
+
+        rc = VPathMakeFmt (&vp, path, args);
+        if (rc == 0)
+        {
+            path_type = KDBManagerPathTypeVP (self, vp);
+            VPathRelease (vp);
+        }
     }
-    return kptBadPath;
+    return path_type;
 }
 
 

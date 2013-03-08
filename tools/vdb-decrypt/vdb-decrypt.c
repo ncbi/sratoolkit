@@ -37,6 +37,7 @@
 #include <klib/log.h>
 #include <klib/status.h>
 
+#include <string.h>
 #include <assert.h>
 
 /* Version  EXTERN
@@ -74,40 +75,72 @@ static
 bool DecryptSraFlag = false;
 
 
+const bool Decrypting = true;
+
 void CryptOptionLines ()
 {
     HelpOptionLine (ALIAS_DEC_SRA, OPTION_DEC_SRA, NULL, UsageSra);
 }
 
-bool DoThisFile (const KFile * infile, EncScheme scheme)
+bool DoThisFile (const KFile * infile, EncScheme enc, ArcScheme * parc)
 {
+    const KFile * Infile;
     ArcScheme arc;
+    rc_t rc;
 
-    switch (scheme)
+    *parc = arcNone;
+
+    switch (enc)
     {
     default:
+        STSMSG (1, ("not encrypted"));
         return false;
 
     case encEncFile:
-    case encWGAEncFile:
-        arc = ArchiveTypeCheck (infile);
-
-        switch (arc)
-        {
-        default:
+        rc = KEncFileMakeRead (&Infile, infile, &Key);
+        if (rc)
             return false;
-        case arcNone:
+        break;
+
+    case encWGAEncFile:
+        rc = KFileMakeWGAEncRead (&Infile, infile, Password, PasswordSize);
+        if (rc)
+            return false;
+        break;
+    }
+    arc = ArchiveTypeCheck (Infile);
+    KFileRelease (Infile);
+    switch (arc)
+    {
+    default:
+        return false;
+    case arcNone:
+        return true;
+    case arcSRAFile:
+        *parc = arcSRAFile;
+        STSMSG (1, ("encrypted sra archive\ndecryption%s requested",
+                    DecryptSraFlag ? "" : " not"));
+        return DecryptSraFlag;
+    }
+}
+
+bool NameFixUp (char * name)
+{
+    char * pc = strrchr (name, '.');
+    if (pc != NULL)
+    {
+        if (strcmp (pc, EncExt) == 0)
+        {
+            pc[0] = '\0';
             return true;
-        case arcSRAFile:
-            return DecryptSraFlag;
         }
     }
+    return false;
 }
 
 rc_t CryptFile (const KFile * in, const KFile ** new_in,
                 KFile * out, KFile ** new_out, EncScheme scheme)
 {
-#if 1
     const KFile * dec;
     rc_t rc;
 
@@ -135,6 +168,7 @@ rc_t CryptFile (const KFile * in, const KFile ** new_in,
             goto fail;
         *new_in = in;
         *new_out = out;
+        STSMSG (1, ("not encrypted just copying"));
         return 0;
 
     case encEncFile:
@@ -179,93 +213,6 @@ rc_t CryptFile (const KFile * in, const KFile ** new_in,
         KFileRelease (out);
         *new_in = *new_out = NULL;
         return rc;
-#else
-    rc_t rc;
-    enum {
-        no_decrypt,
-        yes_decrypt,
-        error_decrypt
-    } do_decrypt;
-
-    assert (in);
-    assert (out);
-    assert (new_in);
-    assert (new_out);
-
-    *new_in = *new_out = NULL;
-
-    rc = KFileAddRef (out);
-    if (rc)
-        return rc;
-
-    switch (scheme)
-    {
-    case encEncFile:
-    case encWGAEncFile:
-        switch (ArchiveTypeCheck (in))
-        {
-        case arcSRAFile:
-            do_decrypt = DecryptSraFlag ? yes_decrypt : no_decrypt;
-            break;
-
-        case arcNone:
-            do_decrypt = yes_decrypt;
-            break;
-
-        default:
-        case arcError:
-            do_decrypt = error_decrypt;
-            rc = RC (rcExe, rcEncryption, rcParsing, rcFile, rcInvalid);
-            break;
-        }
-        break;
-
-    case encNone:
-        do_decrypt = no_decrypt;
-        break;
-
-    default:
-        assert (0);
-    case encError:
-        do_decrypt = error_decrypt;
-        rc = RC (rcExe, rcEncryption, rcParsing, rcFile, rcInvalid);
-        break;
-    }
-
-    switch (do_decrypt)
-    {
-    case no_decrypt:
-        rc = KFileAddRef (in);
-        if (rc == 0)
-        {
-            *new_in = in;
-            *new_out = out;
-            return 0;
-        }
-        goto error_error;
-
-    case yes_decrypt:
-        if (scheme == encEncFile)
-            rc = KEncFileMakeRead (new_in, in, &Key);
-        else
-            rc = KFileMakeWGAEncRead (new_in, in, Password, PasswordSize);
-        if (rc == 0)
-        {
-            *new_out = out;
-            return 0; /* successful return with decryption */
-        }
-        goto error_error;
-
-    default:
-        assert (0);
-    error_error:
-    case error_decrypt:
-        KFileRelease (out);
-        return rc;
-    }
-    assert (0);
-    return rc;
-#endif
 }
 
 

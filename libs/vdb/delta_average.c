@@ -177,7 +177,7 @@ rc_t CC undelta_average ( void *self, const VXformInfo *info, int64_t row_id,
                 assert(len<=max_rl_bytes);
                 while(leng_run > 0){
                         for(k=0;k<len*elem_bytes;k++,src++,dst++){
-                                dst[0] = avg[k] - src[0]; /** simmetrical to encode **/
+                                dst[0] = avg[k] - src[0]; /** symmetrical to encode **/
                         }
                         assert(leng_run >= (pm->data_run?pm->data_run[j]:1));
                         leng_run -= pm->data_run?pm->data_run[j]:1;
@@ -214,6 +214,8 @@ rc_t CC delta_average ( void *self, const VXformInfo *info, int64_t row_id,
     uint32_t    elem_bytes;
     int         i,j,k;
     uint8_t	*avg=NULL;
+    uint64_t    sum_rle;
+    uint8_t	last;
 
     if(pm->row_count < 256 || (in->data.elem_bits & 7)!=0){
 	return VBlobCreateEncode ( rslt, in, 0,NULL,0 );
@@ -232,19 +234,27 @@ rc_t CC delta_average ( void *self, const VXformInfo *info, int64_t row_id,
 
     /** collect sums and averages ***/
     /** using tight loop instead of iterators **/
-    for(i=j=0,src = in -> data.base;i<pm->leng_recs;i++){
+    for(i=j=0,src = in -> data.base, sum_rle=0,last=0;i<pm->leng_recs;i++){
 	row_count_t leng_run=pm->leng_run[i];
 	elem_count_t len = pm->length[i];
 	assert(len<=max_rl_bytes);
 	while(leng_run > 0){
 		for(k=0;k<len*elem_bytes;k++,src++){
+			if(last==src[0]) sum_rle++;
 			cnts[256*k+src[0]]++;
+			last=src[0];
 		}
 		assert(leng_run >= (pm->data_run?pm->data_run[j]:1));
 		leng_run -= pm->data_run?pm->data_run[j]:1;
 		j++;
 	}
     }
+    if(sum_rle * 10 > elem_bytes * in->data.elem_count * 3){/** total number of repetitions is high - leave it for zlib RLE ***/
+        free(cnts);
+        free(avg);
+        return VBlobCreateEncode(rslt,in,0,NULL,0);
+    }
+
     for(i=0;i<max_rl_bytes;i++){
 	avg[i] = 0;
 	for(j=1;j<256;j++){

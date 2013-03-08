@@ -31,19 +31,23 @@
 #include <kdb/extern.h>
 #endif
 
-#ifndef _h_kfs_directory_
-#include <kfs/directory.h>
-#endif
+/* #ifndef _h_kfs_directory_ */
+/* #include <kfs/directory.h> */
+/* #endif */
+#include <kfs/defs.h> /* kpt types */
 
+#include <stdarg.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
+struct VPath;
+struct KDirectory;
 
 /*--------------------------------------------------------------------------
  * KDBPathType
- *  extends KPathType from <kfs/directory.h>
+ *  extends KPathType from <kfs/defs.h>
  */
 enum
 {
@@ -85,8 +89,8 @@ KDB_EXTERN rc_t CC KDBManagerRelease ( const KDBManager *self );
  *  "wd" [ IN, NULL OKAY ] - optional working directory for
  *  accessing the file system. mgr will attach its own reference.
  */
-KDB_EXTERN rc_t CC KDBManagerMakeRead ( const KDBManager **mgr, const KDirectory *wd );
-KDB_EXTERN rc_t CC KDBManagerMakeUpdate ( KDBManager **mgr, KDirectory *wd );
+KDB_EXTERN rc_t CC KDBManagerMakeRead ( const KDBManager **mgr, const struct KDirectory *wd );
+KDB_EXTERN rc_t CC KDBManagerMakeUpdate ( KDBManager **mgr, struct KDirectory *wd );
 
 
 /* Version
@@ -101,6 +105,9 @@ KDB_EXTERN rc_t CC KDBManagerVersion ( const KDBManager *self, uint32_t *version
  *  "type" [ IN ] - a KDBPathType
  *
  *  "path" [ IN ] - NUL terminated path
+ *
+ * DEPRECATED:
+ * Should use KDBManagerPathType for reduced network thrashing.
  */
 KDB_EXTERN bool CC KDBManagerExists ( const KDBManager *self, uint32_t type,
     const char *name, ... );
@@ -158,13 +165,14 @@ KDB_EXTERN rc_t CC KDBManagerRunPeriodicTasks ( const KDBManager *self );
 
 
 /* PathType
- * check the path type of an object/directory path.
- * this is an extension of the KDirectoryPathType and will return
- * the KDirectory values if a path type is not specifically a
- * kdb object
+ *  check the path type of an object/directory path.
+ *  this is an extension of the KDirectoryPathType and will return
+ *  the KDirectory values if a path type is not specifically a
+ *  kdb object
  */
-KDB_EXTERN int CC KDBManagerPathType ( const KDBManager * self, const char *path, ... );
-KDB_EXTERN int CC KDBManagerVPathType ( const KDBManager * self, const char *path, va_list args );
+KDB_EXTERN int CC KDBManagerPathTypeVP ( const KDBManager * self, const struct VPath * path );
+KDB_EXTERN int CC KDBManagerPathType   ( const KDBManager * self, const char *path, ... );
+KDB_EXTERN int CC KDBManagerVPathType  ( const KDBManager * self, const char *path, va_list args );
 
 
 #ifdef __cplusplus

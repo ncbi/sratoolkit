@@ -27,9 +27,16 @@
 #include "srapath.vers.h"
 
 #include <sra/srapath.h>
+#include <vfs/resolver.h>
+#include <vfs/path.h>
+#include <vfs/manager.h>
+#include <kfs/directory.h>
+#include <kfs/defs.h>
+#include <kfg/config.h>
 #include <sra/impl.h>
 #include <kapp/main.h>
 #include <kapp/args.h>
+#include <klib/text.h>
 #include <klib/log.h>
 #include <klib/out.h>
 #include <klib/rc.h>
@@ -109,32 +116,6 @@ rc_t CC Usage (const Args * args)
     return rc;
 }
 
-
-static
-rc_t AddPath ( SRAPath *sra_path, const char *path, bool *cleared,
-    rc_t ( CC * f ) ( SRAPath*, const char* ) )
-{
-    rc_t rc;
-
-    if ( ! * cleared )
-    {
-        rc = SRAPathClear ( sra_path );
-        if ( rc != 0 )
-        {
-            LOGERR ( klogErr, rc, "failed to clear SRAPath object" );
-            return rc;
-        }
-        * cleared = true;
-    }
-
-    rc = ( * f ) ( sra_path, path );
-    if ( rc != 0 )
-        PLOGERR ( klogErr,  (klogErr, rc, "failed to add path '$(path)'", "path=%s", path ));
-
-    return rc;
-}
-
-
 /* KMain
  */
 rc_t CC KMain ( int argc, char *argv [] )
@@ -147,7 +128,6 @@ rc_t CC KMain ( int argc, char *argv [] )
         LOGERR (klogInt, rc, "failed to parse arguments");
     else do
     {
-        SRAPath *sra_path;
         uint32_t acount;
         rc = ArgsParamCount (args, &acount);
         if (rc)
@@ -161,45 +141,85 @@ rc_t CC KMain ( int argc, char *argv [] )
             rc = MiniUsage (args);
             break;
         }
-
-        rc = SRAPathMakeImpl ( & sra_path, NULL );
-        if (rc)
+        else
         {
-            LOGERR ( klogErr, rc, "failed to create SRAPath object" );
-        }
-        else do
-        {
-            const char * pc;
-            uint32_t ix;
-            bool cleared;
-
-            cleared = false;
-
-            for ( ix = 0; ix < acount; ++ ix )
+            VFSManager* mgr;
+            rc = VFSManagerMake(&mgr);
+            if (rc)
+                LOGERR ( klogErr, rc, "failed to create VFSManager object" );
+            else
             {
-                char path [ 4096 ];
+                VResolver * resolver;
 
-                rc = ArgsParamValue (args, ix, &pc );
-                if (rc)
-                    LOGERR (klogInt, rc,
-                        "failed to retrieve parameter value");
-                else
+                rc = VFSManagerGetResolver (mgr, &resolver);
+                if (rc == 0)
                 {
-                    rc = SRAPathFind ( sra_path, pc, path, sizeof path );
-                    if ( rc != 0 )
-                    PLOGERR (klogWarn,  
-                         (klogWarn, rc,
-                          "failed to locate accession '$(acc)'",
-                          "acc=%s", pc ));
-                    else
-                    OUTMSG (( "%s\n", path ));
+                    uint32_t ix;
+                    for ( ix = 0; ix < acount; ++ ix )
+                    {
+                        const char * pc;
+                        rc = ArgsParamValue (args, ix, &pc );
+                        if (rc)
+                            LOGERR (klogInt, rc,
+                                    "failed to retrieve parameter value");
+                        else
+                        {
+                            const VPath * upath;
+
+                            rc = VPathMakeSysPath ((VPath**)&upath, pc);
+                            if (rc == 0)
+                            {
+                                const VPath * rpath;
+                                    
+                                rc = VResolverLocal (resolver, upath, &rpath);
+                                if (GetRCState(rc) == rcNotFound)
+                                    rc = VResolverRemote (resolver, upath, &rpath, NULL);
+
+                                if (rc == 0)
+                                {
+                                    const String * s;
+
+                                    rc = VPathMakeString (rpath, &s);
+                                    if (rc == 0)
+                                    {
+                                        OUTMSG (("%S\n", s));
+                                        free ((void*)s);
+                                    }
+                                }
+                                else
+                                {
+                                    KDirectory * cwd;
+                                    rc_t orc;
+
+                                    orc = VFSManagerGetCWD (mgr, &cwd);
+                                    if (orc == 0)
+                                    {
+                                        KPathType kpt;
+
+                                        kpt = KDirectoryPathType (cwd, "%s", pc);
+                                        switch (kpt & ~kptAlias)
+                                        {
+                                        case kptNotFound:
+                                        case kptBadPath:
+                                            break;
+
+                                        default:
+                                            OUTMSG (("./%s\n", pc));
+                                            rc = 0;
+                                            break;
+                                        }
+                                    }
+                                }
+                                VPathRelease (rpath);
+                                VPathRelease (upath);
+                            }
+                        }
+                    }
+                    VResolverRelease (resolver);
                 }
+                VFSManagerRelease(mgr);
             }
-
-        } while (0);
-
-        SRAPathRelease ( sra_path );
-
+        }
         ArgsWhack (args);
 
     } while (0);

@@ -158,7 +158,7 @@ VDB_EXTERN rc_t CC VDBManagerSetUserData ( const VDBManager *self,
     void *data, void ( CC * destroy ) ( void *data ) );
 
 
-/* VDBManagerGetObjVersion
+/* GetObjVersion
  *  returns the vdb-version of the given object
  *
  *  "version" [ OUT ] - discovered vdb-version
@@ -167,6 +167,19 @@ VDB_EXTERN rc_t CC VDBManagerSetUserData ( const VDBManager *self,
  */
 VDB_EXTERN rc_t CC VDBManagerGetObjVersion ( const VDBManager *self,
     ver_t * version, const char *path );
+
+
+/* PathType
+ *  check the path type of an object/directory path.
+ *
+ *  this is an extension of the KDirectoryPathType ( see <kdb/manager.h> )
+ *  and will return the KDirectory values if a path type is not specifically
+ *  a VDB or KDB object.
+ */
+VDB_EXTERN int CC VDBManagerPathType ( const VDBManager * self,
+    const char *path, ... );
+VDB_EXTERN int CC VDBManagerVPathType ( const VDBManager * self,
+    const char *path, va_list args );
         
 #ifdef __cplusplus
 }

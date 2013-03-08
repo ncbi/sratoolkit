@@ -1854,7 +1854,7 @@ rc_t KSysDirOpenFileRead ( const KSysDir *self,
             return RC ( rcFS, rcDirectory, rcOpening, rcNoObj, rcUnknown );
         }
 
-        rc = KSysFileMake ( ( KSysFile** ) f, fd, true, false );
+        rc = KSysFileMake ( ( KSysFile** ) f, fd, full, true, false );
         if ( rc != 0 )
             close ( fd );
     }
@@ -1904,7 +1904,7 @@ rc_t KSysDirOpenFileWrite ( KSysDir *self,
             return RC ( rcFS, rcDirectory, rcOpening, rcNoObj, rcUnknown );
         }
 
-        rc = KSysFileMake ( ( KSysFile** ) f, fd, update, 1 );
+        rc = KSysFileMake ( ( KSysFile** ) f, fd, full, update, 1 );
         if ( rc != 0 )
             close ( fd );
     }
@@ -1957,6 +1957,8 @@ rc_t KSysDirCreateFile ( KSysDir *self, KFile **f, bool update,
                    wherever there is read or write on file */
                 uint32_t dir_access = access |
                     ( ( access & 0444 ) >> 2 ) | ( ( access & 0222 ) >> 1 );
+                /* NEW 2/15/2013 - also force read */
+                dir_access |= ( dir_access & 0111 ) << 2;
                 KSysDirCreateParents ( self, full, dir_access, true );
 
                 /* try again */
@@ -2013,11 +2015,16 @@ rc_t KSysDirCreateFile ( KSysDir *self, KFile **f, bool update,
                 rc = RC ( rcFS, rcDirectory, rcCreating, rcNoObj, rcUnknown );
                 break;
             }
-            PLOGERR (klogErr, (klogErr, rc, "failed to create '$(F)'", "F=%s", full));
+            
+            /* disabled 12/12/2012 : it prints an error message, if vdb tries to open
+               the same reference-object twice via http. The lock-file for the 2nd try
+               does already exist. This is not an error, just a condition. */
+
+            /* PLOGERR (klogErr, (klogErr, rc, "failed to create '$(F)'", "F=%s", full)); */
             return rc;
         }
 
-        rc = KSysFileMake ( ( KSysFile** ) f, fd, update, true );
+        rc = KSysFileMake ( ( KSysFile** ) f, fd, full, update, true );
         if ( rc != 0 )
             close ( fd );
     }
@@ -2136,10 +2143,15 @@ rc_t KSysDirOpenDirRead ( const KSysDir *self,
         size_t path_size = strlen ( full );
         while ( path_size > 1 && full [ path_size - 1 ] == '/' )
             full [ -- path_size ] = 0;
-
-        if ( ( KSysDirFullPathType ( full ) & ( kptAlias - 1 ) ) != kptDir )
-            return RC ( rcFS, rcDirectory, rcOpening, rcPath, rcIncorrect );
-
+            
+        {
+            int t = KSysDirFullPathType ( full ) & ( kptAlias - 1 );
+            if ( t == kptNotFound )
+                return RC ( rcFS, rcDirectory, rcOpening, rcPath, rcNotFound );
+            if ( t != kptDir )
+                return RC ( rcFS, rcDirectory, rcOpening, rcPath, rcIncorrect );
+        }
+        
         sub = KSysDirMake ( path_size );
         if ( sub == NULL )
             rc = RC ( rcFS, rcDirectory, rcOpening, rcMemory, rcExhausted );

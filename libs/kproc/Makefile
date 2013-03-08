@@ -86,19 +86,26 @@ tag: \
 #
 $(LIBDIR)/libkproc: $(addprefix $(LIBDIR)/libkproc.,$(LIBEXT))
 
+PROC_CMN = \
+	task \
+	procmgr
+
+PROC_SRC = \
+	$(PROC_CMN)
 
 ifneq (win,$(OS))
-PROC_SRC = \
+PROC_SRC += \
 	systimeout \
 	syslock \
 	systhread \
 	syscond \
 	sem
 else
-PROC_SRC = \
+PROC_SRC += \
 	systimeout \
 	syslock \
-	systhread
+	systhread \
+	syscond
 endif
 
 PROC_OBJ = \
@@ -128,6 +135,7 @@ libkproc_tag:
 $(LIBDIR)/libksproc: $(addprefix $(LIBDIR)/libksproc.,$(LIBEXT))
 
 SPROC_SRC = \
+	$(PROC_CMN) \
 	sttimeout \
 	stlock \
 	stcond \

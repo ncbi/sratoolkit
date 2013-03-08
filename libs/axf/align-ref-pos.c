@@ -106,7 +106,7 @@ void CC RefPosWhack ( void *obj )
 }
 
 static
-rc_t RefPosMake ( RefPos **objp, const VTable *tbl )
+rc_t RefPosMake ( RefPos **objp, const VTable *tbl, const VCursor *native_curs )
 {
     rc_t rc;
 
@@ -115,51 +115,42 @@ rc_t RefPosMake ( RefPos **objp, const VTable *tbl )
     if ( obj == NULL ) {
         rc = RC ( rcXF, rcFunction, rcConstructing, rcMemory, rcExhausted );
     } else {
-        const VTable *reftbl;
-
+	obj->curs=NULL;
         BSTreeInit(&obj->tr_range);
-        /* open the reference table */
-	    if( (rc = AlignRefTable(tbl, &reftbl)) == 0 ) {
-            const VCursor* ctmp;
-            if( (rc = VTableCreateCursorRead(reftbl, &ctmp)) == 0 ) {
+        /* open the reference table cursor*/
+	  
+	if( (rc = AlignRefTableCursor(tbl, native_curs, &obj->curs, NULL)) == 0 ) {
                 uint32_t itmp;
-                if( (rc = VCursorAddColumn(ctmp, &itmp, "(U32)MAX_SEQ_LEN")) == 0 &&
-                    (rc = VCursorOpen(ctmp)) == 0 ) {
+                if(  (rc = VCursorAddColumn(obj->curs, &itmp, "(U32)MAX_SEQ_LEN")) == 0 || GetRCState(rc) == rcExists)  {
                     const void *base;
                     uint32_t row_len;
-                    rc = VCursorCellDataDirect(ctmp, 1, itmp, NULL, &base, NULL, &row_len);
+                    rc = VCursorCellDataDirect(obj->curs, 1, itmp, NULL, &base, NULL, &row_len);
                     if(rc == 0) {
                         assert(row_len == 1);
                         memcpy(&obj->max_seq_len, base, 4);
                     }
                 }
                 if( GetRCObject(rc) == rcColumn && GetRCState(rc) == rcNotFound ) {
+		    /*** no MAX_SEQ_LEN means that REF_POS==REF_START **/
+		    VCursorRelease(obj->curs);
+		    obj->curs = NULL;
                     obj->max_seq_len = 0;
+		    obj->name_range_idx = 0;
+		    obj->name_idx = 0;
                     rc = 0;
-                }
-                VCursorRelease(ctmp);
-            }
-            if( rc == 0 ) {
-                if( obj->max_seq_len == 0 ) {
-                    obj->curs = NULL;
-                } else {
-                    /* create a cursor */
-                    rc = VTableCreateCachedCursorRead(reftbl, &obj->curs, 16*1024*1024);
-                    if( rc == 0 ) {
+                } else if( rc == 0 ) {
                         /* add columns to cursor */
-                        if( (rc = VCursorAddColumn(obj->curs, &obj->name_idx, "(utf8)NAME")) != 0 ||
-                            (rc = VCursorAddColumn(obj->curs, &obj->name_range_idx, "NAME_RANGE")) != 0 ||
-                            (rc = VCursorOpen(obj->curs)) != 0 ) {
-                            VCursorRelease ( obj -> curs );
-                        }
-                    }
+			rc = VCursorAddColumn(obj->curs, &obj->name_idx, "(utf8)NAME");
+			if(rc == 0 || GetRCState(rc) == rcExists)
+				rc = VCursorAddColumn(obj->curs, &obj->name_range_idx, "NAME_RANGE");
+			if(GetRCState(rc) == rcExists)
+				rc = 0;
                 }
-            }
         }
-        VTableRelease(reftbl);
         if( rc == 0 ) {
             *objp = obj;
         } else {
+	    VCursorRelease(obj->curs);
             free(obj);
         }
     }
@@ -208,27 +199,20 @@ rc_t CC align_ref_pos ( void *data, const VXformInfo *info,
         brr = (BSTRowRange*)BSTreeFind(&self->tr_range,&ref_id[0],row_range_cmp);
         if(brr==NULL) {
             RowRange *new_rr;
-            rc = VCursorSetRowId(self->curs, ref_id[0]);
-            if (rc) return rc;
-            rc = VCursorOpenRow(self->curs);
-            if (rc) return rc;
-            rc = VCursorCellData(self->curs, self->name_idx, NULL, (void const **)&name, NULL, &name_len);
+            rc = VCursorCellDataDirect(self->curs, ref_id[0], self->name_idx, NULL, (void const **)&name, NULL, &name_len);
             if (rc) return rc;
             rc = VCursorParamsSet((struct VCursorParams const *)self->curs, "QUERY_SEQ_NAME", "%.*s", name_len, name);
             if (rc) return rc;
 
-            rc = VCursorCellData(self->curs, self->name_range_idx, NULL, (void const **)&new_rr, NULL, NULL);
+            rc = VCursorCellDataDirect(self->curs, ref_id[0], self->name_range_idx, NULL, (void const **)&new_rr, NULL, NULL);
             if (rc) return rc;
 
-            VCursorCloseRow(self->curs);
             brr=malloc(sizeof(*brr));
             memcpy(&brr->rr,new_rr,sizeof(*new_rr));
             BSTreeInsert((BSTree*)&self->tr_range,(BSTNode*)brr, row_range_sort);
         }
         ref_row_id = brr->rr.start_id;
     }
-    rc = KDataBufferCast(rslt->data, rslt->data, sizeof(ref_pos[0]) * 8, true);
-    if (rc) return rc;
 
     rc = KDataBufferResize(rslt->data, ploidy);
     if (rc) return rc;
@@ -249,7 +233,7 @@ VTRANSFACT_IMPL ( NCBI_align_ref_pos, 1, 0, 0 ) ( const void *self, const VXfact
     VFuncDesc *rslt, const VFactoryParams *cp, const VFunctionParams *dp )
 {
     RefPos *fself;
-    rc_t rc = RefPosMake ( & fself, info -> tbl );
+    rc_t rc = RefPosMake ( & fself, info -> tbl,  (const VCursor*)info->parms);
     if ( rc == 0 )
     {
         rslt -> self = fself;

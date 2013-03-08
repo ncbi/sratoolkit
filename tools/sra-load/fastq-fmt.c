@@ -679,22 +679,10 @@ rc_t SRALoaderFmtMake(SRALoaderFmt **self, const SRALoaderConfig *config)
         return rc;
     }
     if( platform->id == SRA_PLATFORM_454 ) {
-        if( platform->param.ls454.flow_sequence == NULL ) {
-            LOGMSG(klogWarn, "missing FLOW_SEQUENCE in PLATFORM");
-        }
-        if( platform->param.ls454.key_sequence == NULL ) {
-            LOGMSG(klogWarn, "missing KEY_SEQUENCE in PLATFORM");
-        }
         if( rc == 0 && (rc = SRAWriter454_Make(&fmt->w454, config)) != 0 ) {
             LOGERR(klogInt, rc, "failed to initialize 454 writer");
         }
     } else if( platform->id == SRA_PLATFORM_ION_TORRENT ) {
-        if( platform->param.ion_torrent.flow_sequence == NULL ) {
-            LOGMSG(klogWarn, "missing FLOW_SEQUENCE in PLATFORM");
-        }
-        if( platform->param.ion_torrent.key_sequence == NULL ) {
-            LOGMSG(klogWarn, "missing KEY_SEQUENCE in PLATFORM");
-        }
         if( rc == 0 && (rc = SRAWriterIonTorrent_Make(&fmt->wIonTorrent, config)) != 0 ) {
             LOGERR(klogInt, rc, "failed to initialize Ion Torrent writer");
         }

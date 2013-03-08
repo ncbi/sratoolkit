@@ -26,7 +26,7 @@
 #ifndef _h_axf_ref_tbl_
 #define _h_axf_ref_tbl_
 
-/* Caller must release ref_table */
-rc_t AlignRefTable(const VTable* table, const VTable** ref_table);
+/* Caller must release ref_cursor */
+rc_t AlignRefTableCursor(const VTable* table, const VCursor *native_curs, const VCursor** ref_cursor, const VTable **reftbl);
 
 #endif /* _h_axf_ref_tbl_ */

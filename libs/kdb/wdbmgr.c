@@ -69,13 +69,15 @@ LIB_EXPORT rc_t CC KDBManagerMakeUpdate ( KDBManager **mgrp, KDirectory *wd )
  *  or a reason why if not
  *
  *  "path" [ IN ] - NUL terminated path
+ *
+ * TBD: Better reasons for non local paths
  */
 static
 rc_t KDBManagerWritableInt ( const KDirectory * dir, const char * path )
 {
     rc_t rc;
 
-    int type = KDBPathType ( dir, NULL, path ) & ~ kptAlias;
+    int type = KDBPathType ( /*NULL,*/ dir, NULL, path ) & ~ kptAlias;
     switch ( type )
     {
     case kptDatabase:
@@ -326,7 +328,7 @@ LIB_EXPORT int CC KDBManagerVPathType ( const KDBManager * self, const char *pat
         char full [ 4096 ];
         rc_t rc = KDirectoryVResolvePath ( self -> wd, false, full, sizeof full, path, args );
         if ( rc == 0 )
-            return KDBPathType ( self -> wd, NULL, full );
+            return KDBPathType ( /*self,*/ self -> wd, NULL, full );
     }
     return kptBadPath;
 }

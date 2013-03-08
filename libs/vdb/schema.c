@@ -741,7 +741,8 @@ rc_t CC VSchemaParseTextInt ( VSchema *self,
     KTokenText tt;
     KTokenSource src;
     String str, path;
-
+    rc_t rc;
+    
     if ( name == NULL || name [ 0 ] == 0 )
         CONST_STRING ( & path, "<unnamed>" );
     else
@@ -751,7 +752,14 @@ rc_t CC VSchemaParseTextInt ( VSchema *self,
     KTokenTextInit ( & tt, & str, & path );
     KTokenSourceInit ( & src, & tt );
 
-    return schema ( & src, self );
+    rc = schema ( & src, self );
+    
+    if (rc == 0)
+        PARSE_DEBUG( ("Parsed schema from %s\n", name) );
+    else
+        PARSE_DEBUG( ("Failed to parse schema from %s\n", name) );
+    
+    return rc;
 }
 
 LIB_EXPORT rc_t CC VSchemaParseText ( VSchema *self, const char *name,

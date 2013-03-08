@@ -27,13 +27,50 @@
 #ifndef _h_vfs_path_priv_
 #define _h_vfs_path_priv_
 
+#ifndef _h_vfs_extern_
 #include <vfs/extern.h>
-#include <klib/defs.h>
+#endif
+
+#ifndef _h_vfs_path_
 #include <vfs/path.h>
+#endif
+
+#include <stdarg.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+/*
+typedef int32_t VPUri_t;
+enum eVPUri_t
+{
+    vpuri_invalid = -1,
+    vpuri_none, 
+    vpuri_not_supported,
+    vpuri_ncbi_file,
+    vpuri_ncbi_vfs = vpuri_ncbi_file,
+#if SUPPORT_FILE_URL
+    vpuri_file,
+#endif
+    vpuri_ncbi_acc,
+    vpuri_http,
+    vpuri_ftp,
+    vpuri_ncbi_legrefseq,
+    vpuri_count
+};
+*/
+
+#define NCBI_FILE_SCHEME       "ncbi-file"
+#define NCBI_ACCESSION_SCHEME  "ncbi-acc"
+#define HTTP_SCHEME            "http"
+#define FTP_SCHEME             "ftp"
+#define NCBI_LEGREFSEQ_SCHEME  "x-ncbi-legrefseq"
+
+VFS_EXTERN VPUri_t VPathGetUri_t (const VPath * self);
+
+
+
 
 /* options for a VPath possibly obtained from a query string on an URI */
 typedef uint32_t VPOption_t;
@@ -44,6 +81,8 @@ enum eVPOption_t
     vpopt_pwfd,
     vpopt_readgroup,
     vpopt_temporary_pw_hack,
+    vpopt_vdb_ctx,
+    vpopt_gap_ticket, 
     vpopt_count
 };
 
@@ -81,10 +120,10 @@ VFS_EXTERN rc_t CC VPathMakeCurrentPath ( VPath ** new_path );
 VFS_EXTERN rc_t CC VPathMakeURI ( VPath ** new_path, const char * uri );
 
 
-VFS_EXTERN rc_t CC VPathReadPath (const struct  VPath * self, char * buffer,
+VFS_EXTERN rc_t CC VPathReadPath ( const VPath * self, char * buffer,
                                   size_t buffer_size, size_t * num_read);
 
-VFS_EXTERN rc_t CC VPathOption (const VPath * self, VPOption_t option,
+VFS_EXTERN rc_t CC VPathOption ( const VPath * self, VPOption_t option,
                                 char * buffer, size_t buffer_size,
                                 size_t * num_read);
 
@@ -94,8 +133,9 @@ VFS_EXTERN rc_t CC VPathOption (const VPath * self, VPOption_t option,
  * and nothing is copied.
  * if there is a room the NUL is copied as well
  */
-VFS_EXTERN rc_t CC VPathReadPath (const struct VPath * self, char * buffer,
+VFS_EXTERN rc_t CC VPathReadPath ( const VPath * self, char * buffer,
                                   size_t buffer_size, size_t * num_read);
+
 
 /* get current working directory */
 VFS_EXTERN rc_t CC VPathGetCWD (char * buffer, size_t buffer_size);

@@ -27,6 +27,8 @@
 #include <vfs/extern.h>
 #include <os-native.h>
 #include <vfs/path.h>
+#include <vfs/manager.h>
+#include <vfs/resolver.h>
 
 #include "path-priv.h"
 
@@ -42,7 +44,7 @@
 
 #include <stdlib.h>
 #include <string.h>
-/* #include <sysalloc.h> */
+#include <sysalloc.h>
 #include <ctype.h>
 #include <assert.h>
 
@@ -1238,6 +1240,48 @@ const char * eat_kfs_query (const char * str, VPOption ** opt)
                 return temp1;
             }
         }
+        else if (strncasecmp ("ic=", str + 1, sizeof ("ic=") - 1) == 0)
+        {
+            const char * temp1 = str + 1 + sizeof ("ic=") - 1;
+            const char * temp2 = temp1;
+            while ( * temp1 != 0 && * temp1 != '&' )
+                ++temp1;
+            if (temp1 == temp2)
+                break;
+            if ((*temp1 == '\0') || (*temp1 == '&'))
+            {
+                VPOption * o;
+                rc_t rc;
+
+                rc = VPOptionMake (&o, vpopt_gap_ticket, temp2, temp1-temp2);
+                if (rc)
+                    return false;
+                *opt = o;
+                return temp1;
+            }
+        }
+        break;
+    case 'v':
+        if (strncasecmp ("db-ctx=", str + 1, sizeof ("db-ctx=") - 1) == 0)
+        {
+            const char * temp1 = str + 1 + sizeof ("db-ctx=") - 1;
+            const char * temp2 = temp1;
+            while (isalnum(*temp1))
+                ++temp1;
+            if (temp1 == temp2)
+                break;
+            if ((*temp1 == '\0') || (*temp1 == '&'))
+            {
+                VPOption * o;
+                rc_t rc;
+
+                rc = VPOptionMake (&o, vpopt_vdb_ctx, temp2, temp1-temp2);
+                if (rc)
+                    return false;
+                *opt = o;
+                return temp1;
+            }
+        }
         break;
     }
     PATH_DEBUG (("%s: failed '%s'\n",__func__,str));
@@ -1262,49 +1306,42 @@ bool is_kfs_query (const char * str, BSTree * tree)
     {
         VPOption * o = NULL;
 
+        /* this returns an allocation */
         temp = eat_kfs_query (str, &o);
-        if ((temp == NULL) || (o == NULL))
+        if ( o == NULL )
             return false;
-
-        /* can only have one of these two (three) */
-        if ((o->name == vpopt_pwpath) || (o->name == vpopt_pwfd) ||
-            (o->name == vpopt_temporary_pw_hack))
+        if ( temp == NULL )
         {
-            BSTNode * n;
-
-            n = BSTreeFind ( tree, (void*)vpopt_pwpath, VPOptionCmp );
-            if (n)
-                return false;
-
-            n = BSTreeFind ( tree, (void*)vpopt_pwfd, VPOptionCmp );
-            if (n)
-                return false;
-
-            n = BSTreeFind ( tree, (void*)vpopt_temporary_pw_hack, VPOptionCmp );
-            if (n)
-                return false;
-
-            if ( BSTreeInsert ( tree, &o->node, VPOptionSort ) != 0)
-                return false;
+            VPOptionWhack ( & o -> node, NULL );
+            return false;
         }
-        else if ( o->name == vpopt_encrypted )
+
+        switch ( o -> name )
         {
-            BSTNode * n;
-
-            n = BSTreeFind ( tree, (void*)vpopt_pwpath, VPOptionCmp );
-            if (n == NULL)
-                if ( BSTreeInsert ( tree, &o->node, VPOptionSort ) != 0)
-                    return false;
+        case vpopt_pwpath:
+        case vpopt_pwfd:
+        case vpopt_temporary_pw_hack:
+        case vpopt_vdb_ctx:
+        case vpopt_gap_ticket:
+            /* can only have one of these */
+            if ( BSTreeInsertUnique ( tree, &o->node, NULL, VPOptionSort ) != 0)
+            {
+                VPOptionWhack ( & o -> node, NULL );
+                return false;
+            }
+            break;
+        case vpopt_encrypted:
+        case vpopt_readgroup:
+            /* the behavior here appears to be
+               tolerate repeats, but only insert first */
+            if ( BSTreeInsertUnique ( tree, &o->node, NULL, VPOptionSort ) != 0)
+                VPOptionWhack ( & o -> node, NULL );
+            break;
+        default:
+            VPOptionWhack ( & o -> node, NULL );
+            break;
         }
-        else if ( o->name == vpopt_readgroup )
-        {
-            BSTNode * n;
 
-            n = BSTreeFind ( tree, (void*)vpopt_readgroup, VPOptionCmp );
-            if (n == NULL)
-                if ( BSTreeInsert ( tree, &o->node, VPOptionSort ) != 0)
-                    return false;
-        }
         str = temp;
         if (*str == '\0')
             break;
@@ -1315,6 +1352,12 @@ bool is_kfs_query (const char * str, BSTree * tree)
         ++str;
     }
     return true;
+}
+
+static __inline__
+bool is_http_query (const char * str, BSTree * tree)
+{
+    return is_kfs_query (str, tree);
 }
 
 
@@ -1328,7 +1371,8 @@ bool is_acc_query (const char * str, BSTree * tree)
 static __inline__
 bool is_kfs_fragment (const char * str)
 {
-    return (*str == '\0');
+    return true;
+/*     return (*str == '\0'); */
 }
 
 
@@ -1512,11 +1556,18 @@ rc_t VPathMakeUriHttp (VPath * self, char * new_allocation,
     assert (query);
     assert (fragment);
 
+    if (!is_http_query (query, &self->options))
+    {
+        PATH_DEBUG (("%s: failed is_http_query '%s'\n",__func__, query));
+        return RC (rcFS, rcPath, rcConstructing, rcUri, rcInvalid);
+    }
+
     free (self->storage);
     self->storage = new_allocation;
     self->alloc_size = sz;
 
     StringInitCString (&self->path, hier);
+    self -> query = query;
     self->fragment = fragment;
     PATH_DEBUG (("%s: path '%S' fragment '%s'\n", __func__,
                  &self->path, self->fragment));
@@ -1546,6 +1597,30 @@ rc_t VPathMakeUriFtp (VPath * self, char * new_allocation,
                  &self->path, self->fragment));
     return 0;
 }
+
+static
+rc_t VPathMakeUriNcbiLegrefseq (VPath * self, char * new_allocation, 
+                                size_t sz, char * hier,
+                                char * query, char * fragment)
+{
+    assert (self);
+    assert (new_allocation);
+    assert (sz);
+    assert (hier);
+    assert (query);
+    assert (fragment);
+
+    free (self->storage);
+    self->storage = new_allocation;
+    self->alloc_size = sz;
+
+    StringInitCString (&self->path, hier);
+    self->fragment = fragment;
+    PATH_DEBUG (("%s: path '%S' fragment '%s'\n", __func__,
+                 &self->path, self->fragment));
+    return 0;
+}
+
 
 
 
@@ -1581,9 +1656,9 @@ VPUri_t scheme_type (const char * scheme)
             PATH_DEBUG (("%s: " NCBI_FILE_SCHEME " scheme\n",__func__));
             return vpuri_ncbi_vfs;
         }
-        else if (strcasecmp (NCBI_ACCENSION_SCHEME, scheme) == 0)
+        else if (strcasecmp (NCBI_ACCESSION_SCHEME, scheme) == 0)
         {
-            PATH_DEBUG (("%s: " NCBI_ACCENSION_SCHEME " scheme\n",__func__));
+            PATH_DEBUG (("%s: " NCBI_ACCESSION_SCHEME " scheme\n",__func__));
             return vpuri_ncbi_acc;
         }
         break;
@@ -1593,6 +1668,14 @@ VPUri_t scheme_type (const char * scheme)
         {
             PATH_DEBUG (("%s: " HTTP_SCHEME " scheme\n",__func__));
             return vpuri_http;
+        }
+        break;
+
+    case 'x':
+        if (strcasecmp (NCBI_LEGREFSEQ_SCHEME, scheme) == 0)
+        {
+            PATH_DEBUG (("%s: " NCBI_LEGREFSEQ_SCHEME " scheme\n",__func__));
+            return vpuri_ncbi_legrefseq;
         }
         break;
     }
@@ -1711,7 +1794,7 @@ rc_t VPathSplitUri (VPath * self, char ** pcopy, size_t * psiz, char ** scheme, 
     }
 
     free (copy);
-    return RC (rcFS, rcPath, rcParsing, rcUri, rcInvalid);
+    return SILENT_RC (rcFS, rcPath, rcParsing, rcUri, rcInvalid);
 }
 
 
@@ -1772,6 +1855,14 @@ rc_t VPathParseURI (VPath * self)
                                   fragment);
 
             break;
+
+        case vpuri_ncbi_legrefseq:
+            PATH_DEBUG (("%s: call VPathMakeUriNcbiLegrefseq\n",__func__));
+            rc = VPathMakeUriNcbiLegrefseq (self, parsed_uri, allocated, hier, query,
+                                            fragment);
+
+            break;
+
 
         default:
             rc = RC (rcFS, rcPath, rcParsing, rcUri, rcCorrupt);
@@ -1914,7 +2005,7 @@ LIB_EXPORT rc_t CC VPathMakeVFmt ( VPath ** new_path, const char * fmt, va_list 
     if (rc)
         return rc;
 
-    rc = string_printf (buffer, sizeof (buffer), &len, fmt, args);
+    rc = string_vprintf (buffer, sizeof (buffer), &len, fmt, args);
     if (rc)
         return rc;
 
@@ -1943,7 +2034,7 @@ LIB_EXPORT rc_t CC VPathMakeFmt ( VPath ** new_path, const char * fmt, ... )
  * for this to work
  * the base path must be a directory or have no hiearchical part at all
  *
- * is the srapathmgr is not NULL we first try to resolve the realative path as 
+ * is the srapathmgr is not NULL we first try to resolve the relative path as 
  * an srapath 'alias'
  */
 LIB_EXPORT rc_t CC VPathMakeDirectoryRelative ( VPath ** new_path, const KDirectory * basedir,
@@ -1966,6 +2057,64 @@ LIB_EXPORT rc_t CC VPathMakeDirectoryRelative ( VPath ** new_path, const KDirect
         (relative_path == NULL))
         return RC (rcVFS, rcPath, rcConstructing, rcParam, rcNull);
 
+#if USE_VRESOLVER
+    {
+        VFSManager *vmgr;
+        bool it_worked = false;
+        const VPath * resolved = NULL;
+
+
+        /*
+         * First we'll see if the relative path is actually an accession
+         * in which case we ignore the base dir
+         */
+        rc = VFSManagerMake (&vmgr);
+        if (rc)
+            ;
+        else
+        {
+            VPath * accession;
+
+            rc = VPathMake (&accession, relative_path);
+            if (rc)
+                ;
+            else
+            {
+                VResolver * resolver;
+
+                rc = VFSManagerGetResolver (vmgr, &resolver);
+                if (rc)
+                    ;
+                else
+                {
+                    rc = VResolverLocal (resolver, accession, (const VPath **)&resolved);
+                    if (rc == 0)
+                        it_worked = true;
+                        
+                    else if (GetRCState (rc) == rcNotFound)
+                    {
+                        rc = VResolverRemote (resolver, accession, &resolved, NULL);
+                        if (rc == 0)
+                            it_worked = true;
+                    }
+
+                    VResolverRelease (resolver);
+                }
+
+                VPathRelease (accession);
+            }
+            VFSManagerRelease (vmgr);
+        }
+        if (it_worked)
+        {
+            /* RETURN HERE */
+
+            /* TBD - why is "resolved" const? */
+            *new_path = ( VPath* ) resolved;
+            return 0;
+        }
+    }
+#else
     /* 
      * if we have an srapath manager try to quick out of treating the
      * relative path as an SRAPath alias.
@@ -1989,7 +2138,7 @@ LIB_EXPORT rc_t CC VPathMakeDirectoryRelative ( VPath ** new_path, const KDirect
             }
         }
     }
-
+#endif
     /*
      * create a VPath off the relative path.  This will create one of three things
      * as of when this was writen:
@@ -1999,7 +2148,7 @@ LIB_EXPORT rc_t CC VPathMakeDirectoryRelative ( VPath ** new_path, const KDirect
      *
      * Handling (1) is easy and mirrors the quick out above.
      */
-    rc = VPathMake (&rpath, relative_path);
+    rc = VPathMakeSysPath (&rpath, relative_path);
     if (rc == 0)
     {
 /*     KOutMsg ("%s: 2 %s\n", __func__, relative_path); */
@@ -2149,13 +2298,14 @@ LIB_EXPORT rc_t CC VPathReadPath (const VPath * self, char * buffer, size_t buff
 
     PATH_DEBUG (("%s: path '%S' fragment '%s'\n", __func__,
                  &self->path, self->fragment));
-
     PATH_DEBUG (("%s: should copy '%*.*s' length '%zu'\n", __func__, z, z,
                  self->path.addr, z));
-    memcpy (buffer, self->path.addr, z);
-    if (buffer_size > z)
-        buffer[z] = '\0';
-    *num_read = z;
+
+    memcpy ( buffer, self->path.addr, z );
+    if ( buffer_size > z )
+        buffer[ z ] = '\0';
+    if ( num_read != NULL )
+        *num_read = z;
 
     PATH_DEBUG (("%s: copied '%*.*s' length '%zu'\n", __func__, z, z,
                  buffer, z));
@@ -2231,5 +2381,145 @@ LIB_EXPORT VPUri_t VPathGetUri_t (const VPath * self)
             v = vpuri_invalid;
         return v;
     }
-    return RC (rcVFS, rcPath, rcAccessing, rcParam, rcNull);
+    return vpuri_invalid;
+}
+
+
+LIB_EXPORT rc_t CC VPathMakeString ( const VPath * self, const String ** uri )
+{
+    rc_t rc = 0;
+    if ( uri == NULL )
+        rc = RC ( rcVFS, rcPath, rcAccessing, rcParam, rcNull );
+    else
+    {
+        *uri = NULL;
+        if ( self == NULL )
+            rc = RC ( rcVFS, rcPath, rcAccessing, rcSelf, rcNull );
+        else
+        {
+            /* this version is a bit of a hack */
+            struct
+            {
+                String s;
+                char   b[ 1 ];
+            } * t;
+            size_t z = self->path.addr - self->storage;
+
+            t = malloc ( sizeof * t + self->alloc_size );
+            if ( t == NULL )
+                rc = RC ( rcVFS, rcPath, rcAccessing, rcMemory, rcExhausted );
+            else
+            {
+                char *s = &( t->b[ 0 ] );
+
+                if ( z != 0 )
+                {
+                    memcpy ( s, self->storage, z - 1 );
+                    s [ z - 1 ] = ':';
+                }
+
+                memcpy ( &s[ z ], self->path.addr, self->path.size );
+                z += self->path.size;
+
+                if ( self->query != NULL && self->query[ 0 ] != '\0' )
+                {
+                    size_t y = string_size ( self->query );
+                    s[ z++ ] = '?';
+                    memcpy ( &s[ z ], self->query, y );
+                    z += y;
+                }
+
+                if ( self->fragment != NULL && self->fragment[ 0 ] != '\0' )
+                {
+                    size_t y = string_size ( self->fragment );
+                    s[ z++ ] = '#';
+                    memcpy ( &s[ z ], self->fragment, y );
+                    z += y;
+                }
+
+                s[ z ] = '\0';
+                StringInit ( &t->s, s, z, string_len ( s, z ) );
+                *uri = &t->s;
+            }
+        }
+    }
+    return rc;
+}
+
+
+LIB_EXPORT rc_t CC VPathGetScheme ( const VPath * self, const String ** scheme )
+{
+    rc_t rc = 0;
+    if ( scheme == NULL )
+        rc = RC ( rcVFS, rcPath, rcAccessing, rcParam, rcNull );
+    else
+    {
+        *scheme = NULL;
+        if ( self == NULL )
+            rc = RC ( rcVFS, rcPath, rcAccessing, rcSelf, rcNull );
+        else
+        {
+            size_t z = ( self->path.addr - self->storage );
+            if ( z > 0 )
+            {
+                struct
+                {
+                    String s;
+                    char   b[ 1 ];
+                } * t;
+                t = malloc ( sizeof * t + z );
+                if ( t == NULL )
+                    rc = RC ( rcVFS, rcPath, rcAccessing, rcMemory, rcExhausted );
+                else
+                {
+                    size_t i;
+                    char *s = &( t->b[ 0 ] );
+                    memcpy ( s, self->storage, z - 1 );
+                    for ( i = 0; i < z; ++i )
+                        s[ i ] = tolower( s[ i ] );
+                    s[ z ] = '\0';
+                    StringInit ( &t->s, s, z, string_len ( s, z ) );
+                    *scheme = &t->s;
+                }
+            }
+        }
+    }
+    return rc;
+}
+
+
+LIB_EXPORT rc_t CC VPathGetScheme_t( const VPath * self, VPUri_t * uri_type )
+{
+    rc_t rc = 0;
+    if ( uri_type == NULL )
+        rc = RC ( rcVFS, rcPath, rcAccessing, rcParam, rcNull );
+    else
+    {
+        *uri_type = vpuri_invalid;
+        if ( self == NULL )
+            rc = RC ( rcVFS, rcPath, rcAccessing, rcSelf, rcNull );
+        else
+            *uri_type = self->scheme;
+    }
+    return rc;
+}
+
+
+LIB_EXPORT rc_t CC VPathGetPath ( const VPath * self, const String ** path )
+{
+    rc_t rc = 0;
+    if ( path == NULL )
+        rc = RC ( rcVFS, rcPath, rcAccessing, rcParam, rcNull );
+    else
+    {
+        *path = NULL;
+        if ( self == NULL )
+            rc = RC ( rcVFS, rcPath, rcAccessing, rcSelf, rcNull );
+        else
+        {
+            if ( StringSize ( &self->path ) > 0 )
+                rc = StringCopy ( path, &self->path );
+        }
+    }
+    return rc;
 }

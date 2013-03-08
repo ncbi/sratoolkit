@@ -141,13 +141,13 @@ typedef struct Sequence_vt_v1_struct {
     rc_t ( *getCSRead       )   ( const SEQUENCE_IMPL *self, char *sequence );
     rc_t ( *getCSQuality    )   ( const SEQUENCE_IMPL *self, const int8_t **quality, uint8_t *offset, int *qualType );
                           
-    bool ( *wasPaired     ) ( const SEQUENCE_IMPL *self );
-    bool ( *selfIsReverse ) ( const SEQUENCE_IMPL *self );
-    bool ( *mateIsReverse ) ( const SEQUENCE_IMPL *self );
-    bool ( *isFirst       ) ( const SEQUENCE_IMPL *self );
-    bool ( *isSecond      ) ( const SEQUENCE_IMPL *self );
-    bool ( *isDuplicate   ) ( const SEQUENCE_IMPL *self ); 
-    bool ( *isLowQuality   ) ( const SEQUENCE_IMPL *self ); 
+    bool ( *wasPaired     )     ( const SEQUENCE_IMPL *self );
+    int  ( *orientationSelf )   ( const SEQUENCE_IMPL *self );
+    int  ( *orientationMate )   ( const SEQUENCE_IMPL *self );
+    bool ( *isFirst       )     ( const SEQUENCE_IMPL *self );
+    bool ( *isSecond      )     ( const SEQUENCE_IMPL *self );
+    bool ( *isDuplicate   )     ( const SEQUENCE_IMPL *self ); 
+    bool ( *isLowQuality   )    ( const SEQUENCE_IMPL *self ); 
 
     rc_t ( *getTI ) ( const SEQUENCE_IMPL *self, uint64_t *ti );
     
@@ -251,6 +251,7 @@ struct Rejected {
     const char* message;
     uint64_t    line;
     uint64_t    column;
+    bool        fatal;
 };
 
 rc_t CC RejectedInit ( Rejected *self );

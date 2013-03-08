@@ -136,8 +136,13 @@ LIB_EXPORT rc_t CC TableWriterAlgn_Make(const TableWriterAlgn** cself, VDatabase
                 tbl_nm = "EVIDENCE_ALIGNMENT";
                 self->ref_table_name = "EVIDENCE_INTERVAL";
                 self->cols[ewalgn_cn_REF_PLOIDY].flags &= ~ewcol_Ignore;
+#if 0
                 self->cols[ewalgn_cn_HAS_MISMATCH].flags |= ewcol_Ignore;
                 self->cols[ewalgn_cn_MISMATCH].flags |= ewcol_Ignore;
+#else
+		self->cols[ewalgn_cn_MISMATCH].name = "TMP_MISMATCH";
+                self->cols[ewalgn_cn_HAS_MISMATCH].name = "TMP_HAS_MISMATCH";
+#endif
                 options |= ewalgn_co_unsorted;
                 break;
             default:

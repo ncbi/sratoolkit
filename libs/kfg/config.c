@@ -39,6 +39,7 @@ struct KfgConfigNamelist;
 #include <klib/rc.h>
 #include <klib/debug.h>
 #include <klib/log.h> 
+#include <klib/out.h> /* OUTMSG */
 #include <klib/klib-priv.h>
 #include <kfs/directory.h>
 #include <kfs/file.h>
@@ -51,6 +52,7 @@ struct KfgConfigNamelist;
 #include <os-native.h>
 
 #include <string.h>
+#include <ctype.h>
 #include <stdlib.h>
 #include <assert.h>
 #include <va_copy.h>
@@ -69,6 +71,8 @@ struct KfgConfigNamelist;
 /* the leaf name of the user's modifiable settings,
    must reside in the user's $HOME/.ncbi directory */
 #define MAGIC_LEAF_NAME "user-settings.mkfg"
+
+static bool s_disable_user_settings = false;
 
 
 /*--------------------------------------------------------------------------
@@ -1996,7 +2000,8 @@ void load_config_files ( KConfig *self, const KDirectory *dir )
     if ( ! loaded )
         load_from_fs_location ( self );
 
-    loaded |= load_from_home ( self, wd );
+    if ( ! s_disable_user_settings )
+        loaded |= load_from_home ( self, wd );
 
     KDirectoryRelease ( wd );
 
@@ -2108,8 +2113,6 @@ void add_predefined_nodes ( KConfig * self, const char *appname )
         update_node(self, "APPPATH", rc == 0 ? buf : "", true );
     }
 
-    KDirectoryRelease ( cwd );
-
     /* APPNAME */
     rc = LogAppName(buf, sizeof(buf), &bytes);
     if ( rc == 0 )
@@ -2137,19 +2140,29 @@ void add_predefined_nodes ( KConfig * self, const char *appname )
     }
     else
     {
-        update_node(self, "HOME", value, true );
+        rc = KDirectoryResolvePath(cwd, true, buf, sizeof(buf), value);
+        if (rc == 0)
+        {
+            size_t bytes2;
+            char buf2 [ 4096 ];
         
-        string_printf(buf, sizeof(buf), &bytes, "%s/.ncbi", value);
-        update_node(self, "NCBI_HOME", buf, false );    /* can be overridden by the user */ 
-        
-        string_printf(buf, sizeof(buf), &bytes, "%s/.ncbi/%s", value, MAGIC_LEAF_NAME);
-        update_node(self, "NCBI_SETTINGS", buf, false );    /* can be overridden by the user */ 
+            update_node(self, "HOME", buf, true );
+            
+            string_printf(buf2, sizeof(buf2), &bytes2, "%s/.ncbi", buf);
+            update_node(self, "NCBI_HOME", buf2, false );    /* can be overridden by the user */ 
+            
+            string_printf(buf2, sizeof(buf2), &bytes2, "%s/.ncbi/%s", buf, MAGIC_LEAF_NAME);
+            update_node(self, "NCBI_SETTINGS", buf2, false );    /* can be overridden by the user */ 
+        }
+        else
+            LOGERR (klogErr, rc, "Unable to create a config item for $HOME");
     }
-
 
     DEFINE_ENV("VDB_ROOT");
     DEFINE_ENV("VDB_CONFIG");
 #undef DEFINE_ENV
+
+    KDirectoryRelease ( cwd );
 }
 
 static
@@ -2411,6 +2424,195 @@ static rc_t ReadNodeValueFixed ( const KConfigNode* self, char *buf, size_t bsiz
     }        
     return rc;
 }
+
+/**********************************************************/
+ 
+/* ReadBool
+ *  read a boolean node value
+ *
+ * self [ IN ] - KConfigNode object
+ * result [ OUT ] - return value (true if "TRUE", false if "FALSE"; rc != 0 if neither)
+ *
+ */
+LIB_EXPORT rc_t CC KConfigNodeReadBool ( const KConfigNode *self, bool *result )
+{
+    rc_t rc;
+
+    if ( result == NULL )
+        rc = RC ( rcKFG, rcNode, rcReading, rcParam, rcNull );
+    else
+    {
+        * result = false;
+
+        if ( self == NULL )
+            rc = RC ( rcKFG, rcNode, rcReading, rcSelf, rcNull );
+        else
+        {
+            char buf [ 6 ];
+            rc = ReadNodeValueFixed ( self, buf, sizeof buf );
+            if ( rc == 0 )
+            {
+                switch ( tolower ( buf [ 0 ] ) )
+                {
+                case 'f':
+                    if ( buf [ 1 ] == 0 )
+                        return 0;
+                    if ( strncasecmp ( buf, "false", sizeof buf ) == 0 )
+                        return 0;
+                    break;
+
+                case 'n':
+                    if ( buf [ 1 ] == 0 )
+                        return 0;
+                    if ( strncasecmp ( buf, "no", sizeof buf ) == 0 )
+                        return 0;
+                    break;
+
+                case 't':
+                    * result = true;
+                    if ( buf [ 1 ] == 0 )
+                        return 0;
+                    if ( strncasecmp ( buf, "true", sizeof buf ) == 0 )
+                        return 0;
+                    break;
+
+                case 'y':
+                    * result = true;
+                    if ( buf [ 1 ] == 0 )
+                        return 0;
+                    if ( strncasecmp ( buf, "yes", sizeof buf ) == 0 )
+                        return 0;
+                    break;
+                }
+
+                * result = false;
+                rc = RC ( rcKFG, rcNode, rcReading, rcFormat, rcIncorrect );
+            }
+        }
+    }
+
+    return rc;
+}
+
+/* ReadI64
+ *  read an integer node value
+ *
+ * self [ IN ] - KConfigNode object
+ * result [ OUT ] - return value (rc != 0 if cannot be converted)
+ *
+ */
+LIB_EXPORT rc_t CC KConfigNodeReadI64 ( const KConfigNode *self, int64_t *result )
+{
+    rc_t rc;
+
+    if ( result == NULL )
+        rc = RC ( rcKFG, rcNode, rcReading, rcParam, rcNull );
+    else
+    {
+        * result = 0;
+
+        if ( self == NULL )
+            rc = RC ( rcKFG, rcNode, rcReading, rcSelf, rcNull );
+        else
+        {
+            /* allow for leading zeros */
+            char buf [ 256 ];
+    
+            rc = ReadNodeValueFixed(self, buf, sizeof(buf));
+            if (rc == 0)
+            {
+                char* endptr;
+                int64_t res = strtoi64(buf, &endptr, 0);
+                if ( *endptr == '\0' )
+                    *result = res;
+                else
+                    rc = RC(rcKFG, rcNode, rcReading, rcFormat, rcIncorrect);
+            }
+        }
+    }
+    return rc;
+}
+
+/* ReadU64
+ *  read an unsiged node value
+ *
+ * self [ IN ] - KConfigNode object
+ * result [ OUT ] - return value (rc != 0 if cannot be converted)
+ *
+ */
+LIB_EXPORT rc_t CC KConfigNodeReadU64 ( const KConfigNode *self, uint64_t* result )
+{
+    rc_t rc;
+
+    if ( result == NULL )
+        rc = RC ( rcKFG, rcNode, rcReading, rcParam, rcNull );
+    else
+    {
+        * result = 0;
+
+        if ( self == NULL )
+            rc = RC ( rcKFG, rcNode, rcReading, rcSelf, rcNull );
+        else
+        {
+            /* allow for leading zeros */
+            char buf [ 256 ];
+    
+            rc = ReadNodeValueFixed(self, buf, sizeof(buf));
+            if (rc == 0)
+            {
+                char* endptr;
+                int64_t res = strtou64(buf, &endptr, 0);
+                if ( *endptr == '\0' )
+                    *result = res;
+                else
+                    rc = RC(rcKFG, rcNode, rcReading, rcFormat, rcIncorrect);
+            }
+        }
+    }
+    return rc;
+}
+
+/* ReadF64
+ *  read a floating point node value
+ *
+ * self [ IN ] - KConfigNode object
+ * result [ OUT ] - return value (rc != 0 if cannot be converted)
+ *
+ */
+LIB_EXPORT rc_t CC KConfigNodeReadF64( const KConfigNode *self, double* result )
+{
+    rc_t rc;
+
+    if ( result == NULL )
+        rc = RC ( rcKFG, rcNode, rcReading, rcParam, rcNull );
+    else
+    {
+        * result = 0.0;
+
+        if ( self == NULL )
+            rc = RC ( rcKFG, rcNode, rcReading, rcSelf, rcNull );
+        else
+        {
+            /* allow for leading zeros, trailing digits */
+            char buf [ 256 ];
+
+            rc = ReadNodeValueFixed(self, buf, sizeof(buf));
+            if (rc == 0)
+            {
+                char* endptr;
+                double res = strtod(buf, &endptr);
+                if ( *endptr == '\0' )
+                    *result = res;
+                else
+                    rc = RC(rcKFG, rcNode, rcReading, rcFormat, rcIncorrect);
+            }
+        }
+    }
+    return rc;
+}
+
+#if 0
+/*** NB - code needs to be located in VFS ***/
 /* ReadNodeValueFixed
  * Allocate a character buffer of sufficient size, copy the node's value into it, 0-terminate. Caller deallocates.
  */
@@ -2436,123 +2638,6 @@ static rc_t ReadNodeValueVariable( const KConfigNode* self, char** buf )
     return rc;
 }
 
-/**********************************************************/
- 
-/* ReadBool
- *  read a boolean node value
- *
- * self [ IN ] - KConfigNode object
- * result [ OUT ] - return value (true if "TRUE", false if "FALSE"; rc != 0 if neither)
- *
- */
-LIB_EXPORT rc_t CC KConfigNodeReadBool ( const KConfigNode *self, bool* result )
-{
-    rc_t rc;
-    char buf[6];
-
-    assert(self);
-    assert(result);
-    
-    rc = ReadNodeValueFixed(self, buf, sizeof(buf));
-    if (rc == 0)
-    {
-        if (strncasecmp(buf, "false", sizeof(buf)) == 0)
-            *result = false;
-        else if (strncasecmp(buf, "true", sizeof(buf)) == 0)
-            *result = true;
-        else
-            rc = RC(rcKFG, rcNode, rcReading, rcFormat, rcIncorrect);
-    }
-    return rc;
-}
-
-/* ReadI64
- *  read an integer node value
- *
- * self [ IN ] - KConfigNode object
- * result [ OUT ] - return value (rc != 0 if cannot be converted)
- *
- */
-LIB_EXPORT rc_t CC KConfigNodeReadI64 ( const KConfigNode *self, int64_t* result )
-{
-    rc_t rc;
-    char buf[21];
-
-    assert(self);
-    assert(result);
-    
-    rc = ReadNodeValueFixed(self, buf, sizeof(buf));
-    if (rc == 0)
-    {
-        char* endptr;
-        int64_t res = strtoi64(buf, &endptr, 0);
-        if ( *endptr == '\0' )
-            *result = res;
-        else
-            rc = RC(rcKFG, rcNode, rcReading, rcFormat, rcIncorrect);
-    }
-    return rc;
-}
-
-/* ReadU64
- *  read an unsiged node value
- *
- * self [ IN ] - KConfigNode object
- * result [ OUT ] - return value (rc != 0 if cannot be converted)
- *
- */
-LIB_EXPORT rc_t CC KConfigNodeReadU64 ( const KConfigNode *self, uint64_t* result )
-{
-    rc_t rc;
-    char buf[22];
-
-    assert(self); 
-    assert(result);
-    
-    rc = ReadNodeValueFixed(self, buf, sizeof(buf));
-    if (rc == 0)
-    {
-        char* endptr;
-        int64_t res = strtou64(buf, &endptr, 0);
-        if ( *endptr == '\0' )
-            *result = res;
-        else
-            rc = RC(rcKFG, rcNode, rcReading, rcFormat, rcIncorrect);
-    }
-    return rc;
-}
-
-/* ReadF64
- *  read a floating point node value
- *
- * self [ IN ] - KConfigNode object
- * result [ OUT ] - return value (rc != 0 if cannot be converted)
- *
- */
-LIB_EXPORT rc_t CC KConfigNodeReadF64( const KConfigNode *self, double* result )
-{
-    rc_t rc;
-    char buf[22];
-
-    assert(self);
-    assert(result);
-    
-    rc = ReadNodeValueFixed(self, buf, sizeof(buf));
-    if (rc == 0)
-    {
-        char* endptr;
-        double res = strtod(buf, &endptr);
-        if ( *endptr == '\0' )
-            *result = res;
-        else
-            rc = RC(rcKFG, rcNode, rcReading, rcFormat, rcIncorrect);
-    }
-    return rc;
-}
-
-#if 0
-/*** NB - code needs to be located in VFS ***/
-
 /* ReadFloat
  *  read a VPath node value
  *
@@ -2563,15 +2648,25 @@ LIB_EXPORT rc_t CC KConfigNodeReadF64( const KConfigNode *self, double* result )
 LIB_EXPORT rc_t CC KConfigNodeReadVPath ( const KConfigNode *self, struct VPath** result )
 {
     rc_t rc;
-    char* buf;
-    assert(self);
-    assert(result);
-    
-    rc = ReadNodeValueVariable ( self, &buf );
-    if ( rc == 0)
+
+    if ( result == NULL )
+        rc = RC ( rcKFG, rcNode, rcReading, rcParam, rcNull );
+    else
     {
-        rc = VPathMake(result, buf);
-        free(buf);
+        * result = NULL;
+
+        if ( self == NULL )
+            rc = RC ( rcKFG, rcNode, rcReading, rcSelf, rcNull );
+        else
+        {
+            char* buf;
+            rc = ReadNodeValueVariable ( self, &buf );
+            if ( rc == 0)
+            {
+                rc = VPathMake(result, buf);
+                free(buf);
+            }
+        }
     }
     return rc;
 }
@@ -2587,48 +2682,64 @@ LIB_EXPORT rc_t CC KConfigNodeReadVPath ( const KConfigNode *self, struct VPath*
 LIB_EXPORT rc_t CC KConfigNodeReadString ( const KConfigNode *self, String** result )
 {
     rc_t rc;
-    size_t num_read, to_read;
 
-    assert(self);
-    assert(result);
-
-    /* first we ask about the size to be read */
-    rc = KConfigNodeRead ( self, 0, NULL, 0, &num_read, &to_read );
-    if ( rc == 0 )
+    if ( result == NULL )
+        rc = RC ( rcKFG, rcNode, rcReading, rcParam, rcNull );
+    else
     {
-        struct String* value = malloc(sizeof(struct String) + to_read + 1);
-        if ( value )
+        * result = NULL;
+
+        if ( self == NULL )
+            rc = RC ( rcKFG, rcNode, rcReading, rcSelf, rcNull );
+        else
         {
-            StringInit(value, (char*)value + sizeof(String), to_read, to_read + 1);
-            rc = ReadNodeValueFixed(self, (char*)value->addr, to_read + 1);
+            size_t num_read, to_read;
+
+            /* first we ask about the size to be read */
+            rc = KConfigNodeRead ( self, 0, NULL, 0, &num_read, &to_read );
             if ( rc == 0 )
-                *result = value;
-            else
             {
-                rc = RC(rcKFG, rcNode, rcReading, rcFormat, rcIncorrect);
-                free ( value );
+                String *value = malloc ( sizeof * value + to_read + 1 );
+                if ( value == NULL )
+                    rc = RC( rcKFG, rcNode, rcReading, rcMemory, rcExhausted );
+                else
+                {
+                    /* TBD - this is broken for non-ascii strings
+                       much better to be WITHIN the config.c implementation
+                       and reach into the node value directly! */
+                    StringInit ( value, (char*)( value + 1 ), to_read, to_read + 1 );
+                    rc = ReadNodeValueFixed(self, (char*)value->addr, to_read + 1);
+                    if ( rc == 0 )
+                        *result = value;
+                    else
+                    {
+                        rc = RC(rcKFG, rcNode, rcReading, rcFormat, rcIncorrect);
+                        free ( value );
+                    }
+                }
             }
         }
-        else
-            rc = RC( rcKFG, rcNode, rcReading, rcMemory, rcExhausted );
     }    
     return rc;
 }
 
-/* this macro wraps a call to KConfigNodeGetXXX in a node-accessing code to implement the corresponding KConfigGetXXX function*/
+/* this macro wraps a call to KConfigNodeGetXXX in a node-accessing
+   code to implement the corresponding KConfigGetXXX function */
 #define NODE_TO_CONFIG_ACCESSOR(fn) \
     const KConfigNode* node;                                \
     rc_t rc = KConfigOpenNodeRead ( self, &node, path );    \
     if ( rc == 0)                                           \
     {                                                       \
+        rc_t rc2;                                           \
         rc = fn(node, result);                              \
+        rc2 = KConfigNodeRelease(node);                     \
         if (rc == 0)                                        \
-            rc = KConfigNodeRelease(node);                  \
-        else                                                \
-            KConfigNodeRelease(node);                       \
+            rc = rc2;                                       \
     }                                                       \
     return rc;                                              
     
+/* THESE FUNCTIONS ARE PROTECTED AGAINST BAD "self" AND "path"
+   BY KConfigOpenNodeRead, BUT THE CONVERSION FUNCTIONS ARE NOT */
 LIB_EXPORT rc_t CC KConfigReadBool ( const KConfig* self, const char* path, bool* result )
 {
     NODE_TO_CONFIG_ACCESSOR(KConfigNodeReadBool);
@@ -2656,4 +2767,131 @@ LIB_EXPORT rc_t CC KConfigReadString ( const KConfig* self, const char* path, st
     NODE_TO_CONFIG_ACCESSOR(KConfigNodeReadString);
 }
 
+#define DISP_RC(rc, msg) (void)((rc == 0) ? 0 : LOGERR(klogInt, rc, msg))
+#define DISP_RC2(rc, name, msg) (void)((rc == 0) ? 0 : \
+    PLOGERR(klogInt, (klogInt, rc, \
+        "$(name): $(msg)", "name=%s,msg=%s", name, msg)))
 
+static rc_t KConfigNodeReadData(const KConfigNode* self,
+    char* buf, size_t blen, size_t* num_read)
+{
+    rc_t rc = 0;
+    size_t remaining = 0;
+
+    assert(buf && blen && num_read);
+
+    rc = KConfigNodeRead(self, 0, buf, blen, num_read, &remaining);
+
+    assert(remaining == 0); /* TODO overflow check */
+    assert(*num_read <= blen);
+
+    return rc;
+}
+
+static rc_t printIndent(int indent) {
+    rc_t rc = 0;
+
+    int i = 0;
+    for (i = 0; i < indent * 2; ++i) {
+        rc_t rc2 = OUTMSG((" "));
+        if (rc == 0 && rc2 != 0) {
+            rc = rc2;
+        }
+    }
+
+    return rc;
+}
+
+static
+rc_t KConfigNodePrint(const KConfigNode* self, int indent, const char* root)
+{
+    rc_t rc = 0;
+    KNamelist* names = NULL;
+    uint32_t count = 0;
+    uint32_t i = 0;
+    char data[512] = "";
+    size_t num_data = 0;
+    assert(self);
+
+    printIndent(indent);
+    OUTMSG(("<%s>", root));
+
+    if (rc == 0) {
+        rc_t rc = KConfigNodeReadData(self, data, sizeof data, &num_data);
+        DISP_RC2(rc, "KConfigNodeReadData()", root);
+        if (rc == 0 && num_data > 0) {
+            OUTMSG(("%.*s", (int)num_data, data));
+        }
+    }
+
+    if (rc == 0) {
+        rc = KConfigNodeListChild(self, &names);
+        DISP_RC2(rc, "KConfigNodeListChild()", root);
+    }
+    if (rc == 0) {
+        rc = KNamelistCount(names, &count);
+        DISP_RC2(rc, "KNamelistCount()", root);
+    }
+
+
+    if (rc == 0) {
+        if (count > 0) {
+            OUTMSG(("\n"));
+        }
+        for (i = 0; i < count; ++i) {
+            const char* name = NULL;
+            const KConfigNode* node = NULL;
+            if (rc == 0) {
+                rc = KNamelistGet(names, i, &name);
+                DISP_RC2(rc, "KNamelistGet()", root);
+            }
+            if (rc == 0) {
+                rc = KConfigNodeOpenNodeRead(self, &node, name);
+                DISP_RC2(rc, "KConfigNodeOpenNodeRead()", name);
+            }
+            if (rc == 0) {
+                KConfigNodePrint(node, indent + 1, name);
+            }
+            KConfigNodeRelease(node);
+        }
+    }
+
+    if (count > 0) {
+        printIndent(indent);
+    }
+    OUTMSG(("</%s>\n", root));
+
+    KNamelistRelease(names);
+
+    return rc;
+}
+
+LIB_EXPORT rc_t CC KConfigPrint(const KConfig* self) {
+    rc_t rc = 0;
+
+    const char root[] = "Config";
+
+    if (self == NULL) {
+        OUTMSG(("<%s>", root));
+        OUTMSG(("KConfigPrint(const KConfig* self = NULL)\n"));
+        OUTMSG(("</%s>\n", root));
+    }
+    else {
+        const KConfigNode* node = NULL;
+        if (rc == 0) {
+            rc = KConfigOpenNodeRead(self, &node, "/");
+            DISP_RC2(rc, "KConfigOpenNodeRead()", "/");
+        }
+        if (rc == 0) {
+            KConfigNodePrint(node, 0, "Config");
+        }
+        KConfigNodeRelease(node);
+    }
+
+    return rc;
+}
+
+LIB_EXPORT void CC KConfigDisableUserSettings ( void )
+{
+    s_disable_user_settings = true;
+}

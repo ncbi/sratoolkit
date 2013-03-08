@@ -40,7 +40,12 @@ TARG=$(basename "$TARG")
 
 # put extension back onto name
 NAME="$NAME$DBGAP"
-[ "$EXT" != "" ] && NAME="$NAME.$EXT"
+STATIC_NAME="$NAME-static"
+if [ "$EXT" != "" ]
+then
+    NAME="$NAME.$EXT"
+    STATIC_NAME="$STATIC_NAME.$EXT"
+fi
 
 # break out version
 set-vers ()
@@ -72,6 +77,12 @@ then
     then
         create-link "$NAME.$MAJ.$MIN.$REL" "$NAME.$MAJ"
         create-link "$NAME.$MAJ" "$NAME"
+
+        # for static libraries, create special link
+        if [ "$TYPE" = "slib" ]
+        then
+            create-link "$NAME" "$STATIC_NAME"
+        fi
 
     # for name with major version in it
     elif [ "$TARG" = "$NAME.$MAJ" ]

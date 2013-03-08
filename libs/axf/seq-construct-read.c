@@ -120,6 +120,6 @@ VTRANSFACT_IMPL ( NCBI_align_seq_construct_read, 1, 0, 0 )
     if (info->fdesc.desc.intrinsic_bits * info->fdesc.desc.intrinsic_dim != 8)
         return RC(rcAlign, rcFunction, rcConstructing, rcType, rcIncorrect);
     rslt->u.ndf = seq_construct_read;
-    rslt->variant = vftNonDetRow;
+    rslt->variant = vftRow;
     return 0;
 }

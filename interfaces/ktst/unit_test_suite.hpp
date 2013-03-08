@@ -448,6 +448,11 @@ ncbi::NK::counter_t Main(int argc, char* argv[],
         LOG(ncbi::NK::LogLevel::e_test_suite,
             "Leaving test suite \"" << suite_name << "\"\n";)
     } 
+    catch (std::exception& ex) 
+    { 
+        LOG(ncbi::NK::LogLevel::e_nothing, std::string("*** Exception caught: ") + ex.what());
+        ++ec; 
+    }
     catch (...) 
     { 
         ++ec; 
