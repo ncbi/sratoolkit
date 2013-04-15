@@ -60,6 +60,7 @@ struct VCursor;
 struct VTypedecl;
 struct VTypedef;
 struct VResolver;
+struct SRACache;
 
 #define CSRA_EXT(lite) (lite ? ".lite.sra" : ".sra")
 #define SRA_EXT(lite) (lite ? ".lite.sra" : ".sra")
@@ -76,6 +77,7 @@ struct SRAMgr
 #else
     struct VResolver volatile *_pmgr;
 #endif
+    struct SRACache* cache;
     KRefcount refcount;
     KCreateMode mode;
     bool read_only;
@@ -98,7 +100,6 @@ rc_t SRAMgrSever ( const SRAMgr *self );
  *  do NOT access "pmgr" directly
  */
 struct SRAPath *SRAMgrAccessSRAPath ( const SRAMgr *self );
-
 
 /*--------------------------------------------------------------------------
  * SRATable

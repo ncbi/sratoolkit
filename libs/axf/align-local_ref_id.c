@@ -105,7 +105,7 @@ rc_t CC align_local_ref_id ( void *data, const VXformInfo *info, void *Dst, cons
     LocalRefID const *self = (void const *)data;
     int64_t *dst=(int64_t*)Dst;
     uint64_t const *global_ref_start = Src; 
-    unsigned i;
+    uint64_t i;
 
     for (i = 0; i != elem_count; ++i) {
         dst[i] = global_ref_start[i] / self->max_seq_len + 1;

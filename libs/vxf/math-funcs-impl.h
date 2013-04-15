@@ -225,7 +225,7 @@ rc_t CC array_func(
     self_t hack;
 
     hack.vp = Self;
-    hack.f(dst, src, num_elements);
+    hack.f(dst, src, ( size_t ) num_elements);
     return 0;
 }
 

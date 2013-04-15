@@ -86,17 +86,18 @@ tag: \
 #-------------------------------------------------------------------------------
 # kfg
 #
-$(LIBDIR)/libkfg: $(NCBIDIR)/config.kfg $(addprefix $(LIBDIR)/libkfg.,$(LIBEXT))
+$(LIBDIR)/libkfg: $(NCBIDIR)/default.kfg $(addprefix $(LIBDIR)/libkfg.,$(LIBEXT))
 
-$(NCBIDIR)/config.kfg: $(SRCDIR)/config.$(OS).kfg
-	sed -e "s|\$$"'(TOP)|'$(TOP)'|g' -e 's|/cygdrive||g' $^ > $@
+$(NCBIDIR)/default.kfg: $(SRCDIR)/default.kfg
+	rm -f $(NCBIDIR)/config.kfg
+	cp $^ $@
 
 KFG_SRC = \
 	config-grammar \
 	config-lex \
 	config \
 	repository \
-	report 
+	report-kfg
 
 KFG_OBJ = \
 	$(addsuffix .$(LOBX),$(KFG_SRC))
@@ -124,15 +125,13 @@ TEST_OBJ = \
 	$(addsuffix .$(OBJX),$(TEST_SRC))
 
 TEST_LIB = \
-	-skapp \
-	-skfg \
-	-svdb \
-	-svfs \
-	-skdb \
-	-skfs \
-	-skrypto \
-	-skproc \
 	-sktst \
+	-skapp \
+	-svfs \
+	-skurl \
+	-skrypto \
+	-skfg \
+	-skfs \
 	-sklib 
 
 $(TEST_BINDIR)/wb-test-kfg: $(TEST_OBJ)

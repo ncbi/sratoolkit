@@ -283,7 +283,7 @@ KFS_EXTERN rc_t CC KDirectoryVSetDate ( KDirectory *self, bool recurse,
  *  used when "mode" has kcmParents set and alias path does
  *  not exist.
  *
- *  "mode" [ IN ] - a creation mode ( see explanation above ).
+ *  "mode" [ IN ] - a creation mode ( see explanation in kfs/defs.h ).
  *
  *  "targ" [ IN ] - NUL terminated string in directory-native
  *  character set denoting target object, i.e. the object which
@@ -337,7 +337,7 @@ KFS_EXTERN rc_t CC KDirectoryVOpenFileWrite ( KDirectory *self,
  *
  *  "access" [ IN ] - standard Unix access mode, e.g. 0664
  *
- *  "mode" [ IN ] - a creation mode ( see explanation above ).
+ *  "mode" [ IN ] - a creation mode ( see explanation in kfs/defs.h ).
  *
  *  "path" [ IN ] - NUL terminated string in directory-native
  *  character set denoting target file

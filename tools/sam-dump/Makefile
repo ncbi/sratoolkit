@@ -83,13 +83,13 @@ SAMDUMP_OBJ = \
 
 SAMDUMP_LIB = \
 	-lkapp \
-	-ssrapath \
 	-lalign-reader \
 	$(READONLY_SCHEMA_LIBS) \
 	-lsraschema \
 	-lvdb \
 	-lkdb \
 	-lvfs \
+	-ssrapath \
 	-lkrypto \
 	-lkfg \
 	-lkfs \

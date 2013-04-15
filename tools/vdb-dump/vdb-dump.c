@@ -57,12 +57,7 @@
 #include <os-native.h>
 #include <sysalloc.h>
 
-#include <sra/srapath.h>
-
 #include <stdlib.h>
-#include <stdio.h>
-#include <string.h>
-#include <assert.h>
 #include <bitstr.h>
 
 #include "vdb-dump-num-gen.h"
@@ -449,7 +444,7 @@ static bool vdm_extract_or_parse_columns( const p_dump_context ctx,
     bool res = false;
     if ( ctx != NULL && my_col_defs != NULL )
     {
-        bool cols_unknown = ( ( ctx->columns == NULL ) || ( strcmp( ctx->columns, "*" ) == 0 ) );
+        bool cols_unknown = ( ( ctx->columns == NULL ) || ( string_cmp( ctx->columns, 1, "*", 1, 1 ) == 0 ) );
         if ( cols_unknown )
             /* the user does not know the column-names or wants all of them */
             res = vdcd_extract_from_table( my_col_defs, my_table );
@@ -472,7 +467,7 @@ static bool vdm_extract_or_parse_phys_columns( const p_dump_context ctx,
     bool res = false;
     if ( ctx != NULL && my_col_defs != NULL )
     {
-        bool cols_unknown = ( ( ctx->columns == NULL ) || ( strcmp( ctx->columns, "*" ) == 0 ) );
+        bool cols_unknown = ( ( ctx->columns == NULL ) || ( string_cmp( ctx->columns, 1, "*", 1, 1 ) == 0 ) );
         if ( cols_unknown )
             /* the user does not know the column-names or wants all of them */
             res = vdcd_extract_from_phys_table( my_col_defs, my_table );
@@ -1237,69 +1232,6 @@ static rc_t vdm_dump_database( const p_dump_context ctx, const VDBManager *my_ma
     return rc;
 }
 
-#if 0
-static char *vdm_translate_accession( SRAPath *my_sra_path,
-                               const char *accession,
-                               const size_t bufsize )
-{
-    char *res = malloc( bufsize );
-    if ( res != NULL )
-    {
-        rc_t rc = SRAPathFind( my_sra_path, accession, res, bufsize );
-        if ( GetRCState( rc ) == rcNotFound )
-        {
-            free( res );
-            res = NULL;
-        }
-        else if ( GetRCState( rc ) == rcInsufficient )
-        {
-            DBGMSG ( DBG_APP, 0,  ( "bufsize %lu was insufficient\n", bufsize ) );
-            free( res );
-            res = vdm_translate_accession( my_sra_path, accession, bufsize * 2 );
-        }
-        else if ( rc != 0 )
-        {
-            free( res );
-            res = NULL;
-        }
-    }
-    return res;
-}
-
-static rc_t vdm_check_accession( const p_dump_context ctx, const KDirectory *my_dir )
-{
-    rc_t rc = 0;
-    if ( strchr ( ctx->path, '/' ) == NULL )
-    {
-        SRAPath *my_sra_path;
-        rc = SRAPathMake( &my_sra_path, my_dir );
-        if ( rc != 0 )
-        {
-            if ( GetRCState ( rc ) != rcNotFound || GetRCTarget ( rc ) != rcDylib )
-                LOGERR( klogInt, rc, "SRAPathMake() failed" );
-            else
-                rc = 0;
-        }
-        else
-        {
-            if ( !SRAPathTest( my_sra_path, ctx->path ) )
-            {
-                char *buf = vdm_translate_accession( my_sra_path, ctx->path, 64 );
-                if ( buf != NULL )
-                {
-                    DBGMSG ( DBG_APP, 0,  ( "sra-accession found! '%s'<\n", buf ) );
-                    free( (char*)ctx->path );
-                    ctx->path = buf;
-                }
-            }
-            SRAPathRelease( my_sra_path );
-        }
-    }
-
-    return rc;
-}
-#endif
-
 
 static rc_t vdm_print_objver( const p_dump_context ctx, const VDBManager *mgr )
 {
@@ -1317,21 +1249,22 @@ static void vdm_print_objtype( const VDBManager *mgr, const char * acc_or_path )
     int path_type = ( VDBManagerPathType ( mgr, acc_or_path ) & ~ kptAlias );
     switch ( path_type )
     {
-    case kptDatabase    :   KOutMsg( "Database\n" ); break;
-    case kptTable       :   KOutMsg( "Table\n" ); break;
-    case kptColumn      :   KOutMsg( "Column\n" ); break;
-    case kptIndex       :   KOutMsg( "Index\n" ); break;
-    case kptNotFound    :   KOutMsg( "not found\n" ); break;
-    case kptBadPath     :   KOutMsg( "bad path\n" ); break;
-    case kptFile        :   KOutMsg( "File\n" ); break;
-    case kptDir         :   KOutMsg( "Dir\n" ); break;
-    case kptCharDev     :   KOutMsg( "CharDev\n" ); break;
-    case kptBlockDev    :   KOutMsg( "BlockDev\n" ); break;
-    case kptFIFO        :   KOutMsg( "FIFO\n" ); break;
-    case kptZombieFile  :   KOutMsg( "ZombieFile\n" ); break;
-    case kptDataset     :   KOutMsg( "Dataset\n" ); break;
-    case kptDatatype    :   KOutMsg( "Datatype\n" ); break;
-    default             :   KOutMsg( "value = '%i'\n", path_type ); break;
+    case kptDatabase      :   KOutMsg( "Database\n" ); break;
+    case kptTable         :   KOutMsg( "Table\n" ); break;
+    case kptPrereleaseTbl :   KOutMsg( "Prerelease Table\n" ); break;
+    case kptColumn        :   KOutMsg( "Column\n" ); break;
+    case kptIndex         :   KOutMsg( "Index\n" ); break;
+    case kptNotFound      :   KOutMsg( "not found\n" ); break;
+    case kptBadPath       :   KOutMsg( "bad path\n" ); break;
+    case kptFile          :   KOutMsg( "File\n" ); break;
+    case kptDir           :   KOutMsg( "Dir\n" ); break;
+    case kptCharDev       :   KOutMsg( "CharDev\n" ); break;
+    case kptBlockDev      :   KOutMsg( "BlockDev\n" ); break;
+    case kptFIFO          :   KOutMsg( "FIFO\n" ); break;
+    case kptZombieFile    :   KOutMsg( "ZombieFile\n" ); break;
+    case kptDataset       :   KOutMsg( "Dataset\n" ); break;
+    case kptDatatype      :   KOutMsg( "Datatype\n" ); break;
+    default               :   KOutMsg( "value = '%i'\n", path_type ); break;
     }
 }
 
@@ -1406,15 +1339,6 @@ static rc_t vdm_main_one_obj( const p_dump_context ctx,
     rc_t rc = 0;
 
     ctx->path = string_dup_measure ( acc_or_path, NULL );
-
-#if TOOLS_USE_SRAPATH != 0
-
-    if ( ctx->dont_check_accession == false )
-    {
-        rc_t rc1 = vdm_check_accession( ctx, dir );
-        DISP_RC( rc1, "check_accession() failed" );
-    }
-#endif
 
     if ( ctx->objver_requested )
     {

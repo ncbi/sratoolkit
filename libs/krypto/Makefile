@@ -221,11 +221,8 @@ ALL_LIB_SRC = \
 	aes_core \
 	aes-byte \
 	cipher-byte \
-	key
-
-ifeq ($(OS),linux)
-ALL_LIB_SRC += reencfile
-endif
+	key \
+	reencfile
 
 LIB_SRC = \
 	no-null-ncbi
@@ -294,8 +291,8 @@ KRYPTO_OBJ = \
 KRYPTO_LIB = \
 	-dkfg \
 	-dkfs \
-	-dklib \
-    -dkproc
+	-dkproc \
+	-dklib
 
 $(LIBDIR)/libkrypto.$(SHLX): $(KRYPTO_OBJ)
 	$(LD) --dlib --vers $(SRCDIR) -o $@ $^ $(KRYPTO_LIB)
@@ -322,8 +319,8 @@ KRYPTOTEST_OBJ = \
 KRYPTOTEST_LIB = \
 	-dkfg \
 	-dkfs \
-	-dklib \
-	-dkproc 
+	-dkproc \
+	-dklib
 
 
 $(ILIBDIR)/libkryptotest.$(SHLX): $(KRYPTOTEST_OBJ)

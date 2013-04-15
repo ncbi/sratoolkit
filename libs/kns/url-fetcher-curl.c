@@ -26,7 +26,7 @@
 
 #include <kns/extern.h>
 #include <klib/rc.h>
-#include <kns/kns_mgr.h>
+#include <kns/manager.h>
 #include <kns/url-fetcher.h>
 
 /* IMPORTANT define this before including the *-impl.h !!!! */

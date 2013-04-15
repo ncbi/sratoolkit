@@ -35,6 +35,8 @@
 #include "blob.h"
 #include "page-map.h"
 
+#include <sysalloc.h>
+
 #include <assert.h>
 #include <stdlib.h>
 

@@ -39,23 +39,23 @@ struct String;
 struct KNSManager;
 struct KDataBuffer;
 
-typedef struct KCurlRequest KCurlRequest;
+struct KCurlRequest;
 
-KNS_EXTERN rc_t CC KNSManagerMakeRequest( struct KNSManager const *kns_mgr, KCurlRequest **self, const char * url, bool verbose );
+KNS_EXTERN rc_t CC KNSManagerMakeRequest( struct KNSManager const *kns_mgr, struct KCurlRequest **self, const char * url, bool verbose );
 
-KNS_EXTERN rc_t CC KCurlRequestAddRef ( const KCurlRequest *self );
+KNS_EXTERN rc_t CC KCurlRequestAddRef ( const struct KCurlRequest *self );
 
-KNS_EXTERN rc_t CC KCurlRequestRelease( const KCurlRequest *self );
+KNS_EXTERN rc_t CC KCurlRequestRelease( const struct KCurlRequest *self );
 
-KNS_EXTERN rc_t CC KCurlRequestAddFields( KCurlRequest *self, const char * fields );
+KNS_EXTERN rc_t CC KCurlRequestAddFields( struct KCurlRequest *self, const char * fields );
 
-KNS_EXTERN rc_t CC KCurlRequestAddSFields( KCurlRequest *self, struct String const * fields );
+KNS_EXTERN rc_t CC KCurlRequestAddSFields( struct KCurlRequest *self, struct String const * fields );
 
-KNS_EXTERN rc_t CC KCurlRequestAddField( KCurlRequest *self, const char * name, const char * value );
+KNS_EXTERN rc_t CC KCurlRequestAddField( struct KCurlRequest *self, const char * name, const char * value );
 
-KNS_EXTERN rc_t CC KCurlRequestAddSField( KCurlRequest *self, struct String const * name, struct String const * value );
+KNS_EXTERN rc_t CC KCurlRequestAddSField( struct KCurlRequest *self, struct String const * name, struct String const * value );
 
-KNS_EXTERN rc_t CC KCurlRequestPerform( KCurlRequest *self, struct KDataBuffer * buffer );
+KNS_EXTERN rc_t CC KCurlRequestPerform( struct KCurlRequest *self, struct KDataBuffer * buffer );
 
 
 #ifdef __cplusplus

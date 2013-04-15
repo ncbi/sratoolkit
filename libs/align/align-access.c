@@ -26,6 +26,7 @@
 
 #include <align/extern.h>
 #include <klib/rc.h>
+#include <klib/text.h>
 #include <align/align-access.h>
 #include <atomic32.h>
 
@@ -251,7 +252,7 @@ LIB_EXPORT rc_t CC AlignAccessRefSeqEnumeratorGetID(const AlignAccessRefSeqEnume
     rc = BAMFileGetRefSeq(cself->parent->innerSelf, cself->cur, &cur);
     if (rc)
         return rc;
-    id_act_size = strlen(cur->name) + 1;
+    id_act_size = string_size( cur->name ) + 1;
     if (id_size != NULL)
         *id_size = id_act_size;
     if (id_buffer != NULL) {
@@ -480,7 +481,7 @@ LIB_EXPORT rc_t CC AlignAccessAlignmentEnumeratorGetRefSeqID(
     rc = BAMFileGetRefSeq(self->parent->innerSelf, id, &cur);
     if (rc)
         return rc;
-    id_act_size = strlen(cur->name) + 1;
+    id_act_size = string_size( cur->name ) + 1;
     if (id_size != NULL)
         *id_size = id_act_size;
     if (id_buffer != NULL) {
@@ -547,7 +548,7 @@ LIB_EXPORT rc_t CC AlignAccessAlignmentEnumeratorGetShortSeqAccessionID(
     if (readGroupName == 0)
         *id_size = 0;
     else {
-        id_act_size = strlen(readGroupName) + 1;
+        id_act_size = string_size( readGroupName ) + 1;
         if (id_size != NULL)
             *id_size = id_act_size;
         if (id_buffer != NULL) {
@@ -577,7 +578,7 @@ LIB_EXPORT rc_t CC AlignAccessAlignmentEnumeratorGetShortSeqID(
     if (rc)
         return rc;
 
-    id_act_size = strlen(readName) + 1;
+    id_act_size = string_size( readName ) + 1;
     if (id_size != NULL)
         *id_size = id_act_size;
     if (id_buffer != NULL) {

@@ -115,7 +115,7 @@ KFS_EXTERN rc_t CC KDirectoryVMakeCacheTee ( struct KDirectory *self,
  *
  * it returns the result of the check in *is_complete
  */
-KFS_EXTERN rc_t CC IsCacheFileComplete( const struct KFile * self, bool * is_complete );
+KFS_EXTERN rc_t CC IsCacheFileComplete( const struct KFile * self, bool * is_complete, bool silent);
 
 
 /* -----
@@ -131,6 +131,14 @@ KFS_EXTERN rc_t CC TruncateCacheFile( struct KFile * self );
  *
  */
 KFS_EXTERN rc_t CC GetCacheCompleteness( const struct KFile * self, float * percent );
+
+
+/* -----
+ * examens the file, and reports the size of the original file ( without the cachefile-footer )
+ *
+ */
+KFS_EXTERN rc_t CC GetCacheTruncatedSize( const struct KFile * self, uint64_t * truncated_size, bool silent );
+
 
 #ifdef __cplusplus
 }

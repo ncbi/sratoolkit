@@ -400,7 +400,12 @@ static rc_t decode_encoded(struct decoded *y, const struct encoded *x) {
             n = x->u.izipped.diff_size;
             memcpy(y->diff->data.u8, x->u.izipped.diff, n);
         }
-        elem_bits = (n * 8) / y->diff->size;
+
+        if ( y->diff->size != 0 )
+            elem_bits = (n * 8) / y->diff->size;
+        else
+            return RC(rcXF, rcFunction, rcExecuting, rcData, rcInvalid);
+
         if (elem_bits * y->diff->size / 8 != n)
             return RC(rcXF, rcFunction, rcExecuting, rcData, rcInvalid);
         BITS_TO_VARIANT(y->diff, elem_bits);

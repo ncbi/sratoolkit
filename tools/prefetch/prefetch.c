@@ -41,6 +41,7 @@
 #include <kfs/file.h> /* KFile */
 
 #include <klib/printf.h> /* string_printf */
+#include <klib/container.h> /* BSTree */
 #include <klib/text.h> /* String */
 #include <klib/status.h> /* STSMSG */
 #include <klib/log.h> /* PLOGERR */
@@ -84,8 +85,21 @@ static bool NotFoundByResolver(rc_t rc) {
     }
     return false;
 }
+
+typedef struct {
+    const VPath *path;
+    const String *str;
+} VPathStr;
+static rc_t VPathStrFini(VPathStr *self) {
+    rc_t rc = 0;
+    assert(self);
+    VPathRelease(self->path);
+    free((void*)self->str);
+    memset(self, 0, sizeof *self);
+    return rc;
+}
 static rc_t VResolverResolve(VResolver *self, const char *accession,
-    const String **local, const String **remote, const String **cache,
+    VPathStr *local, const String **remote, const String **cache,
     const KFile **file)
 {
     rc_t rc = 0;
@@ -102,10 +116,10 @@ static rc_t VResolverResolve(VResolver *self, const char *accession,
         DISP_RC2(rc, "VPathMake", accession);
     }
     if (rc == 0 && local != NULL) {
-        const VPath* vpath = NULL;
-        rc = VResolverLocal(self, vaccession, &vpath);
+        memset(local, 0, sizeof *local);
+        rc = VResolverLocal(self, vaccession, &local->path);
         if (rc == 0) {
-            rc = VPathMakeString(vpath, local);
+            rc = VPathMakeString(local->path, &local->str);
             DISP_RC2(rc, "VPathMakeString(VResolverLocal)", accession);
         }
         else if (NotFoundByResolver(rc)) {
@@ -114,7 +128,6 @@ static rc_t VResolverResolve(VResolver *self, const char *accession,
         else {
             DISP_RC2(rc, "VResolverLocal", accession);
         }
-        RELEASE(VPath, vpath);
     }
     if (rc == 0 && remote != NULL) {
         rc = VResolverRemote(self, vaccession, &vremote, file);
@@ -123,8 +136,8 @@ static rc_t VResolverResolve(VResolver *self, const char *accession,
             DISP_RC2(rc, "VPathMakeString(VResolverRemote)", accession);
         }
         else if (NotFoundByResolver(rc)) {
-            PLOGERR(klogErr, (klogErr, rc, "$(acc) cannot be found. "
-                "Was it released?", "acc=%s", accession));
+            PLOGERR(klogErr, (klogErr, rc, "$(acc) cannot be found.",
+                "acc=%s", accession));
         }
         else {
             DISP_RC2(rc, "Cannot resolve remote", accession);
@@ -154,6 +167,10 @@ typedef enum {
     eForceYES /* force download; ignore lockes */
 } Force;
 typedef struct {
+    BSTNode n;
+    char *path;
+} TreeNode;
+typedef struct {
     Args *args;
     bool check_all;
     Force force;
@@ -163,6 +180,8 @@ typedef struct {
 
     void *buffer;
     size_t bsize;
+
+    BSTree downloaded;
 } Main;
 static rc_t StringRelease(const String *self) {
     free((String*)self);
@@ -170,19 +189,24 @@ static rc_t StringRelease(const String *self) {
 }
 
 typedef struct {
-    const String *local;
+    VPathStr local;
     const String *remote;
     const String *cache;
     const KFile *file;
 
+    bool existing;
+
     /* path to the resolved object : either local or cache:
     should not be released */
-    const String *path;
+    const char *path;
 
     const char *acc; /* do not release */
 } Resolved;
-rc_t ResolvedInit(Resolved *self, const char *acc, VResolver *resolver) {
+static rc_t ResolvedInit(Resolved *self,
+    const char *acc, VResolver *resolver, KDirectory *dir)
+{
     rc_t rc = 0;
+    KPathType type = kptNotFound;
 
     assert(self);
 
@@ -190,16 +214,24 @@ rc_t ResolvedInit(Resolved *self, const char *acc, VResolver *resolver) {
 
     self->acc = acc;
 
+    type = KDirectoryPathType(dir, acc) & ~kptAlias;
+    if (type == kptFile || type == kptDir) {
+        self->path = acc;
+        self->existing = true;
+        return 0;
+    }
+
     rc = VResolverResolve(resolver,
         acc, &self->local, &self->remote, &self->cache, &self->file);
 
     STSMSG(STS_DBG, ("Resolve(%s) = %R:", acc, rc));
-    STSMSG(STS_DBG, ("local(%s)", self->local ? self->local->addr : "NULL"));
+    STSMSG(STS_DBG, ("local(%s)",
+        self->local.str ? self->local.str->addr : "NULL"));
     STSMSG(STS_DBG, ("remote(%s)", self->remote ? self->remote->addr : "NULL"));
     STSMSG(STS_DBG, ("cache(%s)", self->cache ? self->cache->addr : "NULL"));
 
     if (rc == 0) {
-        if (self->local == NULL
+        if (self->local.str == NULL
             && (self->cache == NULL ||
                 self->remote == NULL || self->file == NULL))
         {
@@ -217,7 +249,8 @@ static rc_t ResolvedFini(Resolved *self) {
 
     assert(self);
 
-    RELEASE(String, self->local);
+    rc = VPathStrFini(&self->local);
+
     RELEASE(String, self->remote);
     RELEASE(String, self->cache);
 
@@ -237,26 +270,30 @@ static rc_t ResolvedLocal(const Resolved *self,
     uint64_t sRemote = 0;
     uint64_t sLocal = 0;
     const KFile *local = NULL;
+    char path[PATH_MAX] = "";
 
     assert(isLocal && self);
 
     *isLocal = false;
 
-    if (self->local == NULL) {
+    if (self->local.str == NULL) {
         return 0;
     }
 
-    if (KDirectoryPathType(dir, self->local->addr) != kptFile) {
+    rc = VPathReadPath(self->local.path, path, sizeof path, NULL);
+    DISP_RC(rc, "VPathReadPath");
+
+    if (rc == 0 && KDirectoryPathType(dir, path) != kptFile) {
         if (force == eForceNo) {
             STSMSG(STS_TOP,
                 ("%s (not a file) is found locally: consider it complete",
-                 self->local->addr));
+                 path));
             *isLocal = true;
         }
         else {
             STSMSG(STS_TOP,
                 ("%s (not a file) is found locally and will be redownloaded",
-                 self->local->addr));
+                 path));
         }
         return 0;
     }
@@ -267,13 +304,13 @@ static rc_t ResolvedLocal(const Resolved *self,
     }
 
     if (rc == 0) {
-        rc = KDirectoryOpenFileRead(dir, &local, self->local->addr);
-        DISP_RC2(rc, "KDirectoryOpenFileRead", self->local->addr);
+        rc = KDirectoryOpenFileRead(dir, &local, path);
+        DISP_RC2(rc, "KDirectoryOpenFileRead", path);
     }
 
     if (rc == 0) {
         rc = KFileSize(local, &sLocal);
-        DISP_RC2(rc, "KFileSize", self->local->addr);
+        DISP_RC2(rc, "KFileSize", path);
     }
 
     if (rc == 0) {
@@ -281,17 +318,16 @@ static rc_t ResolvedLocal(const Resolved *self,
             if (force == eForceNo) {
                 *isLocal = true;
                 STSMSG(STS_INFO, ("%s (%lu) is found and is complete",
-                    self->local->addr, sLocal));
+                    path, sLocal));
             }
             else {
                 STSMSG(STS_INFO, ("%s (%lu) is found and will be redownloaded",
-                    self->local->addr, sLocal));
+                    path, sLocal));
             }
         }
         else {
             STSMSG(STS_TOP, ("%s (%lu) is incomplete. Expected size is %lu. "
-                "It will be re-downloaded",
-                self->local->addr, sLocal, sRemote));
+                "It will be re-downloaded", path, sLocal, sRemote));
         }
     }
 
@@ -382,6 +418,28 @@ static rc_t _KDirectoryMkLockName(const KDirectory *self,
     return rc;
 }
 
+static rc_t _KDirectoryCleanCache(KDirectory *self, const String *local) {
+    rc_t rc = 0;
+
+    char cache[PATH_MAX] = "";
+    size_t num_writ = 0;
+
+    assert(self && local && local->addr);
+
+    if (rc == 0) {
+        rc = string_printf(cache, sizeof cache, &num_writ, "%s.cache",
+            local->addr);
+        DISP_RC2(rc, "string_printf(.cache)", local->addr);
+    }
+
+    if (rc == 0 && KDirectoryPathType(self, cache) != kptNotFound) {
+        STSMSG(STS_DBG, ("removing %s", cache));
+        rc = KDirectoryRemove(self, false, cache);
+    }
+
+    return rc;
+}
+
 static rc_t _KDirectoryClean(KDirectory *self, const String *cache,
     const char *lock, const char *tmp, bool rmSelf)
 {
@@ -416,7 +474,6 @@ static rc_t _KDirectoryClean(KDirectory *self, const String *cache,
                     "cannot extract directory from $(path)", "path=%s", dir));
         }
         tmpPfxLen = strlen(tmpPfx);
-
     }
 
     if (tmp != NULL && KDirectoryPathType(self, tmp) != kptNotFound) {
@@ -488,9 +545,73 @@ static rc_t _KDirectoryClean(KDirectory *self, const String *cache,
     return rc;
 }
 
-static rc_t ResolvedDownload(const Resolved *self, const Main *main) {
+static int CC bstCmp(const void *item, const BSTNode *n) {
+    const char* path = item;
+    const TreeNode* sn = (const TreeNode*) n;
+
+    assert(path && sn && sn->path);
+
+    return strcmp(path, sn->path);
+}
+
+static int CC bstSort(const BSTNode* item, const BSTNode* n) {
+    const TreeNode* sn = (const TreeNode*) item;
+
+    return bstCmp(sn->path, n);
+}
+
+static void CC bstWhack(BSTNode* n, void* ignore) {
+    TreeNode* sn = (TreeNode*) n;
+
+    assert(sn);
+
+    free(sn->path);
+
+    memset(sn, 0, sizeof *sn);
+
+    free(sn);
+}
+
+static bool MainHasDownloaded(const Main *self, const char *local) {
+    TreeNode *sn = NULL;
+
+    assert(self);
+
+    sn = (TreeNode*) BSTreeFind(&self->downloaded, local, bstCmp);
+
+    return sn != NULL;
+}
+
+static rc_t MainDownloaded(Main *self, const char *path) {
+    TreeNode *sn = NULL;
+
+    assert(self);
+
+    if (MainHasDownloaded(self, path)) {
+        return 0;
+    }
+
+    sn = calloc(1, sizeof *sn);
+    if (sn == NULL) {
+        return RC(rcExe, rcStorage, rcAllocating, rcMemory, rcExhausted);
+    }
+
+    sn->path = string_dup_measure(path, NULL);
+    if (sn->path == NULL) {
+        bstWhack((BSTNode*) sn, NULL);
+        sn = NULL;
+        return RC(rcExe, rcStorage, rcAllocating, rcMemory, rcExhausted);
+    }
+
+    BSTreeInsert(&self->downloaded, (BSTNode*)sn, bstSort);
+
+    return 0;
+}
+
+static rc_t ResolvedDownload(const Resolved *self, Main *main) {
     rc_t rc = 0;
     KFile *out = NULL;
+    KFile *flock = NULL;
     uint64_t pos = 0;
     size_t num_read = 0;
     uint64_t opos = 0;
@@ -501,6 +622,13 @@ static rc_t ResolvedDownload(const Resolved *self, const Main *main) {
 
     assert(self
         && self->cache && self->cache->size && self->cache->addr && main);
+
+    if (main->force != eForceYES &&
+        MainHasDownloaded(main, self->cache->addr))
+    {
+        STSMSG(STS_INFO, ("%s has just been downloaded", self->cache->addr));
+        return 0;
+    }
 
     if (rc == 0) {
         rc = _KDirectoryMkLockName(main->dir, self->cache, lock, sizeof lock);
@@ -546,13 +674,15 @@ static rc_t ResolvedDownload(const Resolved *self, const Main *main) {
 
     if (rc == 0) {
         STSMSG(STS_DBG, ("creating %s", lock));
-        rc = KDirectoryCreateFile(main->dir, &out, false, 0664, kcmInit | kcmParents, lock);
+        rc = KDirectoryCreateFile(main->dir, &flock,
+            false, 0664, kcmInit | kcmParents, lock);
         DISP_RC2(rc, "Cannot OpenFileWrite", lock);
     }
 
     if (rc == 0) {
         STSMSG(STS_DBG, ("creating %s", tmp));
-        rc = KDirectoryCreateFile(main->dir, &out, false, 0664, kcmInit | kcmParents, tmp);
+        rc = KDirectoryCreateFile(main->dir, &out,
+            false, 0664, kcmInit | kcmParents, tmp);
         DISP_RC2(rc, "Cannot OpenFileWrite", tmp);
     }
 
@@ -585,6 +715,7 @@ static rc_t ResolvedDownload(const Resolved *self, const Main *main) {
     } while (rc == 0 && num_read > 0);
 
     RELEASE(KFile, out);
+    RELEASE(KFile, flock);
 
     if (rc == 0) {
         STSMSG(STS_DBG, ("renaming %s -> %s", tmp, self->cache->addr));
@@ -592,6 +723,17 @@ static rc_t ResolvedDownload(const Resolved *self, const Main *main) {
         if (rc != 0) {
             PLOGERR(klogInt, (klogInt, rc, "cannot rename $(from) to $(to)",
                 "from=%s,to=%s", tmp, self->cache->addr));
+        }
+    }
+
+    if (rc == 0) {
+        rc = MainDownloaded(main, self->cache->addr);
+    }
+
+    if (rc == 0) {
+        rc_t rc2 = _KDirectoryCleanCache(main->dir, self->cache);
+        if (rc == 0 && rc2 != 0) {
+            rc = rc2;
         }
     }
 
@@ -605,8 +747,8 @@ static rc_t ResolvedDownload(const Resolved *self, const Main *main) {
     return rc;
 }
 
-static rc_t ResolvedResolve(Resolved *self,
-    const Main *main, const char *acc)
+static
+rc_t ResolvedResolve(Resolved *self, Main *main, const char *acc)
 {
     static int n = 0;
     rc_t rc = 0;
@@ -616,23 +758,32 @@ static rc_t ResolvedResolve(Resolved *self,
 
     ++n;
 
-    rc = ResolvedInit(self, acc, main->resolver);
+    rc = ResolvedInit(self, acc, main->resolver, main->dir);
 
     if (rc == 0) {
+        if (self->existing) {
+            self->path = acc;
+            return rc;
+        }
+
         rc = ResolvedLocal(self, main->dir, &isLocal, main->force);
     }
 
     if (rc == 0) {
         if (isLocal) {
             STSMSG(STS_TOP, ("%d) %s is found locally", n, acc));
-            self->path = self->local;
+            if (self->local.str != NULL) {
+                self->path = self->local.str->addr;
+            }
         }
         else {
             STSMSG(STS_TOP, ("%d) Downloading %s...", n, acc));
             rc = ResolvedDownload(self, main);
             if (rc == 0) {
                 STSMSG(STS_TOP, ("%d) %s was downloaded successfully", n, acc));
-                self->path = self->cache;
+                if (self->cache != NULL) {
+                    self->path = self->cache->addr;
+                }
             }
             else {
                 STSMSG(STS_TOP, ("%d) failed to download %s", n, acc));
@@ -644,7 +795,7 @@ static rc_t ResolvedResolve(Resolved *self,
 }
 
 static rc_t MainDependenciesList(const Main *self,
-    const String *path, const VDBDependencies **deps)
+    const char *path, const VDBDependencies **deps)
 {
     rc_t rc = 0;
     bool isDb = true;
@@ -652,18 +803,18 @@ static rc_t MainDependenciesList(const Main *self,
 
     assert(self && path && deps);
 
-    rc = VDBManagerOpenDBRead(self->mgr, &db, NULL, path->addr);
+    rc = VDBManagerOpenDBRead(self->mgr, &db, NULL, path);
     if (rc != 0) {
         if (rc == SILENT_RC(rcDB, rcMgr, rcOpening, rcDatabase, rcIncorrect)) {
             isDb = false;
             rc = 0;
         }
-        DISP_RC2(rc, "Cannot open database", path->addr);
+        DISP_RC2(rc, "Cannot open database", path);
     }
 
     if (rc == 0 && isDb) {
-        bool missed = !self->check_all || self->force != eForceNo;
-        rc = VDatabaseListDependencies(db, deps, missed);
+        bool all = self->check_all || self->force != eForceNo;
+        rc = VDatabaseListDependencies(db, deps, !all);
         DISP_RC2(rc, "VDatabaseListDependencies", path);
     }
 
@@ -672,7 +823,7 @@ static rc_t MainDependenciesList(const Main *self,
     return rc;
 }
 
-static rc_t MainExecute(const Main *self, const char *acc) {
+static rc_t MainExecute(Main *self, const char *acc) {
     rc_t rc = 0;
     rc_t rc2 = 0;
     const VDBDependencies *deps = NULL;
@@ -692,8 +843,9 @@ static rc_t MainExecute(const Main *self, const char *acc) {
     if (rc == 0 && deps != NULL) {
         rc = VDBDependenciesCount(deps, &count);
         if (rc == 0) {
-            STSMSG(STS_TOP, ("%s has %d %s dependencies",
-                acc, count, self->check_all ? "" : "unresolved"));
+            STSMSG(STS_TOP, ("%s has %d%s dependenc%s",
+                acc, count, self->check_all ? "" : " unresolved",
+                count > 1 ? "ies" : "y"));
         }
         else {
             DISP_RC2(rc, "Failed to check %s's dependencies", acc);
@@ -790,16 +942,6 @@ static rc_t MainProcessArgs(Main *self, int argc, char *argv[]) {
     }
 
     do {
-        rc = ArgsOptionCount (self->args, CHECK_ALL_OPTION, &pcount);
-        if (rc != 0) {
-            LOGERR(klogErr,
-                rc, "Failure to get '" CHECK_ALL_OPTION "' argument");
-            break;
-        }
-        if (pcount > 0) {
-            self->check_all = true;
-        }
-
         rc = ArgsOptionCount (self->args, FORCE_OPTION, &pcount);
         if (rc != 0) {
             LOGERR(klogErr, rc, "Failure to get '" FORCE_OPTION "' argument");
@@ -843,6 +985,16 @@ static rc_t MainProcessArgs(Main *self, int argc, char *argv[]) {
                 break;
             }
         }
+
+        rc = ArgsOptionCount (self->args, CHECK_ALL_OPTION, &pcount);
+        if (rc != 0) {
+            LOGERR(klogErr,
+                rc, "Failure to get '" CHECK_ALL_OPTION "' argument");
+            break;
+        }
+        if (pcount > 0 || self->force != eForceNo) {
+            self->check_all = true;
+        }
     } while (false);
     return rc;
 }
@@ -854,6 +1006,8 @@ static rc_t MainInit(int argc, char *argv[], Main *self) {
 
     assert(self);
     memset(self, 0, sizeof *self);
+
+    BSTreeInit(&self->downloaded);
 
     if (rc == 0) {
         rc = MainProcessArgs(self, argc, argv);
@@ -870,6 +1024,14 @@ static rc_t MainInit(int argc, char *argv[], Main *self) {
     if (rc == 0) {
         rc = VFSManagerMake(&mgr);
         DISP_RC(rc, "VFSManagerMake");
+    }
+
+    if (rc == 0) {
+        VResolver *resolver = NULL;
+        rc = VFSManagerGetResolver(mgr, &resolver);
+        DISP_RC(rc, "VFSManagerGetResolver");
+        VResolverRemoteEnable(resolver, vrAlwaysEnable);
+        RELEASE(VResolver, resolver);
     }
 
     if (rc == 0) {
@@ -919,6 +1081,8 @@ static rc_t MainFini(Main *self) {
 
     free(self->buffer);
 
+    BSTreeWhack(&self->downloaded, bstWhack, NULL);
+
     memset(self, 0, sizeof *self);
 
     return rc;
@@ -928,11 +1092,12 @@ const char UsageDefaultName[] = "prefetch";
 rc_t UsageSummary(const char *progname) {
     return OUTMSG((
         "Usage:\n"
-        "  %s [options] <SRA accession> [ ...]\n"
+        "  %s [options] <SRA accession> [...]\n"
+        "  Download SRA file and its dependencies\n"
         "\n"
-        "Summary:\n"
-        "  Download SRA file and its dependencies\n",
-        progname));
+        "  %s [options] <SRA file> [...]\n"
+        "  Check SRA for missed dependencies and download them\n",
+        progname, progname));
 }
 
 rc_t CC Usage(const Args *args) {

@@ -160,24 +160,36 @@ static rc_t context_evaluate_arguments( const Args *my_args, p_context ctx )
     uint32_t count, idx;
     
     rc_t rc = ArgsParamCount( my_args, &count );
-    DISP_RC( rc, "ArgsParamCount() failed" );
+    if ( rc != 0 )
+    {
+        LOGERR( klogErr, rc, "ArgsParamCount() failed" );
+    }
     if ( rc != 0 ) return rc;
 
     for ( idx = 0; idx < count && rc == 0; ++idx )
     {
         const char *value = NULL;
         rc = ArgsParamValue( my_args, idx, &value );
-        DISP_RC( rc, "ArgsParamValue() failed" );
-        if ( rc == 0 )
+        if ( rc != 0 )
+        {
+            LOGERR( klogErr, rc, "ArgsParamValue() failed" );
+        }
+        else
         {
             switch( idx )
             {
             case 0 : rc = context_set_src( ctx, value );
-                     DISP_RC( rc, "context_set_src() failed" );
+                     if ( rc != 0 )
+                     {
+                        LOGERR( klogErr, rc, "context_set_src() failed" );
+                     }
                      break;
 
             case 1 : rc = context_set_dst_path( ctx, value );
-                     DISP_RC( rc, "context_set_dst_path() failed" );
+                     if ( rc != 0 )
+                     {
+                        LOGERR( klogErr, rc, "context_set_dst_path() failed" );
+                     }
                      break;
             }
         }
@@ -191,7 +203,10 @@ static bool context_get_bool_option( const Args *my_args,
 {
     uint32_t count;
     rc_t rc = ArgsOptionCount( my_args, name, &count );
-    DISP_RC( rc, "ArgsOptionCount() failed" );
+    if ( rc != 0 )
+    {
+        LOGERR( klogErr, rc, "ArgsOptionCount() failed" );
+    }
     return ( ( rc == 0 && count > 0 ) );
 }
 
@@ -202,11 +217,17 @@ static const char* context_get_str_option( const Args *my_args,
     const char* res = NULL;
     uint32_t count;
     rc_t rc = ArgsOptionCount( my_args, name, &count );
-    DISP_RC( rc, "ArgsOptionCount() failed" );
-    if ( ( rc == 0 )&&( count > 0 ) )
+    if ( rc != 0 )
+    {
+        LOGERR( klogErr, rc, "ArgsOptionCount() failed" );
+    }
+    else if ( count > 0 )
     {
         rc = ArgsOptionValue( my_args, name, 0, &res );
-        DISP_RC( rc, "ArgsOptionValue() failed" );
+        if ( rc != 0 )
+        {
+            LOGERR( klogErr, rc, "ArgsOptionValue() failed" );
+        }
     }
     return res;
 }
@@ -218,13 +239,22 @@ static uint32_t context_get_uint_32_option( const Args *my_args,
 {
     uint32_t count, res = def;
     rc_t rc = ArgsOptionCount( my_args, name, &count );
-    DISP_RC( rc, "ArgsOptionCount() failed" );
-    if ( ( rc == 0 )&&( count > 0 ) )
+    if ( rc != 0 )
+    {
+        LOGERR( klogErr, rc, "ArgsOptionCount() failed" );
+    }
+    else if ( count > 0 )
     {
         const char *s;
         rc = ArgsOptionValue( my_args, name, 0,  &s );
-        DISP_RC( rc, "ArgsOptionValue() failed" );
-        if ( rc == 0 ) res = atoi( s );
+        if ( rc != 0 )
+        {
+            LOGERR( klogErr, rc, "ArgsOptionValue() failed" );
+        }
+        else
+        {
+            res = atoi( s );
+        }
     }
     return res;
 }
@@ -241,16 +271,24 @@ static rc_t context_evaluate_options( const Args *my_args, p_context ctx )
     context_set_src( ctx, context_get_str_option( my_args, OPTION_SRC ) );
     context_set_dst_path( ctx, context_get_str_option( my_args, OPTION_DST_PATH ) );
     context_set_schema( ctx, context_get_str_option( my_args, OPTION_SCHEMA ) );
-    ctx->chunk_size = context_get_uint_32_option( my_args, OPTION_CHUNK_SIZE, 0 );
-    circular = context_get_str_option( my_args, OPTION_CIRCULAR );
-    ctx->quiet = context_get_bool_option( my_args, OPTION_QUIET );
-    if( circular != NULL ) {
-        if(strcasecmp(circular, "yes") == 0 ) {
+    ctx->chunk_size     = context_get_uint_32_option( my_args, OPTION_CHUNK_SIZE, 0 );
+    circular            = context_get_str_option( my_args, OPTION_CIRCULAR );
+    ctx->quiet          = context_get_bool_option( my_args, OPTION_QUIET );
+    ctx->force_target   = context_get_bool_option( my_args, OPTION_FORCE );
+    ctx->input_is_file  = context_get_bool_option( my_args, OPTION_IFILE );
+    if ( circular != NULL )
+    {
+        if ( strcasecmp( circular, "yes" ) == 0 )
+        {
             ctx->circular = true;
-        } else if(strcasecmp(circular, "no") == 0 ) {
+        }
+        else if ( strcasecmp( circular, "no" ) == 0 )
+        {
             ctx->circular = false;
-        } else {
-            rc = RC( rcExe, rcNoTarg, rcParsing, rcParam, rcUnrecognized);
+        }
+        else
+        {
+            rc = RC( rcExe, rcNoTarg, rcParsing, rcParam, rcUnrecognized );
         }
     }
     else
@@ -267,20 +305,33 @@ static rc_t context_evaluate_options( const Args *my_args, p_context ctx )
 */
 rc_t context_capture_arguments_and_options( const Args * args, p_context ctx )
 {
-    rc_t rc;
-
-    rc = context_evaluate_arguments( args, ctx );
-    DISP_RC( rc, "evaluate_arguments() failed" );
-    if ( rc == 0 )
+    rc_t rc = context_evaluate_arguments( args, ctx );
+    if ( rc != 0 )
     {
-        if( (rc = context_evaluate_options( args, ctx )) == 0 ) {
+        LOGERR( klogErr, rc, "context_evaluate_arguments() failed" );
+    }
+    else
+    {
+        rc = context_evaluate_options( args, ctx );
+        if ( rc != 0 )
+        {
+            LOGERR( klogErr, rc, "context_evaluate_options() failed" );
+        }
+        else
+        {
             context_check_if_usage_necessary( ctx );
-
-            if( (rc = ArgsArgvValue(args, 0, &ctx->argv0)) == 0 ) {
+            rc = ArgsArgvValue( args, 0, &ctx->argv0 );
+            if ( rc != 0 )
+            {
+                LOGERR( klogErr, rc, "ArgsArgvValue() failed" );
+            }
+            else
+            {
                 rc = ArgsHandleLogLevel( args );
-                DISP_RC( rc, "ArgsHandleLogLevel() failed" );
-            } else {
-                DISP_RC( rc, "ArgsArgvValue() failed" );
+                if ( rc != 0 )
+                {
+                    LOGERR( klogErr, rc, "ArgsHandleLogLevel() failed" );
+                }
             }
         }
     }

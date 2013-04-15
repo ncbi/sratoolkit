@@ -673,7 +673,7 @@ rc_t AddRow(BSTree* tr, Row* data, Ctx* ctx)
             return RC
                 (rcVDB, rcStorage, rcAllocating, rcMemory, rcExhausted);
         }
-        sn->seqId = strdup(data->seqId);
+        sn->seqId = string_dup_measure(data->seqId, NULL);
         if (sn->seqId == NULL) {
             bstWhack((BSTNode*) sn, NULL);
             sn = NULL;
@@ -681,7 +681,7 @@ rc_t AddRow(BSTree* tr, Row* data, Ctx* ctx)
                 (rcVDB, rcStorage, rcAllocating, rcMemory, rcExhausted);
         }
 
-        sn->name = strdup(data->name);
+        sn->name = string_dup_measure(data->name, NULL);
         if (sn->name == NULL) {
             bstWhack((BSTNode*) sn, NULL);
             sn = NULL;
@@ -766,20 +766,22 @@ static void CC bstProcess(BSTNode* n, void* data) {
         }
     }
 
-    if (go) {
-        if (!obj->fill) {
-            ++obj->count;
+    if (!go) {
+        return;
+    }
+
+    if (!obj->fill) {
+        ++obj->count;
+    }
+    else {
+        if (obj->dep == NULL || obj->dep->dependencies == NULL) {
+            return;
+        }
+        if (obj->i < obj->count) {
+            *(obj->dep->dependencies + ((obj->i)++)) = elm;
         }
         else {
-            if (obj->dep == NULL || obj->dep->dependencies == NULL) {
-                return;
-            }
-            if (obj->i < obj->count) {
-                *(obj->dep->dependencies + ((obj->i)++)) = elm;
-            }
-            else {
-                obj->rc = RC(rcVDB, rcDatabase, rcAccessing, rcSelf, rcCorrupt);
-            }
+            obj->rc = RC(rcVDB, rcDatabase, rcAccessing, rcSelf, rcCorrupt);
         }
     }
 }
@@ -1228,6 +1230,7 @@ LIB_EXPORT rc_t CC VDBDependenciesRelease(const VDBDependencies* self) {
 typedef struct {
     BSTree* tr;
     int count;
+    bool all;
 } SBstCopy;
 
 static void CC bstCopy(BSTNode* n, void* data) {
@@ -1235,7 +1238,21 @@ static void CC bstCopy(BSTNode* n, void* data) {
     RefNode* elm = (RefNode*) n;
     SBstCopy* x = (SBstCopy*)data;
     BSTree* tr = x->tr;
+    bool go = false;
     assert(elm && tr);
+
+    if (x->all) {
+        go = true;
+    } else if (!elm->local) {
+        assert(!OLD);
+        if (elm->resolved.local == NULL) {
+            go = true;
+        }
+    }
+
+    if (!go) {
+        return;
+    }
 
     sn = (RefNode*) BSTreeFind(tr, elm->resolved.remote, bstCmpByRemote);
     if (sn == NULL) {
@@ -1245,13 +1262,13 @@ static void CC bstCopy(BSTNode* n, void* data) {
             return;
         }
 
-        sn->seqId = strdup(elm->seqId);
+        sn->seqId = string_dup_measure(elm->seqId, NULL);
         if (sn->seqId == NULL) {
             bstWhack((BSTNode*) sn, NULL);
             return;
         }
 
-        sn->name = strdup(elm->name);
+        sn->name = string_dup_measure(elm->name, NULL);
         if (sn->name == NULL) {
             bstWhack((BSTNode*) sn, NULL);
             return;
@@ -1421,13 +1438,15 @@ LIB_EXPORT rc_t CC VDatabaseListDependencies(const VDatabase* self,
         init.all = all;
         init.fill = false;
         BSTreeForEach(obj->tr, false, bstProcess, &init);
+     /* now init.count = number of (all == true ? 'all' : 'missed') references*/
+
         rc = init.rc;
         if (rc == 0) {
             obj->count = init.count;
-
         }
 
         if (rc == 0 && missing && hasDuplicates) {
+            /* references have duplicates. e.g. AAAB01... */
             SBstCopy x;
             BSTree* tr = malloc(sizeof *tr);
             if (tr == NULL) {
@@ -1437,6 +1456,10 @@ LIB_EXPORT rc_t CC VDatabaseListDependencies(const VDatabase* self,
             BSTreeInit(tr);
             x.count = 0;
             x.tr = tr;
+            x.all = all;
+
+         /* compact obj->tr into tr, skip duplicates
+            x.count is the number of all references from obj.tr */
             BSTreeForEach(obj->tr, false, bstCopy, &x);
             BSTreeWhack(obj->tr, bstWhack, NULL);
             free(obj->tr);

@@ -24,23 +24,17 @@
  *
  */
 
+#include "sra-dbcc.vers.h"
+
 #include <kapp/main.h>
 #include <kapp/args.h>
-#include <klib/out.h>
-#include <klib/log.h>
-#include <klib/rc.h>
-#include <klib/namelist.h>
-#include <klib/container.h>
-#include <klib/debug.h>
-#include <klib/data-buffer.h>
-#include <klib/sort.h>
 
-#include <kdb/manager.h>
-#include <kdb/database.h>
-#include <kdb/table.h>
-#include <kdb/meta.h>
-#include <kdb/namelist.h>
-#include <kdb/consistency-check.h>
+#include <insdc/insdc.h>
+#include <insdc/sra.h>
+
+#include <sra/sradb.h>
+#include <sra/sraschema.h>
+#include <sra/srapath.h>
 
 #include <vdb/manager.h>
 #include <vdb/schema.h>
@@ -48,15 +42,30 @@
 #include <vdb/table.h>
 #include <vdb/cursor.h>
 
-#include <kfs/kfs-priv.h>
+#include <kdb/manager.h>
+#include <kdb/database.h>
+#include <kdb/table.h>
+#include <kdb/meta.h>
+#include <kdb/consistency-check.h>
+#include <kdb/namelist.h>
+
+#include <vfs/manager.h> /* VFSManager */
+#include <vfs/resolver.h> /* VResolver */
+#include <vfs/path.h> /* VPath */
+
 #include <kfs/sra.h>
 #include <kfs/tar.h>
+#include <kfs/kfs-priv.h>
 
-#include <insdc/insdc.h>
-#include <insdc/sra.h>
-#include <sra/srapath.h>
-#include <sra/sradb.h>
-#include <sra/sraschema.h>
+#include <klib/container.h>
+#include <klib/sort.h>
+#include <klib/namelist.h>
+#include <klib/data-buffer.h>
+#include <klib/text.h> /* String */
+#include <klib/out.h>
+#include <klib/log.h>
+#include <klib/debug.h>
+#include <klib/rc.h>
 
 #include <sysalloc.h>
 
@@ -66,7 +75,12 @@
 #include <ctype.h>
 #include <assert.h>
 
-#include "sra-dbcc.vers.h"
+#ifndef PATH_MAX
+    #define PATH_MAX 4096
+#endif
+
+#define RELEASE(type, obj) do { rc_t rc2 = type##Release(obj); \
+    if (rc2 != 0 && rc == 0) { rc = rc2; } obj = NULL; } while (false)
 
 static bool exhaustive;
 static bool md5_required;
@@ -298,7 +312,7 @@ rc_t kdbcc(const KDirectory *dir, char const name[], uint32_t mode, bool *is_db,
     bool is_file, node_t nodes[], char names[], INSDC_SRA_platform_id platform)
 {
     const KDBManager *mgr;
-    rc_t rc = KDBManagerMakeRead ( & mgr, dir );
+    rc_t rc = KDBManagerMakeRead ( & mgr, NULL );
 
     if ( rc == 0 )
     {
@@ -1132,7 +1146,7 @@ static rc_t verify_mgr_database(VDBManager const *mgr, char const name[], node_t
 static rc_t sra_dbcc(KDirectory const *dir, char const name[], node_t const nodes[], char const names[])
 {
     const VDBManager *mgr;
-    rc_t rc = VDBManagerMakeRead(&mgr, dir);
+    rc_t rc = VDBManagerMakeRead(&mgr, NULL);
     
     if (rc) return rc;
     
@@ -1154,7 +1168,7 @@ rc_t get_platform(const KDirectory *dir, const VDBManager *aMgr,
     const VTable *tbl = aTbl;
     assert(name && platform);
     if (mgr == NULL) {
-        rc = VDBManagerMakeRead(&mgr, dir);
+        rc = VDBManagerMakeRead(&mgr, NULL);
         if (rc != 0) {
             return rc;
         }
@@ -1303,13 +1317,34 @@ rc_t CC KMain ( int argc, char *argv [] )
     bool index_chk = false;
     bool is_file = false;
     const KDirectory *src_dir = NULL;
-    char path_buffer [ 4096 ];
+/*  char path_buffer [ 4096 ]; */
+    VFSManager *mgr = NULL;
+    VResolver *resolver = NULL;
 
     rc_t rc = KLogLevelSet ( klogInfo );
 
     if ( rc == 0 )
         rc = ArgsMakeAndHandle(&args, argc, argv, 1, Options, NOPTS);
     
+    if (rc == 0) {
+        rc = VFSManagerMake(&mgr);
+        if (rc != 0) {
+            LOGERR(klogErr, rc, "Failed to VFSManagerMake()");
+        }
+    }
+
+    if (rc == 0) {
+        rc = VFSManagerGetResolver(mgr, &resolver);
+        if (rc != 0) {
+            LOGERR(klogInt, rc, "Cannot VFSManagerGetResolver");
+        }
+        else {
+            VResolverRemoteEnable(resolver, vrAlwaysDisable);
+        }
+    }
+
+    RELEASE(VFSManager, mgr);
+
     while (rc == 0) {
         uint32_t pcount;
         
@@ -1340,20 +1375,43 @@ rc_t CC KMain ( int argc, char *argv [] )
                 }
                 else
                 {
-                    SRAPath *pmgr = NULL;
+                    uint32_t type
+                        = KDirectoryPathType(dir, src_path) & ~kptAlias;
+                    if (type != kptFile && type != kptDir) {
+                        /* check for accession */
+                        VPath *acc = NULL;
+                        const VPath *pLocal = NULL;
+                        const String *local = NULL;
 
-                    /* check for accession */
-                    rc = SRAPathMake ( & pmgr, dir );
-                    if ( rc == 0 )
-                    {
-                        rc = SRAPathFind ( pmgr, src_path, path_buffer, sizeof path_buffer );
+                        if (rc == 0) {
+                            rc = VPathMake(&acc, src_path);
+                            if (rc != 0) {
+                                PLOGERR(klogErr, (klogErr, rc,
+                                    "VPathMake($(path)) failed",
+                                    PLOG_S(path), src_path));
+                            }
+                            else {
+                               rc = VResolverLocal(resolver, acc, &pLocal);
+                            }
+                        }
+                        if (rc == 0) {
+                            rc = VPathMakeString(pLocal, &local);
+                            if (rc != 0) {
+                                PLOGERR(klogErr, (klogErr, rc,
+                                    "VPathMake(local $(path)) failed",
+                                    PLOG_S(path), src_path));
+                            }
+                        }
                         if ( rc == 0 )
                         {
+                            PLOGMSG(klogInfo, (klogInfo,
+                                "Validating '$(path)'...", PLOG_S(path),
+                                local->addr));
                             /* use mapped path */
                             free(src_path);
-                            src_path = strdup(path_buffer);
+                            src_path = string_dup(local->addr, local->size);
                             free(src_dir_path);
-                            src_dir_path = strdup(path_buffer);
+                            src_dir_path = string_dup(local->addr, local->size);
                             obj_name = strrchr(src_dir_path, '/');
                             if ( obj_name == NULL )
                                 obj_name = src_dir_path;
@@ -1366,10 +1424,38 @@ rc_t CC KMain ( int argc, char *argv [] )
                                 * obj_name ++ = '\0';
                             }
                         }
-                        
-                        (void)SRAPathRelease ( pmgr );
+
+                        RELEASE(VPath, pLocal);
+                        RELEASE(VPath, acc);
+                        free((void*)local);
                     }
-                    
+                    else {
+                        char full[PATH_MAX];
+                        rc = KDirectoryResolvePath(dir, true,
+                            full, sizeof full, src_path);
+                        if (rc == 0) {
+                            PLOGMSG(klogInfo, (klogInfo,
+                                "Validating '$(path)'...", PLOG_S(path),
+                                full));
+                            /* use mapped path */
+                            free(src_path);
+                            src_path = string_dup(full, strlen(full));
+                            free(src_dir_path);
+                            src_dir_path = string_dup(full, strlen(full));
+                            obj_name = strrchr(src_dir_path, '/');
+                            if ( obj_name == NULL )
+                                obj_name = src_dir_path;
+                            else
+                            {
+                                if ( obj_name == src_dir_path ) {
+                                    src_dir_path[0] = '/';
+                                    src_dir_path[1] = '\0';
+                                }
+                                * obj_name ++ = '\0';
+                            }
+                        }
+                    }
+
                     if ( rc != 0 )
                     {
                         /* appears to be a simple name */
@@ -1404,7 +1490,7 @@ rc_t CC KMain ( int argc, char *argv [] )
             ArgsWhack(args);
             exit(EXIT_FAILURE);
         }
-        
+
         rc = ArgsOptionCount(args, "md5", &pcount); if (rc) break;
         md5_chk_explicit = md5_required = (pcount == 1);
         if (pcount > 1) {
@@ -1482,9 +1568,10 @@ rc_t CC KMain ( int argc, char *argv [] )
         }
         break;
     }
-    
+
+    RELEASE(VResolver, resolver);
+    RELEASE(KDirectory, src_dir);
     free(src_path);
-    KDirectoryRelease(src_dir);
    
     return rc;
 }

@@ -129,6 +129,7 @@ SRA_SORT_LIB = \
 	-lwvdb \
 	-lwkdb \
 	-lvfs \
+	-lkurl \
 	-lkrypto \
 	-lkfg \
 	-lkfs \

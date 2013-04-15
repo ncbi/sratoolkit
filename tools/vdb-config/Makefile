@@ -95,11 +95,13 @@ VDB_CONFIG_LIB = \
 	-lvdb \
 	-lkdb \
 	-lvfs \
+	-lkurl \
 	-lkrypto \
 	-lkfg \
 	-lkfs \
 	-lkproc \
-	-lklib
+	-lklib \
+    -lm
 
 $(BINDIR)/vdb-config: $(VDB_CONFIG_OBJ)
 	$(LD) --exe --vers $(SRCDIR) -o $@ $^ $(VDB_CONFIG_LIB)

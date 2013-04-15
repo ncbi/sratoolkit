@@ -71,6 +71,9 @@ void Error ( const ctx_t *ctx, uint32_t lineno, KLogLevel level, rc_t rc, const 
  *  make an annotation
  *  record an error as an rc_t
  */
+#ifdef ERROR
+#undef ERROR
+#endif
 #define ERROR( rc, msg, ... ) \
     Error ( ctx, __LINE__, klogErr, rc, msg, ## __VA_ARGS__ )
 
@@ -104,6 +107,9 @@ void Abort ( const ctx_t *ctx, uint32_t lineno, rc_t rc, const char *msg, ... );
 /* FAILED
  *  a test of rc within ctx_t
  */
+#ifdef FAILED
+#undef FAILED
+#endif
 #define FAILED() \
     ( ctx -> rc != 0 )
 

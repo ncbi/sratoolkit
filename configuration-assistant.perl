@@ -1,10 +1,10 @@
-#!/usr/local/bin/perl -w
+#!/usr/bin/perl -w
 
 ################################################################################
 # N.B. Run "perl configuration-assistant.perl" if you see a message like:
-# configuration-assistant.perl: /usr/local/bin/perl: bad interpreter: No such file or directory
+# configuration-assistant.perl: /usr/bin/perl: bad interpreter: No such file or directory
 ################################################################################
-my $VERSION = '2.3.1';
+my $VERSION = '2.3.2.4';
 ################################################################################
 
 use strict;
@@ -12,7 +12,7 @@ use strict;
 use Cwd "getcwd";
 use Fcntl ':mode';
 use File::Basename qw(basename dirname);
-use File::Path qw (make_path mkpath);
+use File::Path "mkpath";
 use File::Spec;
 use Getopt::Long "GetOptions";
 use IO::Handle;
@@ -64,7 +64,7 @@ if ($fixed) {
     undef %kfg;
     Kfg(\%kfg, 'read', 'Checking configuration');
 }
-DoKryptoCfg(\%kfg);
+#DoKryptoCfg(\%kfg);
 
 ################################################################################
 # FUNCTIONS #
@@ -844,8 +844,8 @@ sub DoKryptoCfg {
     }
 
     my $dflt = $DECRYPTION_PKG ? 'y' : 'n';
-    print "Do you want to " . ((-e $v) ? "update" : "set") . "VDB password? [" .
-        ($DECRYPTION_PKG ? "Yn" : "yN") . "] ";
+    print "Do you want to " . ((-e $v) ? "update" : "set") . " your dbGap encryption key? [" .
+        ($DECRYPTION_PKG ? "Y/n" : "y/N") . "] ";
     my $answer = GetYNAnswer($dflt, 'y');
     UpdateKryptoCfg() if ($answer eq 'y');
 }
@@ -925,7 +925,7 @@ sub GetKfgNode {
                 if (-e $_) {
                     println "exists";
                 } else {
-                    println "don't exist";
+                    println "does not exist";
                 }
             } else {
                 println "found";
@@ -955,25 +955,25 @@ sub Kfg {
         $kfg->{dflt_user_root} = File::Spec->catdir(Home(), 'ncbi', 'public');
     }
 
-    my $nm = 'krypto/pwfile';
-    if ($read) {
-        $kfg->{$nm} = GetKfgNode($nm, 'file');
-        if ($kfg->{$nm} eq '1' || $kfg->{$nm} eq '/.ncbi/vdb-passwd') {
-             # fix bugs introduced by previous script version
-             $kfg->{$nm} = '';
-        }
-        println;
-    } else {
-        if (!$kfg->{$nm}) {
-            my $path = Posixify(
-                File::Spec->catdir(Home(), '.ncbi', 'vdb-passwd'));
-            UpdateConfigNode($nm, $path);
-            $updated = 1;
-        }
-    }
+#   my $nm = 'krypto/pwfile';
+#   if ($read) {
+#       $kfg->{$nm} = GetKfgNode($nm, 'file');
+#       if ($kfg->{$nm} eq '1' || $kfg->{$nm} eq '/.ncbi/vdb-passwd') {
+#            # fix bugs introduced by previous script version
+#            $kfg->{$nm} = '';
+#       }
+#       println;
+#   } else {
+#       if (!$kfg->{$nm}) {
+#           my $path = Posixify(
+#               File::Spec->catdir(Home(), '.ncbi', 'vdb-passwd'));
+#           UpdateConfigNode($nm, $path);
+#           $updated = 1;
+#       }
+#   }
 
     if ($read) {
-        $nm = 'refseq/servers';
+        my $nm = 'refseq/servers';
         $kfg->{$nm} = GetKfgNode($nm, 'file');
 
         $nm = 'refseq/volumes';
@@ -996,19 +996,21 @@ sub Kfg {
 
 
     if ($read) {
-        $nm = 'repository';
+        my $nm = 'repository';
         $kfg->{$nm} = GetKfgNode($nm, 'dont print');
     }
 
     my $disableRemoteName = 'repository/remote/main/NCBI/disabled';
     my %remote = (
         'repository/remote/main/NCBI/root'
-                                    => 'http://ftp-trace.ncbi.nlm.nih.gov/sra',
+                         => 'http://ftp-trace.ncbi.nlm.nih.gov/sra',
         'repository/remote/main/NCBI/apps/sra/volumes/fuse1000'
-                                    => 'sra-instant/reads/ByRun/sra',
+                         => 'sra-instant/reads/ByRun/sra',
         'repository/remote/main/NCBI/apps/refseq/volumes/refseq' => 'refseq',
         'repository/remote/main/NCBI/apps/wgs/volumes/fuseWGS'   => 'wgs',
-        $disableRemoteName                                       => ''
+        $disableRemoteName                                       => '',
+        'repository/remote/protected/CGI/resolver-cgi'
+                         => 'http://www.ncbi.nlm.nih.gov/Traces/names/names.cgi'
     );
 
     my $userRootName = 'repository/user/main/public/root';
@@ -1022,53 +1024,62 @@ sub Kfg {
    );
 
     if ($read && $kfg->{repository}) {
-        $nm = 'repository/site';
+        my $nm = 'repository/site';
         $kfg->{$nm} = GetKfgNode($nm, 'dont print');
 
         println;
     }
 
     if ($read && $kfg->{repository}) {
-        $nm = 'repository/remote';
+        my $nm = 'repository/remote';
         $kfg->{$nm} = GetKfgNode($nm, 'dont print');
     }
 
-    foreach $nm(keys %remote) {
+    foreach my $nm(keys %remote) {
         if ($read) {
             if ($kfg->{'repository/remote'}) {
                 $kfg->{$nm} = GetKfgNode($nm);
-                $kfg->{fix_remote} = 1 unless ($kfg->{$nm});
+                unless ($kfg->{$nm}) {
+                    if ($nm ne $disableRemoteName || ! $DECRYPTION_PKG) {
+                        $kfg->{fix_remote} = 1;
+                    }
+                }
             }
-        } elsif (!$kfg->{$nm}) {
+        } else {
             my $v = $remote{$nm};
-            unless ($v) {
-                unless ($nm eq $disableRemoteName) {
-                    println "$nm: unknown";
-                    next;
+            if (!$kfg->{$nm}) {
+                if (!$v) {
+                    unless ($nm eq $disableRemoteName) {
+                        println "$nm: unknown";
+                        next;
+                    }
+                    next if ($DECRYPTION_PKG);
+                    print "\nWould you like to enable Remote Internet"
+                        . " access to NCBI(recommented)? [Y/n] ";
+                    my $answer = GetYNAnswer('y', 'n');
+                    if ($answer eq 'y') {
+                        $v = 'no';
+                    } else {
+                        println "You will be able to work "
+                            . "just with SRR files found locally";
+                        $v = 'yes';
+                    }
                 }
-                next if ($DECRYPTION_PKG);
-                print "\nWould you like to enable Remote Internet"
-                    . " access to NCBI(recommented)? [Y/n] ";
-                my $answer = GetYNAnswer('y', 'n');
-                if ($answer eq 'y') {
-                    $v = 'no';
-                } else {
-                    println "You will be able to work "
-                        . "just with SRR files found locally";
-                    $v = 'yes';
-                }
+                UpdateConfigNode($nm, $v);
+                $updated = 1;
+            } elsif ($v && ($kfg->{$nm} ne $v)) {
+                UpdateConfigNode($nm, $v);
+                $updated = 1;
             }
-            UpdateConfigNode($nm, $v);
-            $updated = 1;
         }
     }
 
     if ($read && $kfg->{repository}) {
-        $nm = 'repository/user';
+        my $nm = 'repository/user';
         $kfg->{$nm} = GetKfgNode($nm, 'dont print');
     }
 
-    foreach $nm(keys %user) {
+    foreach my $nm(keys %user) {
         if ($read) {
             if ($kfg->{'repository/user'}) {
                 my $mode;
@@ -1105,7 +1116,7 @@ sub Kfg {
                         my $answer = GetYNAnswer('y', 'y');
                         if ($answer eq 'y') {
                             print "'$in': creating... ";
-                            if (make_path($in)) {
+                            if (mkpath($in)) {
                                 println "ok";
                             } else {
                                 println "error";
@@ -1129,15 +1140,22 @@ sub Kfg {
     }
 
     println;
+
+    if ($read) {
+        if (!$kfg->{repository} || $kfg->{fix_remote} || $kfg->{fix_user}) {
+            println "Configuration is incorrect";
+        } else {
+            println "Configuration is correct";
+        }
+    }
+
     return $updated;
 }
 
 sub FixKfg {
     my ($kfg) = @_;
 
-    if (!$kfg->{'krypto/pwfile'} || !$kfg->{repository} ||
-        $kfg->{fix_remote} || $kfg->{fix_user})
-    {
+    if (!$kfg->{repository} || $kfg->{fix_remote} || $kfg->{fix_user}) {
         print "Your configuration is incomplete. " .
             "Would you like to fix it? [Y/n] ";
         my $answer = GetYNAnswer('y', 'n');

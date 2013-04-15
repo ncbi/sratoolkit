@@ -44,7 +44,11 @@ LP = @ $(TOP)/build/ld.sh $(OS) $(ARCH) g++ \
 	-MD --srcdir $(SRCDIR) --bindir $(BINDIR) -L$(LIBDIR):$(ILIBDIR)
 
 # tool options
-WARN = -Wall -Wno-variadic-macros -Wno-long-long # -Wconversion
+WARN = -Wall -Wno-long-long 
+ifneq (sun,$(OS))
+    WARN += -Wno-variadic-macros
+endif
+
 ifeq (linux,$(OS))
     NO_ARRAY_BOUNDS_WARNING = -Wno-array-bounds
 endif

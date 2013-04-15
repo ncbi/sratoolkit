@@ -26,6 +26,7 @@
 #include <klib/log.h>
 #include <klib/out.h>
 #include <klib/container.h>
+#include <klib/text.h>
 #include <kapp/main.h>
 
 #include <sra/sradb.h>
@@ -325,7 +326,7 @@ static rc_t DeflineNode_Add( SLList* list, DefNode** node,
         ( *node )->type = type;
         if ( type == DefNode_Text )
         {
-            ( *node )->data.text = strndup( text, text_sz );
+            ( *node )->data.text = string_dup( text, text_sz );
             if ( ( *node )->data.text == NULL )
             {
                 rc = RC( rcExe, rcNamelist, rcConstructing, rcMemory, rcExhausted );
@@ -2808,7 +2809,7 @@ rc_t FastqDumper_Usage( const SRADumperFmt* fmt, const SRADumperFmt_Arg* core_ar
     OARG( &fmt->arg_desc[ 15 ], NULL );
 
     OUTMSG(( "OTHER:\n" ));
-    for ( i = 0; core_args[ i ].abbr != NULL || core_args[ i ].full != NULL; i++ )
+    for ( i = first; core_args[ i ].abbr != NULL || core_args[ i ].full != NULL; i++ )
     {
         bool print = true;
         for ( j = 0; j < sizeof( core ) / sizeof( core[ 0 ] ); j++ )

@@ -46,6 +46,8 @@
 #include <klib/out.h>
 #include <klib/rc.h>
 
+#include <sysalloc.h>
+
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
@@ -223,21 +225,21 @@ rc_t CMEMBER(SetDecryptCounterFunc) (CIPHER_IMPL * self,
 }
 
 
-static CipherVec __inline__ CMEMBER(EncryptV1)(const CIPHER_IMPL * self,
+static __inline__ CipherVec CMEMBER(EncryptV1)(const CIPHER_IMPL * self,
                                               register CipherVec cv)
 {
     return self->block_cipher->v1.encrypt (cv, self->dad.encrypt_key);
 }
 
 
-static CipherVec __inline__ CMEMBER(DecryptV1)(const CIPHER_IMPL * self,
+static __inline__ CipherVec  CMEMBER(DecryptV1)(const CIPHER_IMPL * self,
                                               register CipherVec cv)
 {
     return self->block_cipher->v1.decrypt (cv, self->dad.decrypt_key);
 }
 
 
-static rc_t __inline__ CMEMBER(EncryptV1Int)(const CIPHER_IMPL * self,
+static __inline__ rc_t CMEMBER(EncryptV1Int)(const CIPHER_IMPL * self,
                                             const void * in, void * out)
 {
     CipherVec cv;
@@ -249,7 +251,7 @@ static rc_t __inline__ CMEMBER(EncryptV1Int)(const CIPHER_IMPL * self,
 }
 
 
-static rc_t __inline__ CMEMBER(DecryptV1Int)(const CIPHER_IMPL * self,
+static __inline__ rc_t CMEMBER(DecryptV1Int)(const CIPHER_IMPL * self,
                                             const void * in, void * out)
 {
     CipherVec cv;

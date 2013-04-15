@@ -27,6 +27,7 @@
 #include <kfs/extern.h>
 #include <klib/rc.h>
 #include <kfs/file.h>
+#include <klib/text.h>
 #include <klib/log.h>
 #include <klib/container.h>
 #include <kfs/fileformat.h>
@@ -681,6 +682,7 @@ rc_t CC KExtFileFormatGetTypePath (const KExtFileFormat *self,
     rc_t rc = 0;
     const char * b;
     const char * s;
+    size_t size;
 
 
     FUNC_ENTRY();
@@ -698,7 +700,7 @@ rc_t CC KExtFileFormatGetTypePath (const KExtFileFormat *self,
 
     b = strrchr (s, '.');
     if (b == NULL)
-	b = path + strlen(path) - 1; /* will be an empty string when calls KExtTableFind */
+	b = path + string_measure(path, &size) - 1; /* will be an empty string when calls KExtTableFind */
     {
 	KExtNode * node;
 	size_t c;
@@ -720,7 +722,7 @@ rc_t CC KExtFileFormatGetTypePath (const KExtFileFormat *self,
 		if (c > descr_max)
 		    c = descr_max-1;
 		if (descr)
-		    strncpy (descr, node->kffdescr, c);
+		    string_copy (descr, descr_max, node->kffdescr, c);
 		descr[c] = '\0';
 		if (descr_len)
 		    *descr_len = c;
@@ -742,15 +744,15 @@ rc_t CC KExtFileFormatGetTypePath (const KExtFileFormat *self,
 
 
 #else
-	size_t l = strlen (b);
+	size_t l = string_measure (b, &size);
 	if (desc != NULL)
 	{
-	    strncpy (desc, b, desc_max);
+	    string_copy (desc, desc_max, b, l);
 	    if (desc_max < l)
 		desc[desc_max-1] = 0;
 	}
 	if (descr_len != NULL)
-	    *descr_len = strlen (b);
+	    *descr_len = l;
 	if (type != NULL)
 	    *type = kfftUnknown;
 	if (class != NULL)

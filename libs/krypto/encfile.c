@@ -40,6 +40,8 @@
 #include <klib/status.h>
 #include <kfs/file.h>
 
+#include <sysalloc.h>
+
 #include <byteswap.h>
 
 #include <stdlib.h>
@@ -52,7 +54,7 @@
 #define USE_READ_V1     false
 #define USE_WRITE_V1    false
 #define USE_UPDATE_V1   false
-#define USE_BLOCK_V1    true
+#define USE_BLOCK_V1    false
 /* KReencFile and KEncryptFile need to use update v1 as it is different */
 #define USE_VALIDATE_V1 false
 #define USE_ISENC_V1    false
@@ -2047,17 +2049,17 @@ LIB_EXPORT rc_t CC KEncFileMakeWriteBlock (struct KFile ** pself,
 #if USE_BLOCK_V1
     return KEncFileV1MakeUpdate_v1 (pself, encrypted, key);
 #else
-    return KEncFileMakeUpdate_v2 (pself, encrypted, key);
+    return KEncFileMakeBlock_v2 (pself, encrypted, key);
 #endif
 }
 
 
 LIB_EXPORT rc_t CC KEncFileWriteHeader  (KFile * self)
 {
-#if USE_UPDATE_V1
+#if USE_BLOCK_V1
     return KEncFileV1WriteHeader_v1  (self);
 #else
-    return KEncFileV1WriteHeader_v1  (self);
+    return KEncFileWriteHeader_v2  (self);
 #endif
 }
 

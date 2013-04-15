@@ -22,21 +22,24 @@
 #
 # ===========================================================================
 
-# this is the most basic type of configuration
+## DEFAULT CONFIGURATION FOR SRA-TOOLKIT
+# 
+#  These settings are intended to allow the tools to work under conditions
+#  when the user has not yet performed any configuration.
+/config/default = "true"
 
-## for static builds ( default ), the external modules are statically
-## linked within each binary. for dynamic builds, they are stored
-## externally, normally near the libraries. this path can be specifically
-## stated here.
-# vdb/module/paths = "path-to-modules"
+# The user's default public repository
+/repository/user/main/public/apps/refseq/volumes/refseq = "refseq"
+/repository/user/main/public/apps/sra/volumes/sraFlat = "sra"
+/repository/user/main/public/apps/wgs/volumes/wgsFlat = "wgs"
+/repository/user/main/public/cache-enabled = "true"
+/repository/user/main/public/root = "$(HOME)/ncbi/public"
 
-## schema files are required for loader tools and vdb-copy
-# vdb/schema/paths = "path-to-schema"
+# Remote access to NCBI's public repository
+/repository/remote/main/NCBI/apps/refseq/volumes/refseq = "refseq"
+/repository/remote/main/NCBI/apps/sra/volumes/fuse1000 = "sra-instant/reads/ByRun/sra"
+/repository/remote/main/NCBI/apps/wgs/volumes/fuseWGS = "wgs"
+/repository/remote/main/NCBI/root = "http://ftp-trace.ncbi.nlm.nih.gov/sra"
 
-## encrypted files can be automatically decrypted if the tools can
-## locate the user's password file
-# krypto/pwfile    = "path-to-password-file"
-
-## some SRA files are compressed against external references
-## these are stored locally, and their location is required
-# refseq/paths     = "path-to-references"
+# Remote access to NCBI's protected repository
+/repository/remote/protected/CGI/resolver-cgi = "http://www.ncbi.nlm.nih.gov/Traces/names/names.cgi"

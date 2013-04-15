@@ -41,6 +41,8 @@
 
 #include <klib/rc.h>
 
+#include <sysalloc.h>
+
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>

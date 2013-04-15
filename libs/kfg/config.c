@@ -33,6 +33,7 @@ struct KfgConfigNamelist;
 
 #include <klib/token.h>
 #include <klib/container.h>
+#include <klib/data-buffer.h> /* KDataBuffer */
 #include <klib/refcount.h>
 #include <klib/text.h>
 #include <klib/printf.h>
@@ -42,6 +43,8 @@ struct KfgConfigNamelist;
 #include <klib/out.h> /* OUTMSG */
 #include <klib/klib-priv.h>
 #include <kfs/directory.h>
+#include <kfs/gzip.h> /* KFileMakeGzipForRead */
+#include <kfs/subfile.h> /* KFileMakeSubRead */
 #include <kfs/file.h>
 #include <kfs/dyload.h>
 #include <kfs/mmap.h>
@@ -257,7 +260,7 @@ LIB_EXPORT rc_t CC KConfigNodeRelease ( const KConfigNode *self )
         {
         case krefWhack:
             KConfigNodeWhack ( & ( ( KConfigNode* ) self ) -> n, NULL );
-	    break;
+        break;
         case krefLimit:
             return RC ( rcKFG, rcNode, rcReleasing, rcRange, rcExcessive );
         }
@@ -308,7 +311,7 @@ rc_t KConfigAppendToLoadPath(KConfig *self, const char* chunk)
         self->load_path[0] = '\0';
     }
 
-    new_sz = strlen(self->load_path) + 1 + strlen(chunk) + 1;
+    new_sz = string_size(self->load_path) + 1 + string_size(chunk) + 1;
     if (self->load_path_sz_tmp < new_sz) {
         self->load_path_sz_tmp = 2 * new_sz;
         self->load_path = realloc(self->load_path, self->load_path_sz_tmp);
@@ -1208,9 +1211,9 @@ bool look_up_var(void * self, struct KFGParseBlock* pb)
 static
 void CC report_error(KFGScanBlock* sb, const char* msg)
 {
-	pLogMsg(klogErr, "$(file):$(line):$(column): error: token='$(token)', msg='$(msg)'", 
-				 	 "file=%s,line=%d,column=%d,token=%.*s,msg=%s", 
-				 	 sb->file, 
+    pLogMsg(klogErr, "$(file):$(line):$(column): error: token='$(token)', msg='$(msg)'", 
+                     "file=%s,line=%d,column=%d,token=%.*s,msg=%s", 
+                     sb->file, 
                      sb->lastToken->line_no, 
                      sb->lastToken->column_no, 
                      sb->lastToken->tokenLength, 
@@ -1283,7 +1286,8 @@ LIB_EXPORT rc_t CC KConfigLoadFile ( KConfig * self, const char * path, const KF
             if (rc == 0 )
             {
                 char buff [ 4096 ];
-                rc = KDirectoryResolvePath ( dir, true, buff, sizeof buff, "%.*s", strlen(path), path );
+                rc = KDirectoryResolvePath ( dir, true, buff, sizeof buff,
+                    "%.*s", string_size(path), path );
                 if ( rc == 0 )
                 {
                     char* name = strrchr (buff, '/');
@@ -1640,7 +1644,7 @@ rc_t record_magic_path ( KConfig *self, const KDirectory *dir, const char *path,
     if ( rc == 0 )
     {
         char *magic_file_path;
-        sz = strlen ( buff );
+        sz = string_size ( buff );
         magic_file_path = malloc ( sz + 1 );
         if ( magic_file_path == NULL )
             rc = RC ( rcKFG, rcMgr, rcLoading, rcMemory, rcExhausted );
@@ -1665,7 +1669,7 @@ rc_t make_include_path ( KConfigIncluded **p, const KDirectory *dir, const char 
     if ( rc == 0 )
     {
         KConfigIncluded *include;
-        sz = strlen ( buff );
+        sz = string_size ( buff );
         include = malloc ( sizeof * include + sz );
         if ( include == NULL )
             rc = RC ( rcKFG, rcMgr, rcLoading, rcMemory, rcExhausted );
@@ -1737,7 +1741,7 @@ rc_t CC scan_config_path ( const KDirectory *dir, uint32_t type, const char *nam
     case kptFile:
     case kptFile | kptAlias:
     {
-        size_t sz = strlen ( name );
+        size_t sz = string_size ( name );
         if ( sz >= 5 && strcase_cmp ( & name [ sz - 4 ], 4, ".kfg", 4, 4 ) == 0 )
             pb -> loaded |= load_from_file_path ( pb -> self, dir, name, sz, false );
 
@@ -1800,7 +1804,7 @@ static
 bool load_from_path_list ( KConfig *self, const KDirectory *dir, const char *path )
 {
     bool loaded = false;
-    const char *end = path + strlen ( path );
+    const char *end = path + string_size ( path );
     while ( path < end )
     {
         const char *sep = string_chr ( path, end - path, ':' );
@@ -1863,7 +1867,8 @@ bool load_from_std_location ( KConfig *self, const KDirectory *dir )
     {
         DBGMSG( DBG_KFG, DBG_FLAG(DBG_KFG), ( "KFG: try to load from std. location '%s'\n", std_locs[ i ] ) );
         rc = KConfigAppendToLoadPath(self, std_locs [ i ]);
-        loaded = load_from_path ( self, dir, std_locs [ i ], strlen ( std_locs [ i ] ));
+        loaded = load_from_path ( self, dir,
+            std_locs [ i ], string_size ( std_locs [ i ] ));
     }
     if ( loaded )
         DBGMSG( DBG_KFG, DBG_FLAG(DBG_KFG), ( "KFG: found from std. location\n" ) );
@@ -2007,7 +2012,7 @@ void load_config_files ( KConfig *self, const KDirectory *dir )
 
     if (self->load_path) {
         char* tmp = NULL;
-        self->load_path_sz_tmp = strlen(self->load_path) + 1;
+        self->load_path_sz_tmp = string_size(self->load_path) + 1;
         tmp = realloc(self->load_path, self->load_path_sz_tmp);
         if (tmp) {
             self->load_path = tmp;
@@ -2803,7 +2808,8 @@ static rc_t printIndent(int indent) {
 }
 
 static
-rc_t KConfigNodePrint(const KConfigNode* self, int indent, const char* root)
+rc_t KConfigNodePrint(const KConfigNode* self,
+    int indent, const char* root)
 {
     rc_t rc = 0;
     KNamelist* names = NULL;
@@ -2866,7 +2872,7 @@ rc_t KConfigNodePrint(const KConfigNode* self, int indent, const char* root)
     return rc;
 }
 
-LIB_EXPORT rc_t CC KConfigPrint(const KConfig* self) {
+LIB_EXPORT rc_t CC KConfigPrint(const KConfig* self, int indent) {
     rc_t rc = 0;
 
     const char root[] = "Config";
@@ -2883,7 +2889,7 @@ LIB_EXPORT rc_t CC KConfigPrint(const KConfig* self) {
             DISP_RC2(rc, "KConfigOpenNodeRead()", "/");
         }
         if (rc == 0) {
-            KConfigNodePrint(node, 0, "Config");
+            KConfigNodePrint(node, indent, "Config");
         }
         KConfigNodeRelease(node);
     }
@@ -2894,4 +2900,451 @@ LIB_EXPORT rc_t CC KConfigPrint(const KConfig* self) {
 LIB_EXPORT void CC KConfigDisableUserSettings ( void )
 {
     s_disable_user_settings = true;
+}
+
+static
+rc_t open_file ( const KFile **f, const char *path )
+{
+    /* get current directory */
+    KDirectory *wd;
+    rc_t rc = KDirectoryNativeDir ( & wd );
+    if ( rc == 0 )
+    {
+        rc = KDirectoryOpenFileRead ( wd, f, path );
+        KDirectoryRelease ( wd );
+    }
+
+    return rc;
+}
+
+static
+rc_t decode_file ( KDataBuffer *mem, const KFile *orig )
+{
+    char hdr [ 8 ];
+    size_t num_read;
+    rc_t rc = KFileReadAll ( orig, 0, hdr, sizeof hdr, & num_read );
+    if ( rc == 0 && num_read == sizeof hdr )
+    {
+        if ( memcmp ( hdr, "ncbi_gap", sizeof hdr ) == 0 )
+        {
+            uint64_t eof;
+            rc = KFileSize ( orig, & eof );
+            if ( rc == 0 )
+            {
+                const KFile *sub;
+                rc = KFileMakeSubRead ( & sub, orig, sizeof hdr,
+                    eof - sizeof hdr );
+                if ( rc == 0 )
+                {
+                    const KFile *gzip;
+                    rc = KFileMakeGzipForRead ( & gzip, sub );
+                    if ( rc == 0 )
+                    {
+                        rc = KDataBufferMakeBytes ( mem, 0 );
+                        if ( rc == 0 )
+                        {
+                            size_t total, to_read;
+
+                            /* after all of that, we're ready to decompress */
+                            for ( total = 0; ; )
+                            {
+                                char *buff;
+
+                                rc = KDataBufferResize ( mem,
+                                    total + 32 * 1024 );
+                                if ( rc != 0 )
+                                    break;
+
+                                buff = mem -> base;
+                                to_read = ( size_t ) mem -> elem_count - total;
+
+                                rc = KFileReadAll ( gzip, total,
+                                    & buff [ total ], to_read, & num_read );
+                                if ( rc != 0 )
+                                    break;
+
+                                total += num_read;
+                                
+                                if ( num_read < to_read )
+                                {
+                                    buff [ total ] = 0;
+                                    mem -> elem_count = total;
+                                    break;
+                                }
+                            }
+                        }
+
+                        KFileRelease ( gzip );
+                    }
+
+                    KFileRelease ( sub );
+                }
+            }
+        }
+    }
+
+    return rc;
+}
+
+typedef struct {
+    const char *projectId;
+    const char *encryptionKey;
+    const char *downloadTicket;
+    const char *description;
+} KGapConfig;
+
+static
+rc_t _KConfigNncToKGapConfig(const KConfig *self, char *text, KGapConfig *kgc)
+{
+    size_t len = 0;
+    int i = 0;
+
+    assert(self && text && kgc);
+
+    memset(kgc, 0, sizeof *kgc);
+    len = string_size(text);
+
+    {
+        const char version[] = "version ";
+        size_t l = sizeof version - 1;
+        if (string_cmp(version, l, text, len, l) != 0) {
+            return RC(rcKFG, rcMgr, rcUpdating, rcFormat, rcUnrecognized);
+        }
+        text += l;
+        len -= l;
+    }
+
+    {
+        const char version[] = "1.0";
+        size_t l = sizeof version - 1;
+        if (string_cmp(version, l, text, l, l) != 0) {
+            return RC(rcKFG, rcMgr, rcUpdating, rcFormat, rcUnsupported);
+        }
+        text += l;
+        len -= l;
+    }
+
+    while (len > 0 && (text[0] == '\r' || text[0] == '\n')) {
+        ++text;
+        --len;
+    }
+
+    for (i = 0; ; ++i) {
+        const char *p = NULL;
+        if (i == 0) {
+            p = strtok(text, "|");
+        }
+        else {
+            p = strtok (NULL, "|");
+        }
+        if (p == NULL) {
+            break;
+        }
+        switch (i) {
+            case 0:
+                kgc->projectId = p;
+                break;
+            case 1:
+                kgc->encryptionKey = p;
+                break;
+            case 2:
+                kgc->downloadTicket = p;
+                break;
+            case 3:
+                kgc->description = p;
+                break;
+        }
+    }
+
+    if (!kgc->projectId || !kgc->encryptionKey || !kgc->downloadTicket ||
+        !kgc->description)
+    {
+        return RC(rcKFG, rcMgr, rcUpdating, rcFile, rcInvalid);
+    }
+
+    return 0;
+}
+
+static rc_t _KConfigFixResolverCgiNode(KConfig *self) {
+    rc_t rc = 0;
+
+    KConfigNode *node = NULL;
+    struct String *result = NULL;
+
+    assert(self);
+
+    if (rc == 0) {
+        rc = KConfigOpenNodeUpdate(self, &node,
+            "/repository/remote/protected/CGI/resolver-cgi");
+    }
+
+    if (rc == 0) {
+        rc = KConfigNodeReadString(node, &result);
+    }
+
+    if (rc == 0) {
+        assert(result);
+        if (result->size == 0) {
+            const char buffer[]
+                = "http://www.ncbi.nlm.nih.gov/Traces/names/names.cgi";
+            rc = KConfigNodeWrite(node, buffer, sizeof buffer);
+        }
+    }
+
+    free(result);
+
+    KConfigNodeRelease(node);
+
+    return rc;
+}
+
+static rc_t _KConfigNodeUpdateChild(KConfigNode *self,
+    const char *name, const char *val)
+{
+    rc_t rc = 0;
+
+    KConfigNode *node = NULL;
+
+    assert(self && name && val);
+
+    if (rc == 0) {
+        rc = KConfigNodeOpenNodeUpdate(self, &node, name);
+    }
+
+    if (rc == 0) {
+        rc = KConfigNodeWrite(node, val, string_size(val));
+    }
+
+    {
+        rc_t rc2 = KConfigNodeRelease(node);
+        if (rc2 != 0 && rc == 0) {
+            rc = rc2;
+        }
+    }
+
+    return rc;
+}
+
+static rc_t _KConfigMkPwdFileAndNode(KConfig *self,
+    KConfigNode *rep, const KGapConfig *kgc)
+{
+    rc_t rc = 0;
+    const KConfigNode *ncbiHome = NULL;
+    KConfigNode *node = NULL;
+    struct String *result = NULL;
+    char encryptionKeyPath[PATH_MAX];
+    KDirectory *dir = NULL;
+    KFile *encryptionKeyFile = NULL;
+    size_t num_writ = 0;
+
+    assert(self && kgc && rep);
+
+    if (rc == 0) {
+        rc = KConfigOpenNodeRead(self, &ncbiHome, "NCBI_HOME");
+    }
+    if (rc == 0) {
+        rc = KConfigNodeReadString(ncbiHome, &result);
+    }
+    KConfigNodeRelease(ncbiHome);
+    ncbiHome = NULL;
+
+    if (rc == 0) {
+        size_t num_writ = 0;
+        assert(result && result->addr);
+        rc = string_printf(encryptionKeyPath, sizeof encryptionKeyPath,
+            &num_writ, "%s/dbGap-%s.enc_key", result->addr, kgc->projectId);
+        if (rc == 0) {
+            assert(num_writ < sizeof encryptionKeyPath);
+        }
+    }
+    free(result);
+    result = NULL;
+
+    if (rc == 0) {
+        rc = KDirectoryNativeDir(&dir);
+    }
+
+    if (rc == 0) {
+        rc = KDirectoryCreateFile(dir, &encryptionKeyFile,
+            false, 0600, kcmInit | kcmParents, encryptionKeyPath);
+    }
+
+    KDirectoryRelease(dir);
+
+    if (rc == 0) {
+        assert(kgc->encryptionKey);
+        rc = KFileWrite(encryptionKeyFile, 0,
+            kgc->encryptionKey, string_size(kgc->encryptionKey), &num_writ);
+        if (rc == 0) {
+            assert(num_writ == string_size(kgc->encryptionKey));
+        }
+    }
+
+    if (rc == 0) {
+        rc = KFileWrite(encryptionKeyFile, string_size(kgc->encryptionKey),
+            "\n", 1, &num_writ);
+        if (rc == 0) {
+            assert(num_writ == 1);
+        }
+    }
+
+    {
+        rc_t rc2 = KFileRelease(encryptionKeyFile);
+        if (rc2 != 0 && rc == 0) {
+            rc = rc2;
+        }
+    }
+
+    if (rc == 0) {
+        rc = _KConfigNodeUpdateChild(rep,
+            "encryption-key-path", encryptionKeyPath);
+    }
+
+    KConfigNodeRelease(node);
+
+    return rc;
+}
+
+static rc_t _KConfigDBGapRepositoryNodes(KConfig *self,
+    KConfigNode *rep, const KGapConfig *kgc, const char *repoParentPath)
+{
+    rc_t rc = 0;
+
+    assert(self && rep && kgc);
+
+    if (rc == 0) {
+        rc = _KConfigMkPwdFileAndNode(self, rep, kgc);
+    }
+
+    if (rc == 0) {
+        assert(kgc->downloadTicket);
+        rc = _KConfigNodeUpdateChild(rep,
+            "download-ticket", kgc->downloadTicket);
+    }
+
+    if (rc == 0) {
+        rc = _KConfigNodeUpdateChild(rep, "description", kgc->description);
+    }
+
+    if (rc == 0) {
+        rc = _KConfigNodeUpdateChild(rep, "apps/sra/volumes/sraFlat", "sra");
+    }
+
+    if (rc == 0) {
+        rc = _KConfigNodeUpdateChild(rep, "cache-enabled", "true");
+    }
+
+    if (rc == 0) {
+        char rootPath[PATH_MAX] = "";
+        if (repoParentPath == NULL) {
+            size_t num_writ = 0;
+            const KConfigNode *home = NULL;
+            String *result = NULL;
+
+            if (rc == 0) {
+                rc = KConfigOpenNodeRead(self, &home, "HOME");
+            }
+
+            if (rc == 0) {
+                rc = KConfigNodeReadString(home, &result);
+            }
+
+            if (rc == 0) {
+                assert(result && result->addr);
+                rc = string_printf(rootPath, sizeof rootPath, &num_writ,
+                    "%s/ncbi/dbGap-%s", result->addr, kgc->projectId);
+            }
+
+            if (rc == 0) {
+                repoParentPath = rootPath;
+            }
+
+            free(result);
+            KConfigNodeRelease(home);
+        }
+
+        if (rc == 0) {
+            rc = _KConfigNodeUpdateChild(rep, "root", repoParentPath);
+        }
+    }
+
+    return rc;
+}
+
+static rc_t _KConfigAddDBGapRepository(KConfig *self,
+    const KGapConfig *kgc, const char *repoParentPath)
+{
+    rc_t rc = 0;
+
+    KConfigNode *rep = NULL;
+
+    char repNodeName[512] = "";
+
+    assert(self && kgc);
+
+    if (rc == 0) {
+        size_t num_writ = 0;
+        rc = string_printf(repNodeName, sizeof repNodeName, &num_writ,
+            "/repository/user/protected/dbGap-%s", kgc->projectId);
+        if (rc == 0) {
+            assert(num_writ < sizeof repNodeName);
+        }
+    }
+
+    if (rc == 0) {
+        rc = KConfigOpenNodeUpdate(self, &rep, repNodeName);
+    }
+
+    if (rc == 0) {
+        rc = _KConfigDBGapRepositoryNodes(self, rep, kgc, repoParentPath);
+    }
+
+    KConfigNodeRelease(rep);
+
+    return rc;
+}
+
+LIB_EXPORT rc_t CC KConfigImportNgc(KConfig *self,
+    const char *ngcPath, const char *repoParentPath)
+{
+    if (self == NULL) {
+        return RC(rcKFG, rcMgr, rcUpdating, rcSelf, rcNull);
+    }
+
+    if (ngcPath == NULL) {
+        return RC(rcKFG, rcMgr, rcUpdating, rcParam, rcNull);
+    }
+    else {
+        const KFile *orig = NULL;
+        rc_t rc = open_file ( & orig, ngcPath );
+        if (rc != 0) {
+            return rc;
+        }
+        else {
+            KGapConfig kgc;
+
+            KDataBuffer mem;
+            memset ( & mem, 0, sizeof mem );
+
+            rc = decode_file ( & mem, orig );
+            KFileRelease ( orig );
+            orig = NULL;
+
+            if (rc == 0) {
+                rc = _KConfigNncToKGapConfig(self, mem.base, &kgc);
+            }
+
+            KDataBufferWhack ( & mem );
+
+            if (rc == 0) {
+                rc = _KConfigFixResolverCgiNode(self);
+            }
+
+            if (rc == 0) {
+                rc = _KConfigAddDBGapRepository(self, &kgc, repoParentPath);
+            }
+        }
+
+        return rc;
+    }
 }

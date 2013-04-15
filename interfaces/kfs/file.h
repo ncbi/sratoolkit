@@ -148,7 +148,7 @@ KFS_EXTERN rc_t CC KFileWrite ( KFile *self, uint64_t pos,
     const void *buffer, size_t size, size_t *num_writ );
 
 /* WriteAll
- *  write from file until "size" bytes have been transferred
+ *  write to file until "size" bytes have been transferred
  *  or until no further progress can be made
  *
  *  "pos" [ IN ] - starting position within file

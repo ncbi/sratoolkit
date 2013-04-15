@@ -28,6 +28,8 @@
 
 #include <kapp/args.h>
 
+#include <vdb/report.h> /* ReportResetTable */
+
 #include <klib/rc.h>
 #include <klib/log.h>
 #include <klib/out.h>
@@ -41,7 +43,6 @@
 #include <stdio.h>
 #include <string.h>
 #include <ctype.h>
-#include <assert.h>
 
 #include <os-native.h>
 #include <sysalloc.h>
@@ -949,7 +950,11 @@ static rc_t prepare_db_table( prepare_ctx *ctx,
         rc = VDBManagerOpenTableRead ( vdb_mgr, &ctx->seq_tab, NULL, "%s", path );
         if ( rc != 0 )
         {
-            LOGERR( klogInt, rc, "VDBManagerOpenTableRead() failed" );
+            PLOGERR(klogInt, (klogInt, rc, "failed to open '$(path)'",
+                "path=%s", path));
+        }
+        else {
+            ReportResetTable(path, ctx->seq_tab);
         }
     }
     else
@@ -958,6 +963,9 @@ static rc_t prepare_db_table( prepare_ctx *ctx,
         if ( rc != 0 )
         {
             LOGERR( klogInt, rc, "VDatabaseOpenTableRead( SEQUENCE ) failed" );
+        }
+        else {
+            ReportResetDatabase(path, ctx->db);
         }
     }
     return rc;

@@ -371,7 +371,7 @@ rc_t KTocEntryNewChunked ( KTocEntry ** new_entry,
      *
      * Then add to that the size in bytes of the chunked data (all 64 bit numbers).
      */
-    nsize = ~(sizeof(uint64_t)-1) & 
+    nsize = ~( ( size_t ) sizeof(uint64_t)-1) & 
 	(sizeof(KTocEntry)
 	 - sizeof(union KTocEntryUnion)
 	 + sizeof(struct KTocEntryChunkFile)
@@ -1378,9 +1378,13 @@ bool check_limit (const void * ptr, const void * limit, size_t size)
 	ptr = *_ptr;							\
 									\
 	if (rev)							\
-	    *pout = S (*ptr);						\
+	{								\
+	    T t;							\
+	    memcpy (&t, ptr, sizeof (T));				\
+	    *pout = S (t);						\
+	}								\
 	else								\
-	    *pout = *ptr;						\
+	    memcpy (pout, ptr, sizeof (T));                             \
 	*_ptr = ++ptr;							\
 	return 0;							\
     }
@@ -1721,21 +1725,20 @@ rc_t KTocInflatePBSTree ( KToc * self, uint64_t arcsize, const void * treestart,
     rc = PBSTreeMake (&pbst, treestart, maxsize, rev);
     if (rc == 0)
     {
-	KTocEntryInflateData data;
+        KTocEntryInflateData data;
 
-	data.toc = self;
-	data.path = path;
+        data.toc = self;
+        data.path = path;
         data.arcsize = arcsize;
-	data.rc = 0;
-	data.rev = rev;
-	data.offset = offset;
+        data.rc = 0;
+        data.rev = rev;
+        data.offset = offset;
+        
+        PBSTreeForEach (pbst, false, KTocEntryInflate, &data);
 
-	PBSTreeForEach (pbst, false, KTocEntryInflate, &data);
+        rc = data.rc;
 
-	rc = data.rc;
-
-
-        free (pbst);
+        PBSTreeWhack (pbst);
     }
     return rc;
 }

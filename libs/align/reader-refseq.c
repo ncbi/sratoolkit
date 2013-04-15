@@ -26,6 +26,7 @@
 #include <align/extern.h>
 
 #include <klib/rc.h>
+#include <klib/text.h>
 #include <insdc/insdc.h>
 #include <vdb/manager.h>
 #include <vdb/table.h>
@@ -97,11 +98,14 @@ LIB_EXPORT rc_t CC TableReaderRefSeq_MakeTable(const TableReaderRefSeq** cself, 
                     rc = RC(rcAlign, rcType, rcConstructing, rcData, rcOutofrange);
                 }
                 if( static_cols[1].base.var != NULL ) {
-                    if( static_cols[1].len > sizeof(self->seq_id) - 1 ) {
-                        rc = RC(rcAlign, rcType, rcConstructing, rcBuffer, rcInsufficient);
-                    } else {
-                        strncpy(self->seq_id, static_cols[1].base.str, static_cols[1].len);
-                        self->seq_id[static_cols[1].len] = '\0';
+                    if ( static_cols[ 1 ].len > sizeof( self->seq_id ) - 1 )
+                    {
+                        rc = RC( rcAlign, rcType, rcConstructing, rcBuffer, rcInsufficient );
+                    }
+                    else
+                    {
+                        string_copy( self->seq_id, ( sizeof self->seq_id ) -  1, static_cols[1].base.str, static_cols[1].len );
+                        self->seq_id[ static_cols[ 1 ].len ] = '\0';
                     }
                 }
                 self->circular = static_cols[3].base.buul[0];
@@ -170,7 +174,7 @@ LIB_EXPORT rc_t CC TableReaderRefSeq_SeqId(const TableReaderRefSeq* cself, const
         rc = RC(rcAlign, rcType, rcReading, rcParam, rcNull);
     } else {
         *id = cself->seq_id;
-        *id_sz = strlen(cself->seq_id);
+        *id_sz = string_size(cself->seq_id);
     }
     ALIGN_DBGERR(rc);
     return rc;

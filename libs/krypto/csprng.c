@@ -32,6 +32,8 @@
 #include <klib/rc.h>
 #include <klib/refcount.h>
 
+#include <sysalloc.h>
+
 #include <openssl/rand.h>
 
 #include <string.h>

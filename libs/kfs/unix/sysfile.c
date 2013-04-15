@@ -804,7 +804,7 @@ rc_t KStdIOFileWrite ( KSysFile *dad, uint64_t pos,
         case EBADF:
             rc = RC ( rcFS, rcFile, rcWriting, rcFileDesc, rcInvalid );
             PLOGERR (klogInt,
-                     (klogInt, rc, "systembad file descriptor error fd=$(F)",
+                     (klogInt, rc, "system bad file descriptor error fd=$(F)",
                       "F=%d", lerrno, self->dad.fd));
             return rc;
 

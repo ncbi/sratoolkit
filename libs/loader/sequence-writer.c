@@ -34,6 +34,8 @@
 #include <insdc/sra.h>
 #include <insdc/insdc.h>
 
+#include <sysalloc.h>
+
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>

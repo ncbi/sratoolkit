@@ -105,11 +105,12 @@ SRA_DFLT_SCHEMA_LIBS = \
 	-svdb \
 	-skdb \
 	-svfs \
+	-skurl \
 	-skrypto \
 	-skfg \
 	-skfs \
-	-sklib \
-	-sksproc
+	-sksproc \
+	-sklib
 
 SRA_DFLT_SCHEMA_OS_LIBS = \
 	-ldl \
@@ -184,7 +185,8 @@ SRADBCMN_SRC = \
 	sramgr-cmn \
 	sratbl-cmn \
 	sracol \
-	types
+	types \
+    sracache
 
 SRADB_SRC = \
 	$(SRADBCMN_SRC) \
@@ -199,8 +201,9 @@ SRADB_LIB = \
 	-dvdb \
 	-dkdb \
 	-dvfs \
-	-lkfg \
 	-dkfs \
+	-lkfg \
+	-dkproc \
 	-dklib
 
 $(LIBDIR)/libsradb.$(SHLX): $(SRADB_OBJ)
@@ -232,7 +235,7 @@ WSRADB_LIB = \
 	-dwkdb \
 	-dvfs \
 	-lkfg \
-	-dkfs \
+	-dkproc \
 	-dklib
 
 $(LIBDIR)/libwsradb.$(SHLX): $(WSRADB_OBJ)

@@ -135,7 +135,7 @@ rc_t KColumnIdx2LocateBlob ( const KColumnIdx2 *self,
         rc = RC ( rcDB, rcIndex, rcSelecting, rcNoObj, rcUnsupported );
     else
     {
-        char buffer [ 1024 ];
+        uint64_t buffer [ 1024 / 8 ]; /* make sure is uint64_t aligned */
         void *block = buffer;
 
         /* determine the number of entries in block */

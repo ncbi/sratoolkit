@@ -241,8 +241,10 @@ rc_t CC TableWriterRef_Write(const TableWriterRef* cself, const TableWriterRefDa
         ALIGN_DBGERRP("%s is longer than %s", rc, cself->cols_data[ewrefd_cn_READ].name, cself->cols_data[ewrefd_cn_MAX_SEQ_LEN].name);
     } else if( (rc = TableWriter_OpenRow(cself->base, rowid, cself->cursor_id)) == 0 ) {
         const INSDC_dna_text* b = data->read.buffer;
-        INSDC_coord_len len = data->read.elements;
+        INSDC_coord_len const len = data->read.elements;
         bool write_read = data->seq_id.elements < 1 || data->force_READ_write;
+        INSDC_coord_len trim_len = len;
+        
         if( cself->last_seq_id_len != data->seq_id.elements ||
             strncmp(cself->last_seq_id, data->seq_id.buffer, cself->last_seq_id_len) != 0 ) {
             /* new seq_id: reset counters and mem it */
@@ -254,19 +256,19 @@ rc_t CC TableWriterRef_Write(const TableWriterRef* cself, const TableWriterRefDa
         }
         /* trunc trailing N */
         b += len - 1;
-        while( len > 0 && (*b == 'N' || *b == 'n' || *b == '.') ) {
-            len--; b--;
+        while( trim_len > 0 && (*b == 'N' || *b == 'n' || *b == '.') ) {
+            trim_len--; b--;
         }
         TW_COL_WRITE(cself->base, cself->cols_data[ewrefd_cn_NAME], data->name);
-        TW_COL_WRITE_BUF(cself->base, cself->cols_data[ewrefd_cn_READ], data->read.buffer, (write_read ? len : 0));
+        TW_COL_WRITE_BUF(cself->base, cself->cols_data[ewrefd_cn_READ], data->read.buffer, (write_read ? trim_len : 0));
         TW_COL_WRITE(cself->base, cself->cols_data[ewrefd_cn_QUALITY], data->quality);
         TW_COL_WRITE(cself->base, cself->cols_data[ewrefd_cn_SEQ_ID], data->seq_id);
-        if( len == 0 ) {
-            TW_COL_WRITE_VAR(cself->base, cself->cols_data[ewrefd_cn_SEQ_START], len);
+        if( trim_len == 0 ) {
+            TW_COL_WRITE_VAR(cself->base, cself->cols_data[ewrefd_cn_SEQ_START], trim_len);
         } else {
             TW_COL_WRITE_VAR(cself->base, cself->cols_data[ewrefd_cn_SEQ_START], cself->seq_start_last);
         }
-        TW_COL_WRITE_VAR(cself->base, cself->cols_data[ewrefd_cn_SEQ_LEN], data->read.elements);
+        TW_COL_WRITE_VAR(cself->base, cself->cols_data[ewrefd_cn_SEQ_LEN], len);
         TW_COL_WRITE_VAR(cself->base, cself->cols_data[ewrefd_cn_CS_KEY], cself->last_cs_key);
         TW_COL_WRITE_VAR(cself->base, cself->cols_data[ewrefd_cn_CIRCULAR], data->circular);
         if( rc == 0 && (rc = TableWriter_CloseRow(cself->base)) == 0 ) {

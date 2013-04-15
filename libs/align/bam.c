@@ -34,6 +34,7 @@
 #include <kfs/mmap.h>
 #include <klib/printf.h>
 #include <klib/log.h>
+#include <klib/text.h>
 #include <sysalloc.h>
 
 #include <atomic32.h>
@@ -1106,7 +1107,7 @@ DONE:
         unsigned f = 0;
         unsigned e = self->refSeqs;
         
-        if (rs.name == NULL || rs.length == 0) /* required tags */
+        if (rs.name == NULL) /* required tags */
             return RC(rcAlign, rcFile, rcParsing, rcConstraint, rcViolated);
         
         while (f < e) {
@@ -1317,6 +1318,11 @@ static rc_t ParseHeader(BAMFile *self, char hdata[], unsigned hlen, unsigned con
             return RC(rcAlign, rcFile, rcParsing, rcConstraint, rcViolated);  /* name must be unique */
         self->readGroup[rg].id = rg;
     }
+    for (i = 0; i < self->refSeqs; ++i) {
+        if (self->refSeq[i].length == 0) {
+            (void)PLOGMSG(klogWarn, (klogWarn, "Reference '$(ref)' has zero length", "ref=%s", self->refSeq[i].name));
+        }
+    }
     
     return 0;
 }
@@ -1472,7 +1478,7 @@ static rc_t ProcessHeader(BAMFile *self, char const headerText[])
 
     if (headerText) {
         free(htxt);
-        hlen = strlen(headerText);
+        hlen = string_size( headerText );
         htxt = malloc(hlen + 1);
         if (htxt == NULL) {
             free(rdat);
@@ -2047,7 +2053,7 @@ LIB_EXPORT rc_t CC BAMFileGetReadGroup(const BAMFile *cself, unsigned i, const B
 LIB_EXPORT rc_t CC BAMFileGetHeaderText(BAMFile const *cself, char const **header, size_t *header_len)
 {
     *header = cself->header;
-    *header_len = *header ? strlen(*header) : 0;
+    *header_len = *header ? string_size( *header ) : 0;
     return 0;
 }
 

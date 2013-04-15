@@ -69,8 +69,8 @@ static nbuf *alloc_nbuf(unsigned cnt, unsigned var) {
     nbuf *rslt;
     
     rslt = malloc(sizeof(*rslt) - sizeof(rslt->data) + cnt * sizeof(rslt->data.raw[0]));
-    memset(rslt, 0, sizeof(*rslt) - sizeof(rslt->data));
-    if (rslt) {
+    if ( rslt != NULL ) {
+        memset(rslt, 0, sizeof(*rslt) - sizeof(rslt->data));
         rslt->size = cnt;
         rslt->used = 0;
         rslt->var = var;

@@ -115,6 +115,7 @@ VDB_COPY_LIB = \
 	-lwkdb \
 	-lkapp \
 	-lvfs \
+	-lkurl \
 	-lkrypto \
 	-lkfg \
 	-lkfs \

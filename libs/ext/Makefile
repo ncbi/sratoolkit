@@ -33,7 +33,8 @@ include $(TOP)/build/Makefile.shell
 #
 SUBDIRS = \
 	zlib \
-	bzip2
+	bzip2 \
+	curl
 
 default: $(SUBDIRS)
 
@@ -77,18 +78,6 @@ $(SUBDIRS_CLEAN):
 	@ $(MAKE) -C $(subst _clean,,$@) clean
 
 .PHONY: clean $(SUBDIRS_CLEAN)
-
-#-------------------------------------------------------------------------------
-# deep-clean
-#
-SUBDIRS_DEEP_CLEAN = $(addsuffix _deep_clean,$(SUBDIRS))
-
-deep-clean: $(SUBDIRS_DEEP_CLEAN)
-
-$(SUBDIRS_DEEP_CLEAN):
-	@ $(MAKE) -C $(subst _deep_clean,,$@) deep-clean
-
-.PHONY: deep-clean $(SUBDIRS_DEEP_CLEAN)
 
 
 #-------------------------------------------------------------------------------

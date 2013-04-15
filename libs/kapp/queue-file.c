@@ -498,8 +498,11 @@ rc_t CC KQueueFileRunWrite ( const KThread *t, void *data )
         {
             /* see if the fg thread is done */
             if ( GetRCState ( rc ) == rcDone && GetRCObject ( rc ) == rcData )
+            {
                 rc = 0;
-            else if( GetRCObject(rc) == rcTimeout && GetRCState(rc) == rcExhausted ) {
+            }
+            else if ( GetRCObject(rc) == rcTimeout && GetRCState(rc) == rcExhausted )
+            {
                 rc = 0;
                 continue;
             }
@@ -598,7 +601,7 @@ rc_t CC KQueueFileWrite ( KQueueFile *self, uint64_t pos,
             }
 
             self -> b = b;
-            b -> pos = pos + total;
+            b -> pos = pos/* + total*/;
             b -> bytes = 0;
             b -> rc = 0;
 #if _DEBUGGING
@@ -608,7 +611,7 @@ rc_t CC KQueueFileWrite ( KQueueFile *self, uint64_t pos,
 
         assert ( b != NULL );
         assert ( b == self -> b );
-        assert ( pos >= b -> pos );
+/*        assert ( pos >= b -> pos ); */
         assert ( pos <= b -> pos + b -> bytes );
         assert ( pos < b -> pos + self -> bsize );
 
@@ -620,6 +623,7 @@ rc_t CC KQueueFileWrite ( KQueueFile *self, uint64_t pos,
         memcpy ( & b -> data [ b -> bytes ], & ( ( const uint8_t* ) buffer ) [ total ], to_write );
         b -> bytes += to_write;
     }
+
 
     * num_writ = total;
     if ( total != 0 )

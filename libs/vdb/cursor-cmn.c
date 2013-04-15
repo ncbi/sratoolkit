@@ -78,6 +78,11 @@
 #define PERMIT_POST_OPEN_ADD 1
 #define DISABLE_READ_CACHE 0
 
+/* normally false
+   can be set for certain applications using VDBManagerDisablePagemapThread
+*/
+static bool s_disable_pagemap_thread;
+
 
 /*--------------------------------------------------------------------------
  * VCursorCache
@@ -533,20 +538,20 @@ static rc_t VTableCreateCachedCursorReadImpl ( const VTable *self,
 #endif
             rc = VCursorMake ( & curs, self );
             if ( rc == 0 ) {
-		curs -> blob_mru_cache = VBlobMRUCacheMake(capacity);
+                curs -> blob_mru_cache = VBlobMRUCacheMake(capacity);
                 curs -> read_only = true;
                 rc = VCursorSupplementSchema ( curs );
                
 #if 0  
-		if(create_pagemap_thread && capacity > 0 && rc == 0 )
-			rc = VCursorLaunchPagemapThread ( curs );
+                if(create_pagemap_thread && capacity > 0 && rc == 0 )
+                    rc = VCursorLaunchPagemapThread ( curs );
 #endif
                 if ( rc == 0 )
                 {
-		    if(capacity > 0)
-			curs->launch_cnt = 5;
-		    else
-			curs->launch_cnt=200;
+                    if(capacity > 0)
+                        curs->launch_cnt = 5;
+                    else
+                        curs->launch_cnt=200;
                     * cursp = curs;
                     return 0;
                 }
@@ -2327,31 +2332,73 @@ CHECK_AGAIN:
     return rc;
 }
 
-rc_t CC VCursorLaunchPagemapThread(VCursor *curs)
+rc_t VCursorLaunchPagemapThread(VCursor *curs)
 {
 	rc_t rc;
+
+    assert ( curs != NULL );
 	curs -> pagemap_thread = NULL; /** if fails - will not use **/
+
+    if ( s_disable_pagemap_thread )
+        return RC ( rcVDB, rcCursor, rcExecuting, rcThread, rcNotAvailable );
+
 	rc = KLockMake ( & curs -> pmpr.lock );
 	if(rc == 0)
+    {
 		rc = KConditionMake ( & curs -> pmpr.cond );
-	if(rc == 0)
-		rc = KThreadMake ( & curs -> pagemap_thread, run_pagemap_thread, curs );
+        if(rc == 0)
+        {
+            rc = KThreadMake ( & curs -> pagemap_thread, run_pagemap_thread, curs );
+            if ( rc == 0 )
+                return 0;
+
+            KConditionRelease ( curs -> pmpr . cond );
+            curs -> pmpr . cond = NULL;
+        }
+
+        KLockRelease ( curs -> pmpr . lock );
+        curs -> pmpr . lock = NULL;
+    }
+
 	return rc;
 }
-rc_t CC VCursorTerminatePagemapThread(VCursor *self)
+
+rc_t VCursorTerminatePagemapThread(VCursor *self)
 {
 	rc_t rc=0;
-	if(self -> pagemap_thread != NULL){
+
+    assert ( self != NULL );
+
+	if(self -> pagemap_thread != NULL)
+    {
 		rc = KLockAcquire ( self -> pmpr.lock );
-		if ( rc == 0 ){
+		if ( rc == 0 )
+        {
 			self -> pmpr.state = ePMPR_STATE_EXIT;
 			KConditionSignal ( self -> pmpr.cond );
 			KLockUnlock ( self -> pmpr.lock );
 		}
 		KThreadWait ( self -> pagemap_thread, NULL );
 	}
+
 	KThreadRelease ( self -> pagemap_thread );
 	KConditionRelease ( self -> pmpr.cond );
 	KLockRelease ( self -> pmpr.lock );
+
+    self -> pagemap_thread = NULL;
+    self -> pmpr . cond = NULL;
+    self -> pmpr . lock = NULL;
+
 	return rc;
+}
+
+/* DisablePagemapThread
+ *  this can cause difficulties for some clients
+ */
+LIB_EXPORT rc_t CC VDBManagerDisablePagemapThread ( struct VDBManager const *self )
+{
+    if ( self == NULL )
+        return RC ( rcVDB, rcMgr, rcUpdating, rcSelf, rcNull );
+    s_disable_pagemap_thread = true;
+    return 0;
 }

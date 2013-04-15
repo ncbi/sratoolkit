@@ -99,12 +99,12 @@ rc_t CC phred_stats_trigger(void *data, const VXformInfo *info, int64_t row_id,
 
     assert(self != NULL);
     assert(argc == 1);
-    assert(argv[0].u.data.base != NULL);
     assert(argv[0].u.data.elem_bits == (sizeof(INSDC_quality_phred) * 8));
 
     len = argv[0].u.data.elem_count;
     if( len > 0 ) {
         const INSDC_quality_phred* q = argv[0].u.data.base;
+        assert(argv[0].u.data.base != NULL);
         q += argv[0].u.data.first_elem;
         do {
             self->count[q[--len]]++;

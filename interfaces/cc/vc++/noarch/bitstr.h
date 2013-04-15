@@ -94,7 +94,7 @@ void bitcpy ( void *dbase, bitsz_t doff, const void *sbase, bitsz_t soff, bitsz_
         soff &= ( WRDSIZE - 1 );
 
         /* calculate number of words - 1 in dst */
-        dcountz = ( doff + sz + ( WRDSIZE - 1 ) - WRDSIZE ) >> WRDSHIFT;
+        dcountz = ( size_t ) ( ( doff + sz + ( WRDSIZE - 1 ) - WRDSIZE ) >> WRDSHIFT );
 
         /* calculate masks */
         lmask = rmask = ~ 0;
@@ -139,7 +139,7 @@ void bitcpy ( void *dbase, bitsz_t doff, const void *sbase, bitsz_t soff, bitsz_
         else
         {
             /* source count may differ from dest count */
-            size_t scountz = ( soff + sz + ( WRDSIZE - 1 ) - WRDSIZE ) >> WRDSHIFT;
+            size_t scountz = ( size_t ) ( ( soff + sz + ( WRDSIZE - 1 ) - WRDSIZE ) >> WRDSHIFT );
 
             /* use double-word accumulator */
             ACC acc = BSWAP ( src [ 0 ] );
@@ -259,7 +259,7 @@ int bitcmp ( const void *abase, bitsz_t aoff, const void *bbase, bitsz_t boff, b
            at least 1. our loops treat the last word
            specially, so calculate a loop counter that
            excludes the last word */
-        lcountz = ( aoff + sz + ( WRDSIZE - 1 ) - WRDSIZE ) >> WRDSHIFT;
+        lcountz = ( size_t ) ( ( aoff + sz + ( WRDSIZE - 1 ) - WRDSIZE ) >> WRDSHIFT );
 
         /* calculate masks */
         lmask = rmask = ~ 0;
@@ -301,7 +301,7 @@ int bitcmp ( const void *abase, bitsz_t aoff, const void *bbase, bitsz_t boff, b
                since alignments differ, the span of "sz"
                bits may hit a different number of words in
                the left array than in the right. */
-            size_t rcountz = ( boff + sz + ( WRDSIZE - 1 ) - WRDSIZE ) >> WRDSHIFT;
+            size_t rcountz = ( size_t ) ( ( boff + sz + ( WRDSIZE - 1 ) - WRDSIZE ) >> WRDSHIFT );
 
             /* use double-word accumulator
                note that the extra bits get ignored */

@@ -106,8 +106,9 @@ RCEXPLAIN_OBJ = \
 RCEXPLAIN_LIB = \
 	-skapp \
 	-svfs \
-	-skfg \
+	-skurl \
 	-skrypto \
+	-skfg \
 	-skfs \
 	-sksproc \
 	-sklib
@@ -126,12 +127,12 @@ KDBMETA_OBJ = \
 	$(addsuffix .$(OBJX),$(KDBMETA_SRC))
 
 KDBMETA_LIB = \
-	-ssrapath \
 	-skapp \
 	-lwkdb \
 	-lvfs \
-	-lkfg \
+	-lkurl \
 	-lkrypto \
+	-lkfg \
 	-lkfs \
 	-lkproc \
 	-lklib
@@ -151,11 +152,11 @@ VDB_LOCK_OBJ = \
 	$(addsuffix .$(OBJX),$(VDB_LOCK_SRC))
 
 VDB_LOCK_LIB = \
-	-ssrapath \
 	-skapp \
 	-lwvdb \
 	-lwkdb \
 	-lvfs \
+	-lkurl \
 	-lkrypto \
 	-lkfg \
 	-lkfs \
@@ -178,11 +179,11 @@ VDB_UNLOCK_OBJ = \
 	$(addsuffix .$(OBJX),$(VDB_UNLOCK_SRC))
 
 VDB_UNLOCK_LIB = \
-	-ssrapath \
 	-skapp \
 	-lwvdb \
 	-lwkdb \
 	-lvfs \
+	-lkurl \
 	-lkrypto \
 	-lkfg \
 	-lkfs \
@@ -204,17 +205,18 @@ T_OBJ = \
 	$(addsuffix .$(OBJX),$(T_SRC))
 
 T_LIB = \
+	-lkapp \
 	-dalign-reader \
 	$(READONLY_SCHEMA_LIBS) \
-	-dksrch \
 	-lsradb \
 	-lvdb \
 	-lkdb \
-	-lkapp \
 	-lvfs \
+	-lkurl \
 	-lkrypto \
 	-lkfg \
 	-lkfs \
+	-dksrch \
 	-lkproc \
 	-lklib \
 	-lm
@@ -235,8 +237,9 @@ VDB_PASSWD_OBJ = \
 VDB_PASSWD_LIB = \
 	-skapp \
 	-lvfs \
-	-lkfg \
+	-lkurl \
 	-lkrypto \
+	-lkfg \
 	-lkfs \
 	-sksproc \
 	-lklib

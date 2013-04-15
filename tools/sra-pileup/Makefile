@@ -94,13 +94,13 @@ TOOL_OBJ = \
 
 TOOL_LIB = \
 	-lkapp \
-	-ssrapath \
 	-lalign-reader \
 	$(READONLY_SCHEMA_LIBS) \
 	-lsraschema \
 	-lvdb \
 	-lkdb \
 	-lvfs \
+	-lkurl \
 	-lkrypto \
 	-lkfg \
 	-lkfs \
@@ -133,13 +133,13 @@ SAMDUMP3_OBJ = \
 
 SAMDUMP3_LIB = \
 	-lkapp \
-	-ssrapath \
 	-lalign-reader \
 	$(READONLY_SCHEMA_LIBS) \
 	-lsraschema \
 	-lvdb \
 	-lkdb \
 	-lvfs \
+	-lkurl \
 	-lkrypto \
 	-lkfg \
 	-lkfs \

@@ -193,15 +193,17 @@ rc_t CC ALIGN_CMN_TABLE_sub_select(RefTableSubSelect* self, int64_t ref_row_id,
 	rc_t rc=0;
         INSDC_coord_len num_read = 0;
         const int64_t* al_ref_id = NULL;
+        int64_t al_ref_id_value;
         const INSDC_coord_zero* al_ref_start = NULL;
 
         if( offset < 0 ) {
             if( (rc = VCursorCellDataDirect(self->curs, ref_row_id, self->u.mod.ref_id_idx, NULL, (void const **)&al_ref_id, NULL, NULL)) == 0 &&
                 (rc = VCursorCellDataDirect(self->curs, ref_row_id,self->u.mod.ref_start_idx, NULL, (void const **)&al_ref_start, NULL, NULL)) == 0 ) {
+                memcpy ( & al_ref_id_value, al_ref_id, sizeof *al_ref_id );
                 if( -offset > ref_len ) {
                     /* requested chunk is to the left and is not using allele data */
                     rc = RC(rcXF, rcFunction, rcSelecting, rcData, rcCorrupt);
-                } else if( (rc = self->u.mod.parent->func(self->u.mod.parent, al_ref_id[0], offset + al_ref_start[0],
+                } else if( (rc = self->u.mod.parent->func(self->u.mod.parent, al_ref_id_value, offset + al_ref_start[0],
                                                           -offset, ref_ploidy, rslt)) == 0 ) {
                     /* read left portion of underlying reference */
                     num_read += rslt->elem_count;
@@ -246,8 +248,9 @@ rc_t CC ALIGN_CMN_TABLE_sub_select(RefTableSubSelect* self, int64_t ref_row_id,
             if( rc == 0 ) {
                 rc = VCursorCellDataDirect(self->curs, ref_row_id, self->u.mod.ref_len_idx, NULL, (void const **)&al_ref_len, NULL, NULL);
             }
+            memcpy ( & al_ref_id_value, al_ref_id, sizeof *al_ref_id );
             if( rc == 0 &&
-                (rc = self->u.mod.parent->func(self->u.mod.parent, al_ref_id[0], al_ref_start[0] + al_ref_len[0],
+                (rc = self->u.mod.parent->func(self->u.mod.parent, al_ref_id_value, al_ref_start[0] + al_ref_len[0],
                                  ref_len - num_read, ref_ploidy, rslt)) == 0 ) {
             }
         }
@@ -354,7 +357,9 @@ rc_t CC reftbl_sub_select ( void *data, const VXformInfo *info,
         /* must set it to 0 here - functions above accumulate */
         rslt->elem_count = 0;
 	if(ref_len[0] > 0){
-		rc = self->func(self, ref_id[0], ref_start[0], ref_len[0], ref_ploidy ? ref_ploidy[0] : 0, rslt);
+		int64_t ref_id_val;
+		memcpy ( & ref_id_val, ref_id, sizeof ref_id_val );
+		rc = self->func(self, ref_id_val, ref_start[0], ref_len[0], ref_ploidy ? ref_ploidy[0] : 0, rslt);
 	}
     }
     return rc;

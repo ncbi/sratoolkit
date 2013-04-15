@@ -35,6 +35,7 @@
 #include <klib/log.h>
 #include <klib/out.h>
 #include <klib/status.h>
+#include <klib/text.h>
 #include <kapp/main.h>
 #include <kfs/directory.h>
 #include <sra/sradb-priv.h>
@@ -590,6 +591,7 @@ static rc_t SRADumper_DumpRun( const SRATable* table,
 
 static const SRADumperFmt_Arg KMainArgs[] =
 {
+    { NULL, "no-user-settings", NULL, {"Internal Only", NULL}},
     { "A", "accession", "accession", {"Replaces accession derived from <path> in filename(s) and deflines (only for single table dump)", NULL}},
     { "O", "outdir", "path", {"Output directory, default is working directory ( '.' )", NULL}},
     { "Z", "stdout", NULL, {"Output to stdout, all split data become joined into single stream", NULL}},
@@ -613,7 +615,6 @@ static const SRADumperFmt_Arg KMainArgs[] =
                                  "Current/default is warn", NULL}},
     { "v", "verbose", NULL, {"Increase the verbosity level of the program",
                             "Use multiple times for more verbosity", NULL}},
-    { NULL, "no-user-settings", NULL, {"Do not read any settings on startup. Use VDB_CONFIG environment var to set config file", NULL}},
     { NULL, OPTION_REPORT, NULL, {
 "Control program execution environment report generation (if implemented).",
 "One of (never|error|always). Default is error",
@@ -639,44 +640,19 @@ void CC SRADumper_PrintArg( const SRADumperFmt_Arg* arg )
 }
 
 
-static bool CanResolveAccessions( void )
-{
-    bool res = false;
-    SRAPath *sra_path;
-    rc_t rc = SRAPathMake( &sra_path, NULL );
-    if ( rc == 0 )
-    {
-        res = true;
-        SRAPathRelease( sra_path );
-    }
-    return res;
-}
-
-
 static void CoreUsage( const char* prog, const SRADumperFmt* fmt, bool brief, int exit_status )
 {
-    bool can_resolve_acc = CanResolveAccessions();
-    if ( can_resolve_acc )
-    {
-        OUTMSG(( "\n"
-                 "Usage:\n"
-                 "  %s [options] <path [path...]>\n"
-                 "  %s [options] [ -A ] <accession>\n"
-                 "\n", prog, prog));
-    }
-    else
-    {
-        OUTMSG(( "\n"
-                 "Usage:\n"
-                 "  %s [options] <path [path...]>\n"
-                 "\n", prog, prog));
-    }
+    OUTMSG(( "\n"
+             "Usage:\n"
+             "  %s [options] <path [path...]>\n"
+             "  %s [options] [ -A ] <accession>\n"
+             "\n", prog, prog));
 
     if ( !brief )
     {
         if ( fmt->usage )
         {
-            rc_t rc = fmt->usage( fmt, KMainArgs, can_resolve_acc ? 0 : 1 );
+            rc_t rc = fmt->usage( fmt, KMainArgs, 1 );
             if ( rc != 0 )
             {
                 LOGERR(klogErr, rc, "Usage print failed");
@@ -690,9 +666,9 @@ static void CoreUsage( const char* prog, const SRADumperFmt* fmt, bool brief, in
             d[ 1 ] = fmt->arg_desc;
             for ( k = 0; k < ( sizeof( d ) / sizeof( d[0] ) ); k++ )
             {
-                for ( i = can_resolve_acc ? 0 : 1;
+                for ( i = 1;
                       d[k] != NULL && ( d[ k ][ i ].abbr != NULL || d[ k ][ i ].full != NULL );
-                      i++ )
+                      ++ i )
                 {
                     if ( ( !fmt->gzip && strcmp( d[ k ][ i ].full, "gzip" ) == 0 ) ||
                          ( !fmt->bzip2 && strcmp (d[ k ][ i ].full, "bzip2" ) == 0 ) )
@@ -825,8 +801,7 @@ bool CC SRADumper_GetArg( const SRADumperFmt* fmt, char const* const abbr, char 
 }
 
 
-static bool reportToUser( rc_t rc, char* argv0 )
-{
+static bool reportToUserSffFromNot454Run(rc_t rc, char* argv0, bool silent) {
     assert( argv0 );
     if ( rc == SILENT_RC( rcSRA, rcFormatter, rcConstructing,
         rcData, rcUnsupported ) )
@@ -852,12 +827,14 @@ static bool reportToUser( rc_t rc, char* argv0 )
         name = last_name ? last_name : argv0;
         if ( strcmp( "sff-dump", name ) == 0 )
         {
-            OUTMSG ((
+            if (!silent) {
+              OUTMSG((
                "This run cannot be transformed into SFF format.\n"
                "Conversion cannot be completed because the source lacks\n"
                "one or more of the data series required by the SFF format.\n"
                "You should be able to dump it as FASTQ by running fastq-dump.\n"
-               "\n" ));
+               "\n"));
+            }
             return true;
         }
     }
@@ -898,8 +875,6 @@ rc_t CC KMain ( int argc, char* argv[] )
     char* spot_group[128] = {NULL};
     bool read_filter_on = false;
     SRAReadFilter read_filter = 0xFF;
-
-    bool failed_to_open = false;
 
     /* for the fasta-ouput of fastq-dump: branch out completely of 'common' code */
     if ( fasta_dump_requested( argc, argv ) )
@@ -1057,7 +1032,7 @@ rc_t CC KMain ( int argc, char* argv[] )
                     {
                         if ( t - f > 0 )
                         {
-                            spot_group[ spot_groups++ ] = strndup( &argv[ i ][ f ], t - f );
+                            spot_group[ spot_groups++ ] = string_dup( &argv[ i ][ f ], t - f );
                         }
                         f = t + 1;
                     }
@@ -1065,7 +1040,7 @@ rc_t CC KMain ( int argc, char* argv[] )
                 }
                 if ( t - f > 0 )
                 {
-                    spot_group[ spot_groups++ ] = strndup( &argv[ i ][ f ], t - f );
+                    spot_group[ spot_groups++ ] = string_dup( &argv[ i ][ f ], t - f );
                 }
                 if ( spot_groups < 1 )
                 {
@@ -1259,11 +1234,7 @@ rc_t CC KMain ( int argc, char* argv[] )
                 else
                 {
                     PLOGERR( klogErr, ( klogErr, rc,
-                            "failed to open '$(path)'", "path=%s",
-                            table_path[ i ] ) );
-                    if (GetRCState(rc) == rcNotFound) {
-                        failed_to_open = true;
-                    }
+                            "failed to open '$(path)'", "path=%s", table_path[ i ] ) );
                 }
                 continue;
             }
@@ -1500,8 +1471,7 @@ rc_t CC KMain ( int argc, char* argv[] )
                     PLOG_4(PLOG_S(path),PLOG_S(dot),PLOG_S(table),PLOG_U32(spots)),
                     table_path[ i ], table_name ? ":" : "", table_name ? table_name : "", smax - smin + 1 ) );
         }
-        else if ( !reportToUser( rc, argv [0 ] ) )
-        {
+        else if (!reportToUserSffFromNot454Run(rc, argv [0], false)) {
             PLOGERR( klogErr, ( klogErr, rc, "failed $(path)$(dot)$(table)",
                     PLOG_3(PLOG_S(path),PLOG_S(dot),PLOG_S(table)),
                     table_path[ i ], table_name ? ":" : "", table_name ? table_name : "" ) );
@@ -1527,11 +1497,11 @@ Catch:
     OUTMSG(( "Written %lu spots total\n", total_spots ));
 
 
-    if (failed_to_open) {
+    /* Report execution environment if necessary */
+    if (rc != 0 && reportToUserSffFromNot454Run(rc, argv [0], true)) {
         ReportSilence();
     }
     {
-        /* Report execution environment if necessary */
         rc_t rc2 = ReportFinalize( rc );
         if ( rc == 0 )
         {

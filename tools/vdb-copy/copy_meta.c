@@ -138,8 +138,8 @@ static rc_t copy_metadata_child ( const KMDataNode *src_root, KMDataNode *dst_ro
             char temp_path[ 1024 ];
             size_t temp_len;
 
-            strncpy( temp_path, node_path, sizeof(temp_path) - 1 );
-            temp_len = strlen( temp_path );
+            string_copy ( temp_path, ( sizeof temp_path ) - 1, node_path, string_size( node_path ) );
+            temp_len = string_size( temp_path );
             temp_path[ temp_len++ ] = '/';
             temp_path[ temp_len ] = 0;
             rc = KNamelistCount ( names, & count );
@@ -149,7 +149,7 @@ static rc_t copy_metadata_child ( const KMDataNode *src_root, KMDataNode *dst_ro
                 rc = KNamelistGet ( names, i, & child_name );
                 if ( rc == 0 )
                 {
-                    strncat( temp_path, child_name, sizeof( temp_path ) -1 );
+                    string_copy( temp_path + temp_len, ( sizeof temp_path ) - temp_len, child_name, string_size( child_name ) );
                     rc = copy_metadata_child ( src_root, dst_root, temp_path, show_meta );
                     temp_path[ temp_len ] = 0;
                 }

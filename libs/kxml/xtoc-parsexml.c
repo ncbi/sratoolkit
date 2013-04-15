@@ -34,6 +34,8 @@
 
 #include "os-native.h"
 
+#include <sysalloc.h>
+
 #include <assert.h>
 #include <stdio.h> /* printf */
 #include <stdlib.h> /* free */

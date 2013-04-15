@@ -57,6 +57,16 @@
 #define USE_EARLY_HELP 1
 #define USE_EARLY_VERSION 1
 
+/* many tools acquired some usage for '-q'
+   other than the standard meaning of "be quiet".
+   while we phase this out, allow these tools
+   to replace the default usage. */
+#define HONOR_LEGACY_Q_ALIAS 1
+#if HONOR_LEGACY_Q_ALIAS
+#define LEGACY_Q_ALIAS_DEPRECATED 1
+#define LEGACY_Q_ALIAS_ERROR      0
+#endif
+
 bool CC is_valid_name (const char * string)
 {
     /* we do not allow leading - or empty names */
@@ -136,12 +146,14 @@ typedef struct Option
 {
     BSTNode     n;              /* BSTree node storage */
 
+    size_t      size;           /* name length (size if UTF-8) */
     Vector      values;         /* Vector of set values */
     uint32_t    count;          /* count of times option seen on the command line */
     uint32_t    max_count;      /* if non-zero, how many times is it legal to be seen */
     bool        needs_value;    /* does this option take/require a value? */
     bool        required;       
-    size_t      size;           /* name length (size if UTF-8) */
+    bool        deprecated;     /* a warning if used */
+    bool        error;          /* an error if used */
     char        name [1];       /* key value The 1 will be the NUL */
 } Option;
 
@@ -160,7 +172,7 @@ rc_t CC OptionMake (Option ** pself, const char * name, size_t size, uint32_t ma
     if (self == NULL)
     {
         rc = RC (rcRuntime, rcArgv, rcConstructing, rcMemory, rcExhausted);
-        PLOGERR (klogErr, (klogErr, rc, "Error adding option '$(O)'","O=%s",name));
+        PLOGERR (klogErr, (klogErr, rc, "Error adding option '$(O)'","O=--%s",name));
     }
     else 
     {
@@ -170,6 +182,7 @@ rc_t CC OptionMake (Option ** pself, const char * name, size_t size, uint32_t ma
             memset (&self->values, sizeof(self->values), 0);
 
         self->required = required;
+        self->deprecated = self->error = false;
         self->count = 0;
         self->max_count = max_count;
         self->size = size;
@@ -272,8 +285,8 @@ rc_t CC OptionAddValue (Option * self, const char * value, size_t size)
         --self->count;
         rc = RC (rcRuntime, rcArgv, rcInserting, rcData, rcExcessive);
         PLOGERR (klogErr,
-                 (klogErr, rc, "Too many occurances of option '$(O)'",
-                  "O=%s", self->name));
+                 (klogErr, rc, "Too many occurrences of option '$(O)'",
+                  "O=--%s", self->name));
     }
     else if (self->needs_value)
     {
@@ -290,7 +303,7 @@ rc_t CC OptionAddValue (Option * self, const char * value, size_t size)
             {
                 PLOGERR (klogErr,
                          (klogErr, rc, "error capturing parameter '$(O)'",
-                          "O=%s", self->name));
+                          "O=--%s", self->name));
                 ParamValueWhack (pvalue);
             }
             else
@@ -331,8 +344,11 @@ int CC OptionSort (const BSTNode * item, const BSTNode * n)
 typedef struct OptAlias
 {
     BSTNode     n;              /* BSTree Node storage */
-    Option *   option;         /* full name node for which this is an alias */
+
+    Option *   option;          /* full name node for which this is an alias */
     size_t      size;
+    bool        deprecated;     /* warning if used */
+    bool        error;          /* error if used */
     char        name[1];        /* utf8 name */
 } OptAlias;
 
@@ -358,6 +374,7 @@ rc_t CC OptAliasMake (OptAlias ** pself, const char * name, size_t size,
     }
     self->option = option;
     self->size = size;
+    self->deprecated = self->error = false;
     string_copy (self->name, size + 1, name, size);
     *pself = self;
     return 0;
@@ -552,6 +569,9 @@ struct Args
 #if NOT_USED_YET
     HelpGroup * def_help;
 #endif
+#if HONOR_LEGACY_Q_ALIAS
+    bool   qalias_replaced;
+#endif
 };
 
 rc_t CC ArgsMake (Args ** pself)
@@ -575,8 +595,11 @@ rc_t CC ArgsMake (Args ** pself)
         BSTreeInit (&self->aliases);
         VectorInit (&self->argv,0,8);
         VectorInit (&self->params,0,8);
-#if NOT_USED_YET
         VectorInit (&self->help,0,16);
+#if HONOR_LEGACY_Q_ALIAS
+        self -> qalias_replaced = false;
+#endif
+#if NOT_USED_YET
         rc = HelpGroupMake (&help, "NCBI Options");
         if (rc)
         {
@@ -636,7 +659,7 @@ rc_t CC ArgsAddOption (Args * self, const OptDef * option)
     if (! is_valid_name (name))
     {
         rc = RC (rcRuntime, rcArgv, rcConstructing, rcName, rcInvalid);
-        PLOGERR (klogInt, (klogInt, rc, "Error using illegal option name '$(O)'", "O=%s", name));
+        PLOGERR (klogInt, (klogInt, rc, "Error using illegal option name '$(O)'", "O=--%s", name));
         return rc;
     }
     size = string_size (name);
@@ -653,11 +676,11 @@ rc_t CC ArgsAddOption (Args * self, const OptDef * option)
         {
             rc = RC (rcRuntime, rcArgv, rcConstructing, rcName, rcBusy);
             PLOGERR (klogInt,
-                     (klogInt, rc, "duplicate option name '$(O)'", "O=%s", name));
+                     (klogInt, rc, "duplicate option name '$(O)'", "O=--%s", name));
         }
         else
             PLOGERR (klogInt,
-                     (klogInt, rc, "unknown error inserting option name '$(O)'", "O=%s", name));
+                     (klogInt, rc, "unknown error inserting option name '$(O)'", "O=--%s", name));
 
         OptionWhack (node);
         return rc;
@@ -693,7 +716,7 @@ rc_t CC ArgsAddOption (Args * self, const OptDef * option)
                           "S=%s", startc));
                 break;
             }
-            string_copy (alias_name, sizeof (alias_name), startc, incr);
+            size = string_copy (alias_name, sizeof (alias_name), startc, incr);
             if (! is_valid_name (alias_name))
             {
                 rc = RC (rcRuntime, rcArgv, rcConstructing, rcName, rcInvalid);
@@ -702,7 +725,9 @@ rc_t CC ArgsAddOption (Args * self, const OptDef * option)
                           "S=%s", alias_name));
                 break;
             }
+#if 0
             size += incr + 1;
+#endif
             rc = OptAliasMake (&snode, alias_name, incr, node);
             if (rc)
                 break;
@@ -711,15 +736,37 @@ rc_t CC ArgsAddOption (Args * self, const OptDef * option)
             {
                 if (GetRCState(rc) == rcExists)
                 {
+#if HONOR_LEGACY_Q_ALIAS
+                    if ( ! self -> qalias_replaced && size == 1 && alias_name [ 0 ] == 'q' )
+                    {
+                        BSTreeUnlink ( & self -> aliases, & sprev -> n );
+                        rc = BSTreeInsertUnique ( & self -> aliases, & snode -> n, NULL, OptAliasSort );
+                        if ( rc != 0 )
+                            BSTreeInsert ( & self -> aliases, & sprev -> n, OptAliasSort );
+                        else
+                        {
+                            OptAliasWhack ( sprev );
+                            self -> qalias_replaced = true;
+#if LEGACY_Q_ALIAS_DEPRECATED
+                            snode -> deprecated = true;
+#elif LEGACY_Q_ALIAS_ERROR
+                            snode -> error = true;
+#endif
+                            continue;
+                        }
+                    }
+#endif
                     rc = RC (rcRuntime, rcArgv, rcConstructing, rcName, rcExists);
                     PLOGERR (klogInt,
                              (klogInt, rc, "duplicate alias name '$(S)'",
-                              "S=%s\n", alias_name));
+                              "S=%s", alias_name));
                 }
                 else
+                {
                     PLOGERR (klogErr,
                              (klogErr, rc, "unknown error inserting alias '$(S)'",
-                              "S=%s\n", alias_name));
+                              "S=%s", alias_name));
+                }
 
                 OptAliasWhack (snode);
                 break;
@@ -823,7 +870,8 @@ rc_t CC ArgsCheckRequired (Args * self)
     return r.rc;
 }
 
-rc_t CC ArgsParse (Args * self, int argc, char *argv[])
+static
+rc_t ArgsParseInt (Args * self, int argc, char *argv[])
 {
     rc_t rc = 0;        /* hard fail - quit processing */
     rc_t orc = 0;       /* soft fail - keep processing but we'll fail in the end */
@@ -905,7 +953,7 @@ rc_t CC ArgsParse (Args * self, int argc, char *argv[])
                     qrc = RC( rcApp, rcArgv, rcParsing, rcParam, rcUnknown );
                     PLOGERR (klogErr,
                              (klogErr, qrc,
-                              "Unknown argument '$(O)'", "O=%s", name ));
+                              "Unknown argument '$(O)'", "O=--%s", name ));
 /*                     break; */
                     if (orc == 0) /* non-fatal */
                         orc = qrc;
@@ -924,7 +972,7 @@ rc_t CC ArgsParse (Args * self, int argc, char *argv[])
                         {
                             rc = RC( rcRuntime, rcArgv, rcParsing, rcParam, rcExhausted );
                             PLOGERR (klogErr,
-                                     (klogErr, qrc,"Option '$(O)' is missing a value", "O=%s", node->name ));
+                                     (klogErr, qrc,"Option '$(O)' is missing a value", "O=--%s", node->name ));
                         }
                         else
                         {
@@ -932,24 +980,37 @@ rc_t CC ArgsParse (Args * self, int argc, char *argv[])
                             rc = next_arg( self, &ix, ix_to, &value );
                         }
 
-                        if ( rc )
-                            break;
+                        if ( rc == 0 )
+                        {
+                            assert ( value != NULL );
 
-                        assert ( value != NULL );
+                            value_len = string_size( value );
 
-                        value_len = string_size( value );
-
-                        rc = OptionAddValue( node, value, value_len );
-                        if ( rc )
-                            break;
+                            rc = OptionAddValue( node, value, value_len );
+                        }
                     }
                     else
                     {
                         rc = OptionAddValue( node, NULL, 0 );
-                        if ( rc )
-                        {
-                            break;
-                        }
+                    }
+
+                    if ( rc != 0 )
+                        break;
+
+                    if ( node -> error )
+                    {
+                        rc = RC ( rcApp, rcArgv, rcParsing, rcParam, rcUnsupported );
+                        PLOGERR (klogErr,
+                                 (klogErr, rc,
+                                  "Deprecated argument '$(O)' is no longer supported.", "O=--%s", name ));
+                        break;
+                    }
+
+                    if ( node -> deprecated )
+                    {
+                        PLOGMSG (klogWarn,
+                                 (klogWarn,
+                                  "Deprecated argument '$(O)' may not be supported in future releases.", "O=--%s", name ));
                     }
                 }
             }
@@ -974,13 +1035,14 @@ rc_t CC ArgsParse (Args * self, int argc, char *argv[])
                         qrc = RC( rcApp, rcArgv, rcParsing, rcParam, rcUnknown );
                         PLOGERR (klogErr,
                                  (klogErr, qrc,
-                                  "Unknown argument '$(O)'", "O=%s", name ));
+                                  "Unknown argument '$(O)'", "O=-%s", name ));
 
                         if (orc == 0)
                             orc = qrc;
                     }
                     else
                     {
+                        bool break_loop = false;
                         node = OptAliasOption( alias );
                         if ( OptionNeedsValue( node ) )
                         {
@@ -996,7 +1058,7 @@ rc_t CC ArgsParse (Args * self, int argc, char *argv[])
                                             "Value missing with alias followed by =" );
                                     if (orc == 0)
                                         orc = qrc;
-                                    break;
+                                    break_loop = true;
                                 }
                             }
                             else if ( parg[ jx + name_len ] )
@@ -1008,8 +1070,8 @@ rc_t CC ArgsParse (Args * self, int argc, char *argv[])
                                 rc = RC( rcRuntime, rcArgv, rcParsing, rcParam, rcExhausted );
                                 PLOGERR (klogErr,
                                          (klogErr, rc,
-                                          "Option '$(O)' is missing a value",
-                                          "O=%s", node->name ));
+                                          "Option '$(O)' ( alias for '$(N)' ) is missing a value",
+                                          "O=-%s,N=--%s", name, node->name ));
                                 break;
                             }
                             else
@@ -1020,14 +1082,68 @@ rc_t CC ArgsParse (Args * self, int argc, char *argv[])
 
                             if ( rc == 0 )
                                 rc = OptionAddValue( node, value, string_size( value ) );
-                            break;
+                            break_loop = true;
                         }
                         else
                         {
                             rc = OptionAddValue( node, NULL, 0 );
-                            if (rc)
-                                break;
                         }
+
+                        if ( rc != 0 )
+                            break;
+
+                        if ( node -> error )
+                        {
+                            rc = RC ( rcApp, rcArgv, rcParsing, rcParam, rcUnsupported );
+                            PLOGERR (klogErr,
+                                     (klogErr, rc,
+                                      "Deprecated argument '$(O)' ( alias for '$(N)' ) is no longer supported.",
+                                      "O=-%s,N=--%s"
+                                      , name
+                                      , node->name
+                                         ));
+                            break;
+                        }
+
+                        if ( alias -> error )
+                        {
+                            rc = RC ( rcApp, rcArgv, rcParsing, rcParam, rcUnsupported );
+                            PLOGERR (klogErr,
+                                     (klogErr, rc,
+                                      "Deprecated argument '$(O)' is no longer supported. "
+                                      "Please use '$(N)' instead.",
+                                      "O=-%s,N=--%s"
+                                      , name
+                                      , node->name
+                                         ));
+                            break;
+                        }
+
+                        if ( node -> error )
+                        {
+                            PLOGMSG (klogWarn,
+                                     (klogWarn,
+                                      "Deprecated argument '$(O)' ( alias for '$(N)' ) may not be supported in future releases.",
+                                      "O=-%s,N=--%s"
+                                      , name
+                                      , node->name
+                                         ));
+                        }
+
+                        else if ( alias -> deprecated )
+                        {
+                            PLOGMSG (klogWarn,
+                                     (klogWarn,
+                                      "Deprecated argument '$(O)' may not be supported in future releases. "
+                                      "Please use '$(N)' instead.",
+                                      "O=-%s,N=--%s"
+                                      , name
+                                      , node->name
+                                         ));
+                        }
+
+                        if ( break_loop )
+                            break;
                     }
                 }
             }
@@ -1065,6 +1181,15 @@ rc_t CC ArgsParse (Args * self, int argc, char *argv[])
     {
         ReportSilence();
     }
+    return rc;
+}
+
+rc_t CC ArgsParse (Args * self, int argc, char *argv[])
+{
+    KLogLevel lvl = KLogLevelGet ();
+    rc_t rc = KLogLevelSet ( klogWarn );
+    rc = ArgsParseInt ( self, argc, argv );
+    KLogLevelSet ( lvl );
     return rc;
 }
 
@@ -1185,7 +1310,11 @@ rc_t CC ArgsArgvValue (const Args * self, uint32_t iteration, const char ** valu
 static
 const char * verbose_usage[] = 
 { "Increase the verbosity of the program status messages.",
-  "Use multiple times for more verbosity.", NULL };
+  "Use multiple times for more verbosity.","Negates quiet.", NULL };
+static
+const char * quiet_usage[] = 
+{ "Turn off all status messages for the program.",
+  "Negated by verbose.", NULL };
 static
 const char * debug_usage[] = 
 { "Turn on debug output for module.",
@@ -1310,6 +1439,11 @@ OptDef StandardOptions[]  =
         verbose_usage,
         OPT_UNLIM, false, false
     },
+    {
+        OPTION_QUIET, ALIAS_QUIET, NULL,
+        quiet_usage,
+        OPT_UNLIM, false, false
+    },
 #if USE_OPTFILE
     {
         OPTION_OPTFILE, ALIAS_OPTFILE, NULL,
@@ -1326,10 +1460,7 @@ OptDef StandardOptions[]  =
         OPTION_NO_USER_SETTINGS, NULL, NULL,
         no_user_settings_usage,
         OPT_UNLIM, false, false
-    }
-};
-OptDef ReportOptions[]  =
-{
+    },
     {   /* OPTION_REPORT is used in klib/report.c */
         OPTION_REPORT, NULL, NULL,
         report_usage, 
@@ -1438,12 +1569,38 @@ rc_t CC ArgsHandleLogLevel (const Args * self)
 
 rc_t CC ArgsHandleStatusLevel (const Args * self)
 {
-    uint32_t count;
+    uint32_t vcount, qcount;
     rc_t rc;
 
-    rc = ArgsOptionCount (self, OPTION_VERBOSE, &count);
-    if (rc == 0) {
-        KStsLevelSet (count);
+    rc = ArgsOptionCount (self, OPTION_VERBOSE, &vcount);
+    if (rc == 0)
+    {
+        rc = ArgsOptionCount (self, OPTION_QUIET, &qcount);
+        if (rc == 0)
+        {
+            KStsLevel current;
+
+            current = KStsLevelGet();
+
+            if (vcount)
+            {
+                rc_t irc;
+
+                irc = SILENT_RC (rcRuntime, rcArgv, rcParsing, rcParam, rcIncorrect);
+                if (qcount)
+                {
+                    PLOGERR (klogErr,
+                             (klogErr, irc,
+                              "$(V)($(v)) and $(Q)($(q)) should not be used together",
+                              "V=%s,v=%s,Q=$s,q=%s",
+                              OPTION_VERBOSE,ALIAS_VERBOSE,
+                              OPTION_QUIET,ALIAS_QUIET));
+                }
+                KStsLevelSet (current + vcount);
+            }
+            else if (qcount)
+                KStsLevelSet (0);
+        }
     }
     return rc;
 }
@@ -1808,6 +1965,7 @@ void CC HelpOptionsStandard (void)
     HelpOptionLine (ALIAS_LOG_LEVEL, OPTION_LOG_LEVEL, "level", log_usage);
 
     HelpOptionLine (ALIAS_VERBOSE, OPTION_VERBOSE, NULL, verbose_usage);
+    HelpOptionLine (ALIAS_QUIET, OPTION_QUIET, NULL, quiet_usage);
 #if USE_OPTFILE
     HelpOptionLine (ALIAS_OPTFILE, OPTION_OPTFILE, "file", optfile_usage);
 #endif

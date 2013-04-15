@@ -63,14 +63,15 @@ typedef union
 	VNamelist*	    namelist;
 } KFGSymbol;
 
-rc_t CC KFGScan_yylex_init(KFGScanBlock* sb, const char *str);
-void CC KFGScan_yylex_destroy(KFGScanBlock* sb);
+/* Exposed for the sake of wb-test-kfg. */
+KFG_EXTERN rc_t CC KFGScan_yylex_init(KFGScanBlock* sb, const char *str);
+KFG_EXTERN void CC KFGScan_yylex_destroy(KFGScanBlock* sb);
 
-void CC KFGScan_set_debug(bool on, KFGScanBlock* scannerContext);
+KFG_EXTERN void CC KFGScan_set_debug(bool on, KFGScanBlock* scannerContext);
 
-int CC KFGScan_yylex(KFGSymbol* pb, KFGScanBlock* scannerContext);
+KFG_EXTERN int CC KFGScan_yylex(KFGSymbol* pb, KFGScanBlock* scannerContext);
 
-int CC KFG_parse(KFGParseBlock* pb, KFGScanBlock* scannerContext);
+KFG_EXTERN int CC KFG_parse(KFGParseBlock* pb, KFGScanBlock* scannerContext);
 void CC KFG_error(KFGParseBlock* pb, KFGScanBlock* sb, const char* msg);
 
 #ifdef __cplusplus

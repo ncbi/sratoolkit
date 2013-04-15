@@ -693,7 +693,7 @@ rc_t KSysFileWriteCommon ( KSysFile *self,
 
             case ERROR_NOT_ENOUGH_MEMORY:
                 rc = RC (rcFS, rcFile, rcWriting, rcMemory, rcExhausted);
-                fmt = "error out of memory for WindoowsWriteFile - $(E)($(C))";
+                fmt = "error out of memory for WindowsWriteFile - $(E)($(C))";
                 break;
 
             default:

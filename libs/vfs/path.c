@@ -1320,9 +1320,6 @@ bool is_kfs_query (const char * str, BSTree * tree)
         {
         case vpopt_pwpath:
         case vpopt_pwfd:
-        case vpopt_temporary_pw_hack:
-        case vpopt_vdb_ctx:
-        case vpopt_gap_ticket:
             /* can only have one of these */
             if ( BSTreeInsertUnique ( tree, &o->node, NULL, VPOptionSort ) != 0)
             {
@@ -1330,6 +1327,9 @@ bool is_kfs_query (const char * str, BSTree * tree)
                 return false;
             }
             break;
+        case vpopt_temporary_pw_hack:
+        case vpopt_vdb_ctx:
+        case vpopt_gap_ticket:
         case vpopt_encrypted:
         case vpopt_readgroup:
             /* the behavior here appears to be
@@ -1337,6 +1337,7 @@ bool is_kfs_query (const char * str, BSTree * tree)
             if ( BSTreeInsertUnique ( tree, &o->node, NULL, VPOptionSort ) != 0)
                 VPOptionWhack ( & o -> node, NULL );
             break;
+
         default:
             VPOptionWhack ( & o -> node, NULL );
             break;
@@ -2057,88 +2058,6 @@ LIB_EXPORT rc_t CC VPathMakeDirectoryRelative ( VPath ** new_path, const KDirect
         (relative_path == NULL))
         return RC (rcVFS, rcPath, rcConstructing, rcParam, rcNull);
 
-#if USE_VRESOLVER
-    {
-        VFSManager *vmgr;
-        bool it_worked = false;
-        const VPath * resolved = NULL;
-
-
-        /*
-         * First we'll see if the relative path is actually an accession
-         * in which case we ignore the base dir
-         */
-        rc = VFSManagerMake (&vmgr);
-        if (rc)
-            ;
-        else
-        {
-            VPath * accession;
-
-            rc = VPathMake (&accession, relative_path);
-            if (rc)
-                ;
-            else
-            {
-                VResolver * resolver;
-
-                rc = VFSManagerGetResolver (vmgr, &resolver);
-                if (rc)
-                    ;
-                else
-                {
-                    rc = VResolverLocal (resolver, accession, (const VPath **)&resolved);
-                    if (rc == 0)
-                        it_worked = true;
-                        
-                    else if (GetRCState (rc) == rcNotFound)
-                    {
-                        rc = VResolverRemote (resolver, accession, &resolved, NULL);
-                        if (rc == 0)
-                            it_worked = true;
-                    }
-
-                    VResolverRelease (resolver);
-                }
-
-                VPathRelease (accession);
-            }
-            VFSManagerRelease (vmgr);
-        }
-        if (it_worked)
-        {
-            /* RETURN HERE */
-
-            /* TBD - why is "resolved" const? */
-            *new_path = ( VPath* ) resolved;
-            return 0;
-        }
-    }
-#else
-    /* 
-     * if we have an srapath manager try to quick out of treating the
-     * relative path as an SRAPath alias.
-     *
-     * we have to handle this before we build a realtive VPath because we've
-     * decided a nake 
-     */
-    if (srapathmgr)
-    {
-/*     KOutMsg ("%s: 1 %s\n", __func__, relative_path); */
-        rc = SRAPathFind (srapathmgr, relative_path, sbuff, sizeof sbuff);
-        if (rc == 0)
-        {
-/*     KOutMsg ("%s: 1.1 %s\n", __func__, sbuff); */
-            rc = VPathMake (&rpath, sbuff);
-            if (rc == 0)
-            {
-/*                 KOutMsg ("%s: 1.2 %s\n", __func__, sbuff); */
-                *new_path = rpath;
-                return 0;                
-            }
-        }
-    }
-#endif
     /*
      * create a VPath off the relative path.  This will create one of three things
      * as of when this was writen:
@@ -2151,71 +2070,52 @@ LIB_EXPORT rc_t CC VPathMakeDirectoryRelative ( VPath ** new_path, const KDirect
     rc = VPathMakeSysPath (&rpath, relative_path);
     if (rc == 0)
     {
-/*     KOutMsg ("%s: 2 %s\n", __func__, relative_path); */
+        VFSManager *vmgr;
+        bool it_worked = false;
+
         switch (rpath->scheme)
         {
-        case vpuri_ncbi_acc:
-            if (srapathmgr == NULL)
-            {
-                VPathRelease (rpath);
-                return RC (rcVFS, rcPath, rcConstructing, rcMgr, rcNotFound);
-            }
-            else
-            {
-                rc = SRAPathFind (srapathmgr, rpath->path.addr, sbuff, sizeof sbuff);
-                if (rc)
-                {
-                    VPathRelease (rpath);
-                    return rc;
-                }
-                else
-                {
-                    rc = VPathMake (&vpath, sbuff);
-                resolve_options:
-                    if (rc == 0)
-                    {
-                        char * use_opts;
-
-/*                         KOutMsg ("%s: 2.5 %s %s\n", __func__, sbuff, vpath->path.addr); */
-
-                        use_opts = vpath->query;
-/*                         KOutMsg ("%s: 2.6 %s %s\n", __func__, sbuff, vpath->path.addr); */
-                        if ((use_opts == NULL) || (use_opts[0] == '\0'))
-                        {
-/*                         KOutMsg ("%s: 2.7 %s %s\n", __func__, sbuff, vpath->path.addr); */
-                            use_opts = rpath->query;
-                        }
-/*                         KOutMsg ("%s: 2.8 %s %s\n", __func__, sbuff, vpath->path.addr); */
-
-                        memmove (sbuff, "ncbi-file:", sizeof "ncbi-file:");
-                        memmove (sbuff + sizeof "ncbi-file", vpath->path.addr, vpath->path.size + 1);
-                        if (use_opts)
-                        {
-                            sbuff[sizeof "ncbi-file" + vpath->path.size] = '?';
-                            memmove (sbuff + sizeof "ncbi-file" + vpath->path.size + 1, use_opts, string_size (use_opts) + 1);
-                        }
-/*                         KOutMsg ("%s: 2.9 %s %s\n", __func__, sbuff, vpath->path.addr); */
-
-                        rc = VPathMake (&fpath, sbuff);
-                        if (rc == 0)
-                        {
-/*                         KOutMsg ("%s: 2.10 %s %s\n", __func__, sbuff, vpath->path.addr); */
-
-                            VPathRelease (vpath);
-                            VPathRelease (rpath);
-                            *new_path = fpath;
-                            return 0;
-                        }
-                        VPathRelease (vpath);
-                    }
-                }
-            }
-            VPathRelease (rpath);
-            break;
-
         case vpuri_none:
+            if (string_chr (relative_path, string_size (relative_path), '/') != NULL)
+                goto treat_as_file_path;
+            /* else fall through no break */
+        case vpuri_ncbi_acc:
+            /*
+             * First we'll see if the relative path is actually an accession
+             * in which case we ignore the base dir
+             */
+            rc = VFSManagerMake (&vmgr);
+            if (rc == 0)
+            {
+                VResolver * resolver;
+
+                rc = VFSManagerGetResolver (vmgr, &resolver);
+                if (rc == 0)
+                {
+                    rc = VResolverLocal (resolver, rpath, (const VPath **)&fpath);
+                    if (rc == 0)
+                        it_worked = true;
+
+                    else if (GetRCState (rc) == rcNotFound)
+                    {
+                        rc = VResolverRemote (resolver, rpath, ( const VPath** ) &fpath, NULL);
+                        if (rc == 0)
+                            it_worked = true;
+                    }
+                    VResolverRelease (resolver);
+                }
+                VFSManagerRelease (vmgr);
+            }
+            if (it_worked)
+            {
+                *new_path = fpath;
+                rc = 0;
+            }
+            break;
+            
         case vpuri_ncbi_vfs:
         case vpuri_file:
+        treat_as_file_path:
             /* full path or relative? */
             if (rpath->path.addr[0] == '/')
             {
@@ -2231,7 +2131,39 @@ LIB_EXPORT rc_t CC VPathMakeDirectoryRelative ( VPath ** new_path, const KDirect
                 rc = VPathMake (&vpath, sbuff);
                 if (rc == 0)
                 {
-                    goto resolve_options;
+                    char * use_opts;
+
+/*                         KOutMsg ("%s: 2.5 %s %s\n", __func__, sbuff, vpath->path.addr); */
+
+                    use_opts = vpath->query;
+/*                         KOutMsg ("%s: 2.6 %s %s\n", __func__, sbuff, vpath->path.addr); */
+                    if ((use_opts == NULL) || (use_opts[0] == '\0'))
+                    {
+/*                         KOutMsg ("%s: 2.7 %s %s\n", __func__, sbuff, vpath->path.addr); */
+                        use_opts = rpath->query;
+                    }
+/*                         KOutMsg ("%s: 2.8 %s %s\n", __func__, sbuff, vpath->path.addr); */
+
+                    memmove (sbuff, "ncbi-file:", sizeof "ncbi-file:");
+                    memmove (sbuff + sizeof "ncbi-file", vpath->path.addr, vpath->path.size + 1);
+                    if (use_opts)
+                    {
+                        sbuff[sizeof "ncbi-file" + vpath->path.size] = '?';
+                        memmove (sbuff + sizeof "ncbi-file" + vpath->path.size + 1, use_opts, string_size (use_opts) + 1);
+                    }
+/*                         KOutMsg ("%s: 2.9 %s %s\n", __func__, sbuff, vpath->path.addr); */
+
+                    rc = VPathMake (&fpath, sbuff);
+                    if (rc == 0)
+                    {
+/*                         KOutMsg ("%s: 2.10 %s %s\n", __func__, sbuff, vpath->path.addr); */
+
+                        VPathRelease (vpath);
+                        VPathRelease (rpath);
+                        *new_path = fpath;
+                        return 0;
+                    }
+                    VPathRelease (vpath);
                 }
             }
             break;

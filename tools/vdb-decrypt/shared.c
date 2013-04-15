@@ -44,6 +44,7 @@
 #include <kfs/directory.h>
 #include <kfs/sra.h>
 #include <kfs/lockfile.h>
+#include <kfs/cacheteefile.h>
 #include <kfs/buffile.h>
 #include <vfs/manager.h>
 
@@ -93,6 +94,8 @@ const char * ForceUsage[] =
 const char EncExt[] = ".ncbi_enc";
 static const char TmpExt[] = ".vdb-decrypt-tmp";
 static const char TmpLockExt[] = ".vdb-decrypt-tmp.lock";
+static const char CacheExt[] = ".cache";
+static const char CacheLockExt[] = ".cache.lock";
 
 /* Usage
  */
@@ -131,20 +134,22 @@ rc_t CC Usage (const Args * args)
 {
     const char * progname = UsageDefaultName;
     const char * fullpath = UsageDefaultName;
-    char const *const file_crypt = de[0] == 'd'
-                                 ? "file to decrypt"
-                                 : "file to encrypt";
-    char const *const dir_crypt  = de[0] == 'd'
-                                 ? "directory to decrypt"
-                                 : "directory to encrypt";
-    const char * const pline[] = {
-        file_crypt, NULL,
+    const char * pline[] = {
+        "file to encrypt", NULL,
         "name of resulting file", NULL,
         "directory of resulting file", NULL,
-        dir_crypt, NULL
+        "directory to encrypt", NULL
     };
 
     rc_t rc, orc;
+
+    /* super-fragilistic molti-hacki-docious
+       let's find a better way to reuse things. */
+    if ( de [ 0 ] == 'd' )
+    {
+        pline [ 0 ] = "file to decrypt";
+        pline [ 6 ] = "directory to decrypt";
+    }
 
     if (args == NULL)
         rc = RC (rcApp, rcArgv, rcAccessing, rcSelf, rcNull);
@@ -352,11 +357,15 @@ rc_t EncryptionTypeCheck (const KFile * f, const char * name, EncScheme * scheme
         *scheme = encError;
         return rc;
     }
-
+    
+    /* looks for files with NCBInenc or NCBIsenc signatures */
     rc = KFileIsEnc (head, num_read);
     if (rc == 0)
     {
-        *scheme = encEncFile;
+            /* looks for files with just NCBIsenc signatures */
+        rc = KFileIsSraEnc (head, num_read);
+
+        *scheme = (rc == 0) ? encSraEncFile : encEncFile;
     }
     else
     {
@@ -396,6 +405,26 @@ bool IsTmpFile (const char * path)
 
 
 static
+bool IsCacheFile (const char * path)
+{
+    const char * pc;
+
+    pc = strrchr (path, '.');
+    if (pc == NULL)
+        return false;
+
+    if (strcmp (pc, CacheExt) == 0)
+        return true;
+
+    pc = string_chr (path, pc - path, '.');
+    if (pc == NULL)
+        return false;
+
+    return (strcmp (pc, CacheLockExt) == 0);
+}
+
+
+static
 rc_t FileInPlace (KDirectory * cwd, const char * leaf, bool try_rename)
 {
     rc_t rc;
@@ -405,7 +434,6 @@ rc_t FileInPlace (KDirectory * cwd, const char * leaf, bool try_rename)
 
     rc = 0;
     is_tmp = IsTmpFile (leaf);
-
     if (is_tmp)
     {
         STSMSG (1, ("%s is a vdb-decrypt/vdb-encrypt temporary file and will "
@@ -455,93 +483,111 @@ rc_t FileInPlace (KDirectory * cwd, const char * leaf, bool try_rename)
                                        "F=%s",leaf));
                 else
                 {
-                    EncScheme scheme;
+                    uint64_t fz;
+                    size_t z;
+                    rc_t irc;
+                    uint64_t ignored;
 
-                    rc = EncryptionTypeCheck (infile, leaf, &scheme);
-                    if (rc == 0)
+                    rc = KFileSize (infile, &fz);
+                    /* ignore rc for now? yes hack */
+                    z = string_size (leaf);
+
+                    /* vdb-decrypt and vdb-encrypt both ignore repository cache files. */
+                    irc = GetCacheTruncatedSize (infile, &ignored, true);
+                    if (irc == 0)
+                        STSMSG (1, ("skipping cache download file %s", leaf));
+                    else if ((fz == 0) &&
+                             (string_cmp (leaf + (z - (sizeof (".lock")-1)), sizeof (".lock"),
+                                          ".lock", sizeof (".lock") , sizeof (".lock")) == 0))
+                        STSMSG (1, ("skipping cache lock download file %s", leaf));
+                    else
                     {
-                        ArcScheme ascheme;
-                        bool changed;
-                        bool do_this_file;
-                        char new_name [MY_MAX_PATH + sizeof EncExt];
+                        EncScheme scheme;
 
-                        do_this_file = DoThisFile (infile, scheme, &ascheme);
-                        strcpy (new_name, leaf);
-                        if (try_rename)
-                            changed = NameFixUp (new_name);
-                        else
-                            changed = false;
+                        rc = EncryptionTypeCheck (infile, leaf, &scheme);
+                        if (rc == 0)
+                        {
+                            ArcScheme ascheme;
+                            bool changed;
+                            bool do_this_file;
+                            char new_name [MY_MAX_PATH + sizeof EncExt];
+
+                            do_this_file = DoThisFile (infile, scheme, &ascheme);
+                            strcpy (new_name, leaf);
+                            if (try_rename && do_this_file)
+                                changed = NameFixUp (new_name);
+                            else
+                                changed = false;
 /*                         KOutMsg ("### %d \n", changed); */
 
-                        if (!do_this_file)
-                        {
-                            if (changed)
+                            if (!do_this_file)
                             {
-                                STSMSG (1, ("renaming %s to %s", leaf, new_name));
-                                rc = KDirectoryRename (cwd, false, leaf, new_name);
+                                if (changed)
+                                {
+                                    STSMSG (1, ("renaming %s to %s", leaf, new_name));
+                                    rc = KDirectoryRename (cwd, false, leaf, new_name);
+                                }
+                                else
+                                    STSMSG (1, ("skipping %s",leaf));
                             }
                             else
-                                STSMSG (1, ("skipping %s",leaf));
-                        }
-                        else
-                        {
-                            KFile * outfile;
-
-                            rc = KDirectoryCreateExclusiveAccessFile (cwd, &outfile,
-                                                                      false, 0600, kcm,
-                                                                      temp);
-                            if (rc)
-                                ;
-                            else
                             {
-                                const KFile * Infile;
-                                KFile * Outfile;
+                                KFile * outfile;
 
-                                rc = CryptFile (infile, &Infile, outfile, &Outfile, scheme);
-
+                                rc = KDirectoryCreateExclusiveAccessFile (cwd, &outfile,
+                                                                          false, 0600, kcm,
+                                                                          temp);
                                 if (rc == 0)
                                 {
-                                    STSMSG (1, ("copying %s to %s", leaf, temp));
+                                    const KFile * Infile;
+                                    KFile * Outfile;
 
-                                    rc = CopyFile (Infile, Outfile, leaf, temp);
+                                    rc = CryptFile (infile, &Infile, outfile, &Outfile, scheme);
 
                                     if (rc == 0)
                                     {
-                                        uint32_t access;
-                                        KTime_t date;
+                                        STSMSG (1, ("copying %s to %s", leaf, temp));
 
-                                        rc = KDirectoryAccess (cwd, &access, "%s", leaf);
-                                        if (rc == 0)
-                                            rc = KDirectoryDate (cwd, &date, "%s", leaf);
-
-                                        KFileRelease (infile);
-                                        KFileRelease (outfile);
-                                        KFileRelease (Infile);
-                                        KFileRelease (Outfile);
+                                        rc = CopyFile (Infile, Outfile, leaf, temp);
 
                                         if (rc == 0)
                                         {
-                                            STSMSG (1, ("renaming %s to %s", temp, new_name));
+                                            uint32_t access;
+                                            KTime_t date;
 
-                                            rc = KDirectoryRename (cwd, true, temp, new_name);
-                                            if (rc)
-                                                LOGERR (klogErr, rc, "error renaming");
-                                            else
+                                            rc = KDirectoryAccess (cwd, &access, "%s", leaf);
+                                            if (rc == 0)
+                                                rc = KDirectoryDate (cwd, &date, "%s", leaf);
+
+                                            KFileRelease (infile);
+                                            KFileRelease (outfile);
+                                            KFileRelease (Infile);
+                                            KFileRelease (Outfile);
+
+                                            if (rc == 0)
                                             {
-                                                if (changed)
-                                                    KDirectoryRemove (cwd, false, "%s", leaf);
+                                                STSMSG (1, ("renaming %s to %s", temp, new_name));
 
-                                                /*rc =*/
-                                                KDirectorySetAccess (cwd, false, access,
-                                                                     0777, "%s", new_name);
-                                                KDirectorySetDate (cwd, false, date, "%s", new_name);
-                                                /* gonna ignore an error here I think */
-                                                return rc;
+                                                rc = KDirectoryRename (cwd, true, temp, new_name);
+                                                if (rc)
+                                                    LOGERR (klogErr, rc, "error renaming");
+                                                else
+                                                {
+                                                    if (changed)
+                                                        KDirectoryRemove (cwd, false, "%s", leaf);
+
+                                                    /*rc =*/
+                                                    KDirectorySetAccess (cwd, false, access,
+                                                                         0777, "%s", new_name);
+                                                    KDirectorySetDate (cwd, false, date, "%s", new_name);
+                                                    /* gonna ignore an error here I think */
+                                                    return rc;
+                                                }
                                             }
                                         }
                                     }
+                                    KFileRelease (outfile);
                                 }
-                                KFileRelease (outfile);
                             }
                         }
                     }

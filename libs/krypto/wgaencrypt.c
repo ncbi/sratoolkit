@@ -42,6 +42,8 @@
 #include <klib/log.h>
 #include <klib/debug.h>
 
+#include <sysalloc.h>
+
 #include <strtol.h>
 
 #include <time.h>
@@ -576,7 +578,7 @@ rc_t CC KWGAEncFileRead	(const KWGAEncFile *cself,
             }
             else /* if (pos >= self->block_size) */
             {
-                rc = KWGAEncFileReadInt (self, (pos & ~(16-1)),
+                rc = KWGAEncFileReadInt (self, (pos & ~ ( uint64_t ) (16-1)),
                                          DEFAULT_BUFF_SIZE);
                 if (rc)
                 {
@@ -1175,7 +1177,7 @@ KRYPTO_EXTERN rc_t CC WGAEncValidate (const KFile * encrypted,
                 if (orc == 0)
                 {
                     pad_file_size = file_size + 15;
-                    pad_file_size &= ~15;
+                    pad_file_size &= ~ ( uint64_t ) 15;
                     pad_file_size += sizeof (KWGAEncFileHeader);
                 }
                 header_file_size = strtou64 (header.file_sz, NULL, KWGA_ENC_FILE_HEADER_RADIX);
@@ -1183,7 +1185,7 @@ KRYPTO_EXTERN rc_t CC WGAEncValidate (const KFile * encrypted,
                 if (key_size == 0)
                 {
                     header_file_size += 15;
-                    header_file_size &= ~15;
+                    header_file_size &= ~ ( uint64_t ) 15;
                 }
 
                 if (file_size < header_file_size)
@@ -1198,8 +1200,9 @@ KRYPTO_EXTERN rc_t CC WGAEncValidate (const KFile * encrypted,
 
                 /* check md5 */
                 else if (!header.md5_here)
-                    rc = RC (rcKrypto, rcFile, rcValidating, rcEncryption, rcNotFound);
-
+                {
+                    /* rc = RC (rcKrypto, rcFile, rcValidating, rcEncryption, rcNotFound); */
+                }
                 else if (key_size == 0)
                     rc = RC (rcKrypto, rcFile, rcValidating, rcEncryption, rcNull);
 

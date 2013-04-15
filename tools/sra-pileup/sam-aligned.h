@@ -39,6 +39,7 @@ extern "C" {
 
 #define COL_READ "(INSDC:dna:text)READ"
 
-rc_t print_aligned_spots( samdump_opts * opts, input_files * ifs, matecache * mc );
+rc_t print_aligned_spots( const samdump_opts * const opts, const input_files * const ifs,
+                          matecache * const mc, uint64_t * const rows_so_far );
 
 #endif

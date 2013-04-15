@@ -30,6 +30,7 @@
 #include <klib/log.h>
 #include <klib/rc.h>
 #include <klib/out.h>
+#include <klib/text.h>
 #include <strtol.h>
 #include <sysalloc.h>
 
@@ -143,7 +144,7 @@ uint32_t vdn_parse( num_gen* generator, const char* src )
     
     if ( generator == NULL ) return res;
     if ( src == NULL ) return res;
-    n = strlen( src );
+    n = string_size( src );
     generator->node_count = 0;
     generator->curr_node = 0;
     generator->curr_node_sub_pos = 0;

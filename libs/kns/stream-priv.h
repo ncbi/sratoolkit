@@ -23,32 +23,10 @@
 * ===========================================================================
 *
 */
-#ifndef _h_kns_mgr_
-#define _h_kns_mgr_
-
-#ifndef _h_kns_extern_
-#include <kns/extern.h>
-#endif
-
-#ifdef __cplusplus
-extern "C" {
-#endif
 
 
-typedef struct KNSManager KNSManager;
-
-KNS_EXTERN rc_t CC KNSManagerMake( KNSManager **self );
-
-KNS_EXTERN rc_t CC KNSManagerAddRef ( const KNSManager *self );
-
-KNS_EXTERN rc_t CC KNSManagerRelease( const KNSManager *self );
-
-KNS_EXTERN rc_t CC KNSManagerAvail( const KNSManager *self );
-
-KNS_EXTERN rc_t CC KNSManagerCurlVersion( const KNSManager *self, const char ** version_string );
-
-#ifdef __cplusplus
-}
-#endif
-
+/* VDB.v2 is end of life, and introducing new object types is
+   dangerous. For our purposes, just call a stream a file */
+#ifndef rcStream
+#define rcStream rcFile
 #endif

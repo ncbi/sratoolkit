@@ -588,7 +588,7 @@ rc_t KSysDirMakePath ( const KSysDir* self, enum RCContext ctx, bool canon,
                 return RC ( rcFS, rcDirectory, ctx, rcPath, rcInvalid );
 
             /* rewrite drive letter */
-            temp_utf8_buffer [ 0 ] = toupper ( temp_utf8_buffer [ 1 ] );
+            temp_utf8_buffer [ 0 ] = tolower ( temp_utf8_buffer [ 1 ] );
             temp_utf8_buffer [ 1 ] = ':';
         }
     }
@@ -905,7 +905,7 @@ rc_t KSysDirRelativePath ( const KSysDir *self, enum RCContext ctx,
     const wchar_t *r = root + self->root;
     const wchar_t *p = path + self->root;
 
-    for ( ; * r == * p; ++ r, ++ p )
+    for ( ; towlower ( * r ) == towlower ( * p ); ++ r, ++ p )
     {
         /* disallow identical paths */
         if ( * r == 0 )
@@ -1004,7 +1004,7 @@ rc_t CC KSysDirResolvePath ( const KSysDir *self, bool absolute,
         wchar_t colon = ':';
         bool is_on_same_drive_letter = ( iswascii ( temp[ 0 ] ) && iswascii ( self->path[ 0 ] ) &&
                                          ( temp[ 1 ] == colon ) && ( self->path[ 1 ] == colon ) &&
-                                         ( temp[ 0 ] == self->path[ 0 ] ) );
+                                         ( towlower ( temp[ 0 ] ) == towlower ( self->path[ 0 ] ) ) );
         if ( is_on_same_drive_letter )
         {
             rc = KSysDirRelativePath( self, rcResolving, self->path, temp, sizeof temp );

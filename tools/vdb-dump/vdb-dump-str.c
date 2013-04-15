@@ -89,6 +89,7 @@ char *vds_ptr( p_dump_str s )
     return s->buf;
 }
 
+
 static rc_t vds_inc_buffer( p_dump_str s, const size_t by_len )
 {
     if ( s == NULL )
@@ -108,6 +109,7 @@ static rc_t vds_inc_buffer( p_dump_str s, const size_t by_len )
     return 0;
 }
 
+
 static rc_t vds_truncate( p_dump_str s )
 {
     if ( s == NULL )
@@ -118,7 +120,7 @@ static rc_t vds_truncate( p_dump_str s )
     {
         return RC( rcVDB, rcNoTarg, rcResizing, rcParam, rcNull );
     }
-    s->str_len = strlen( s->buf );
+    s->str_len = string_size( s->buf );
     if ( ( s->str_limit > 0 )&&( s->str_len > s->str_limit ) )
     {
         s->buf[ s->str_limit ] = 0;
@@ -127,6 +129,7 @@ static rc_t vds_truncate( p_dump_str s )
     }
     return 0;
 }
+
 
 rc_t vds_append_fmt( p_dump_str s, const size_t aprox_len, const char *fmt, ... )
 {
@@ -160,6 +163,7 @@ rc_t vds_append_fmt( p_dump_str s, const size_t aprox_len, const char *fmt, ... 
     return rc;
 }
 
+
 rc_t vds_append_str( p_dump_str s, const char *s1 )
 {
     rc_t rc = 0;
@@ -170,7 +174,7 @@ rc_t vds_append_str( p_dump_str s, const char *s1 )
     }
     else
     {
-        size_t append_len = strlen( s1 );
+        size_t append_len = string_size( s1 );
         if ( append_len > 0 )
         {
             if ( ( s->str_limit > 0 )&&( s->str_len >= s->str_limit ) )
@@ -182,7 +186,8 @@ rc_t vds_append_str( p_dump_str s, const char *s1 )
                 rc = vds_inc_buffer( s, append_len );
                 if ( rc == 0 )
                 {
-                    strcat( s->buf, s1 ); /* strncat would not do it... */
+                    size_t l = string_size( s->buf );
+                    string_copy( s->buf + l, s->buf_size - l, s1, append_len );
                     rc = vds_truncate( s ); /* adjusts str_len */
                 }
             }
@@ -190,6 +195,7 @@ rc_t vds_append_str( p_dump_str s, const char *s1 )
     }
     return rc;
 }
+
 
 rc_t vds_append_str_no_limit_check( p_dump_str s, const char *s1 )
 {
@@ -199,7 +205,7 @@ rc_t vds_append_str_no_limit_check( p_dump_str s, const char *s1 )
     {
         return RC( rcVDB, rcNoTarg, rcInserting, rcParam, rcNull );
     }
-    append_len = strlen( s1 );
+    append_len = string_size( s1 );
     if ( append_len == 0 )
     {
         return RC( rcVDB, rcNoTarg, rcInserting, rcParam, rcEmpty );
@@ -207,11 +213,13 @@ rc_t vds_append_str_no_limit_check( p_dump_str s, const char *s1 )
     rc = vds_inc_buffer( s, append_len );
     if ( rc == 0 )
     {
-        strcat( s->buf, s1 );
+        size_t l = string_size( s->buf );
+        string_copy( s->buf + l, s->buf_size - l, s1, append_len );
         s->str_len += append_len;
     }
     return rc;
 }
+
 
 rc_t vds_rinsert( p_dump_str s, const char *s1 )
 {
@@ -220,17 +228,18 @@ rc_t vds_rinsert( p_dump_str s, const char *s1 )
     {
         return RC( rcVDB, rcNoTarg, rcInserting, rcParam, rcNull );
     }
-    len = strlen( s1 );
+    len = string_size( s1 );
     if ( len == 0 )
     {
         return RC( rcVDB, rcNoTarg, rcInserting, rcParam, rcEmpty );
     }
     if ( s->str_len <= len ) return 0;
     len = s->str_len - len;
-    strcpy( s->buf + len, s1 );
+    string_copy( s->buf + len, sizeof( s->buf ) - len, s1, string_size( s1 ) );
     /* s->str_len does not change */
     return 0;
 }
+
 
 rc_t vds_indent( p_dump_str s, const size_t limit, const size_t indent )
 {
@@ -288,14 +297,14 @@ void vds_escape_quotes_loop( p_dump_str s, const char to_escape,
     {
         if ( *temp == to_escape )
         {
-        size_t to_move = strlen( temp ) + 1;
+        size_t to_move = string_size( temp ) + 1;
         memmove( temp+1, temp, to_move );
         (*temp) = escape_char;
         temp++;
         }
         temp++;
     }
-    s->str_len = strlen( s->buf );
+    s->str_len = string_size( s->buf );
 }
 
 rc_t vds_escape( p_dump_str s, const char to_escape, const char escape_char )
@@ -325,7 +334,7 @@ rc_t vds_enclose_string( p_dump_str s, const char c_left, const char c_right )
     {
         return RC( rcVDB, rcNoTarg, rcInserting, rcParam, rcNull );
     }
-    to_move = strlen( s->buf ) + 1;
+    to_move = string_size( s->buf ) + 1;
     rc = vds_inc_buffer( s, 2 );
     if ( rc == 0 )
     {
@@ -333,7 +342,7 @@ rc_t vds_enclose_string( p_dump_str s, const char c_left, const char c_right )
         s->buf[0]=c_left;
         s->buf[to_move]=c_right;
         s->buf[to_move+1]=0;
-        s->str_len = strlen( s->buf );
+        s->str_len = string_size( s->buf );
     }
     return rc;
 }

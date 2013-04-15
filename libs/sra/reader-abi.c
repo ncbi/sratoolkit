@@ -30,6 +30,7 @@
 #include <sra/abi.h>
 #include <os-native.h>
 #include <sysalloc.h>
+#include <klib/text.h>
 
 #include "reader-cmn.h"
 
@@ -189,7 +190,7 @@ LIB_EXPORT rc_t CC AbsolidReaderSpotName(const AbsolidReader* self,
                 }
                 if( psz > 0 ) {
                     me->prefix_sz = psz + 2;
-                    strncpy(me->prefix_buf, spotname, me->prefix_sz);
+                    string_copy(me->prefix_buf, sizeof(me->prefix_buf), spotname, me->prefix_sz);
                 } else {
                     me->prefix_sz = 0;
                 }

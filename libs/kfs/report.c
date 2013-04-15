@@ -33,6 +33,8 @@
 #include <kfs/directory.h>
 #include <kfs/file.h> /* KFileWrite */
 
+#include <sysalloc.h>
+
 #include <assert.h>
 #include <stdlib.h> /* calloc */
 #include <string.h> /* memset */

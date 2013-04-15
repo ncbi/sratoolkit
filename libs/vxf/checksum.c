@@ -33,6 +33,8 @@
 #include <klib/text.h>
 #include <klib/rc.h>
 
+#include <sysalloc.h>
+
 #include <bitstr.h>
 
 #include <stdlib.h>

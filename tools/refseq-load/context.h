@@ -42,18 +42,21 @@ extern "C" {
 #include <kapp/args.h>
 
 #define OPTION_DST_PATH          "dst-path"
+#define OPTION_FORCE             "Force"
 #define OPTION_SRC               "src"
 #define OPTION_SCHEMA            "schema"
 #define OPTION_CHUNK_SIZE        "chunk-size"
 #define OPTION_CIRCULAR          "circular"
 #define OPTION_QUIET             "quiet"
+#define OPTION_IFILE             "input-is-file"
 
 #define ALIAS_DST_PATH          "d"
+#define ALIAS_FORCE             "F"
 #define ALIAS_SRC               "f"
 #define ALIAS_SCHEMA            "s"
 #define ALIAS_CHUNK_SIZE        "b"
 #define ALIAS_CIRCULAR          "c"
-#define ALIAS_QUIET             "q"
+#define ALIAS_IFILE             "i"
 
 typedef struct context
 {
@@ -65,6 +68,8 @@ typedef struct context
     bool usage_requested;
     bool circular;
     bool quiet;
+    bool force_target;
+    bool input_is_file;
 } context;
 typedef context* p_context;
 

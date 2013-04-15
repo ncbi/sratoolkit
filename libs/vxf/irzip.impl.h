@@ -102,7 +102,7 @@ static rc_t ENCODE(uint8_t dst[], size_t dsize, size_t *used, int64_t *Min, int6
 	for (i = 2; i < N; ++i) {
 		int64_t  md = (int64_t)Y[i] - (int64_t)min;
 		int64_t diff =  (int64_t)Y[i] - (int64_t)Y[i-1];
-		int64_t abs_diff = labs(diff);
+		uint64_t abs_diff = (diff >= 0) ? diff : -diff;
 #ifdef TRY2SERIES
 		int64_t	last_delta_type = delta_type ;
 #endif
@@ -135,8 +135,8 @@ static rc_t ENCODE(uint8_t dst[], size_t dsize, size_t *used, int64_t *Min, int6
 		} else { /*** second series is in being built ***/
 			int64_t diff1 =  (int64_t)Y[i] - (int64_t)Y[last[0]];
 			int64_t diff2 =  (int64_t)Y[i] - (int64_t)Y[last[1]];
-			int64_t abs_diff1 = labs(diff1);
-			int64_t abs_diff2 = labs(diff2);
+			uint64_t abs_diff1 = (diff1 >= 0) ? diff1 : -diff1;
+			uint64_t abs_diff2 = (diff2 >= 0) ? diff2 : -diff2;
 			if(abs_diff1 <= abs_diff2){
 				last[0]=i;
 				series[i]=0;
@@ -420,7 +420,7 @@ static rc_t DECODE(STYPE Y[], unsigned N, int64_t* min, int64_t* slope, uint8_t 
 			USTYPE val = (USTYPE)Y[i];
 			val >>= 1;
 			if(i==0){
-                                Y[i] = min[0];
+                                Y[i] = (STYPE)min[0];
                                 last[0]=i;
                         }
 			if(slope[0]==DELTA_POS)      Y[i] = Y[last[0]] + val;
@@ -432,7 +432,7 @@ static rc_t DECODE(STYPE Y[], unsigned N, int64_t* min, int64_t* slope, uint8_t 
 			USTYPE val = (USTYPE)Y[i];
 			val >>= 1;
 			if(last[1]==0){
-				Y[i] = min[1];
+				Y[i] = (STYPE)min[1];
 				last[1]=i;
 			}
                         if(slope[1]==DELTA_POS)      Y[i] = Y[last[1]] + val;
@@ -446,19 +446,19 @@ static rc_t DECODE(STYPE Y[], unsigned N, int64_t* min, int64_t* slope, uint8_t 
     } else if(min[0]==0 && slope[0]==0){ /*** no slope no offset - nothing to do ***/
     } else if(slope[0] == DELTA_POS){
 	assert(Y[0] == 0);
-	Y[0] = min[0];
+	Y[0] = (STYPE)min[0];
 	for (i = 1; i != N; ++i){
 		Y[i] = Y[i-1] + Y[i];
 	}
     } else if (slope[0] == DELTA_NEG ) {
 	assert(Y[0] == 0);
-	Y[0] = min[0];
+	Y[0] = (STYPE)min[0];
 	for (i = 1; i != N; ++i){
 		Y[i] =  Y[i-1] - Y[i];
 	}
     } else if (slope[0] == DELTA_BOTH){
 	assert(Y[0] == 0);
-	Y[0] = min[0];
+	Y[0] = (STYPE)min[0];
 	for (i = 1; i != N; ++i){
 		USTYPE val = (USTYPE)Y[i];
 		val >>= 1;
@@ -467,11 +467,11 @@ static rc_t DECODE(STYPE Y[], unsigned N, int64_t* min, int64_t* slope, uint8_t 
 	}
     } else if(slope[0] == 0) {
 	for (i = 0; i != N; ++i){
-		Y[i]  += min[0];
+		Y[i]  += (STYPE)min[0];
 	}
     } else {
 	for (i = 0; i != N; ++i){
-                Y[i]  += min[0];
+                Y[i]  += (STYPE)min[0];
                 min[0] += slope[0];
         }
     }

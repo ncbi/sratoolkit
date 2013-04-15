@@ -87,9 +87,12 @@ KLIB_EXTERN const char* CC ReportInitConfig ( rc_t ( CC * report ) ( const Repor
 
 /* InitVDB
  */
-KLIB_EXTERN rc_t CC ReportInitVDB ( rc_t ( CC * report_obj ) ( const ReportFuncs *f, uint32_t indent, const char *path ),
-    rc_t ( CC * report_software ) ( const ReportFuncs *f, uint32_t indent, const char *argv_0, const char *date, ver_t tool_ver ),
-    rc_t ( CC * whack ) ( void ) );
+KLIB_EXTERN rc_t CC ReportInitVDB(
+    rc_t (CC *report_obj)(const ReportFuncs *f,
+        uint32_t indent, const char *path, bool *wasDbOrTableSet),
+    rc_t (CC *report_software)(const ReportFuncs *f,
+        uint32_t indent, const char *argv_0, const char *date, ver_t tool_ver),
+    rc_t (CC *whack)(void));
 
 
 /* RecordZombieFile

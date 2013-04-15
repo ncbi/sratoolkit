@@ -113,7 +113,7 @@ REFSEQ_LOAD_LIB = \
 	-lwkdb \
 	-lkapp \
 	-lvfs \
-	-ssrapath \
+	-lkurl \
 	-lkrypto \
 	-lkfg \
 	-lkfs \

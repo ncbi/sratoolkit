@@ -134,19 +134,25 @@ uint64_t EncryptedPos_to_BlockId (uint64_t enc_offset, uint32_t * poffset,
 struct KFile;
 struct KKey;
 
+KRYPTO_EXTERN rc_t CC KEncFileWriteHeader (struct KFile * self);
 KRYPTO_EXTERN rc_t CC KEncFileWriteHeader_v1 (struct KFile * self);
 KRYPTO_EXTERN rc_t CC KEncFileWriteHeader_v2 (struct KFile * self);
 KRYPTO_EXTERN rc_t CC KEncFileMakeWriteBlock (struct KFile ** pself, 
                                               struct KFile * encrypted,
                                               const struct KKey * key);
 
+KRYPTO_EXTERN rc_t CC KEncFileMakeBlock_v2 (struct KFile ** pself,
+                                         struct KFile * encrypted,
+                                         const struct KKey * key);
 
+
+#if 0
 #if USE_UPDATE_V1
 #define KEncFileWriteHeader KEncFileWriteHeader_v1
 #else
 #define KEncFileWriteHeader KEncFileWriteHeader_v2
 #endif
-
+#endif
 
 #ifdef  __cplusplus
 }

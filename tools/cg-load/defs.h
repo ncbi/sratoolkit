@@ -27,7 +27,11 @@
 #define _tools_cg_load_defs_h_
 
 /* buffers and sizes */
-#define CG_CHROMOSOME_NAME (8)
+
+/*
+#define CG_CHROMOSOME_NAME (8) make if fit NC_003977 */
+#define CG_CHROMOSOME_NAME (10)
+
 #define CG_SLIDE (32)
 #define CG_LANE (8)
 

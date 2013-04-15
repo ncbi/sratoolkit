@@ -97,6 +97,17 @@ VFS_EXTERN rc_t CC VFSManagerOpenFileReadDecrypt (const struct VFSManager *self,
                                                   const struct VPath * path);
 
 
+/*
+ * quick hack for vdb-validate for immediate testing release
+ */
+VFS_EXTERN rc_t CC VFSManagerWGAValidateHack (const struct VFSManager * self, 
+                                              const struct KFile * file,
+                                              const char * path); /* we'll move this to a vpath */
+
+
+
+
+
 #ifdef __cplusplus
 }
 #endif

@@ -60,6 +60,7 @@ typedef struct {
     uint32_t primaryId[2];
     uint32_t spotId;
     uint32_t fragmentId;
+    uint16_t seqHash[2];
     uint8_t  platform;
     uint8_t  pId_ext[2];
     uint8_t  spotId_ext;
@@ -209,6 +210,43 @@ static unsigned HashKey(void const *key, unsigned keylen)
         h = T1[h ^ ((uint8_t const *)key)[i]];
 
     return h;
+}
+
+static unsigned SeqHashKey(void const *key, unsigned keylen)
+{
+    /* There is nothing special about this hash. It was randomly generated. */
+    static const uint8_t T1[] = {
+         64, 186,  39, 203,  54, 211,  98,  32,  26,  23, 219,  94,  77,  60,  56, 184,
+        129, 242,  10,  91,  84, 192,  19, 197, 231, 133, 125, 244,  48, 176, 160, 164,
+         17,  41,  57, 137,  44, 196, 116, 146, 105,  40, 122,  47, 220, 226, 213, 212,
+        107, 191,  52, 144,   9, 145,  81, 101, 217, 206,  85, 134, 143,  58, 128,  20,
+        236, 102,  83, 149, 148, 180, 167, 163,  12, 239,  31,   0,  73, 152,   1,  15,
+         75, 200,   4, 165,   5,  66,  25, 111, 255,  70, 174, 151,  96, 126, 147,  34,
+        112, 161, 127, 181, 237,  78,  37,  74, 222, 123,  21, 132,  95,  51, 141,  45,
+         61, 131, 193,  68,  62, 249, 178,  33,   7, 195, 228,  82,  27,  46, 254,  90,
+        185, 240, 246, 124, 205, 182,  42,  22, 198,  69, 166,  92, 169, 136, 223, 245,
+        118,  97, 115,  80, 252, 209,  49,  79, 221,  38,  28,  35,  36, 208, 187, 248,
+        158, 201, 202, 168,   2,  18, 189, 119, 216, 214,  11,   6,  89,  16, 229, 109,
+        120,  43, 162, 106, 204,   8, 199, 235, 142, 210,  86, 153, 227, 230,  24, 100,
+        224, 113, 190, 243, 218, 215, 225, 173,  99, 238, 138,  59, 183, 154, 171, 232,
+        157, 247, 233,  67,  88,  50, 253, 251, 140, 104, 156, 170, 150, 103, 117, 110,
+        155,  72, 207, 250, 159, 194, 177, 130, 135,  87,  71, 175,  14,  55, 172, 121,
+        234,  13,  30, 241,  93, 188,  53, 114,  76,  29,  65,   3, 179, 108,  63, 139
+    };
+    unsigned h1 = 0x55;
+    unsigned h2 = 0x22;
+    unsigned i = keylen;
+    
+    do { h1 = T1[h1 ^ ((uint8_t)i)]; } while ((i >>= 8) != 0);
+
+    for (i = 0; i != keylen; ++i)
+    {
+        unsigned temp = ((uint8_t const *)key)[i];
+        h1 = T1[h1 ^ temp];
+        h2 = T1[h2 ^ temp];
+    }
+
+    return (h1 << 8) | h2;
 }
 
 rc_t GetKeyID(CommonWriterSettings* settings, SpotAssembler *const ctx, uint64_t *const rslt, bool *const wasInserted, char const key[], char const name[], unsigned const namelen)
@@ -660,7 +698,9 @@ rc_t CheckLimitAndLogError(CommonWriterSettings* settings)
 {
     ++settings->errCount;
     if (settings->maxErrCount > 0 && settings->errCount > settings->maxErrCount) {
-        (void)PLOGERR(klogErr, (klogErr, RC(rcAlign, rcFile, rcReading, rcError, rcExcessive), "Number of errors $(cnt) exceeds limit of $(max): Exiting", "cnt=%u,max=%u", settings->errCount, settings->maxErrCount));
+        (void)PLOGERR(klogErr, (klogErr, RC(rcAlign, rcFile, rcReading, rcError, rcExcessive), 
+                                "Number of errors $(cnt) exceeds limit of $(max): Exiting", "cnt=%lu,max=%lu", 
+                                settings->errCount, settings->maxErrCount));
         return RC(rcAlign, rcFile, rcReading, rcError, rcExcessive);
     }
     return 0;
@@ -839,6 +879,14 @@ INSDC_SRA_platform_id GetINSDCPlatform(ReferenceInfo const *ref, char const name
     }
     return SRA_PLATFORM_UNDEFINED;
 }
+
+void ParseSpotName(char const name[], size_t* namelen)
+{ /* remove trailing #... */
+    const char* hash = string_chr(name, *namelen, '#');
+    if (hash)
+        *namelen = hash - name;
+}
+
 
 static const int8_t toPhred[] =
 {
@@ -1174,6 +1222,8 @@ rc_t ArchiveFile(const struct ReaderFile *reader,
         if (alignment != 0)
             AR_MAPQ(data) = GetMapQ(alignment);
         SequenceGetSpotName(sequence, &name, &namelen);
+        if (G->parseSpotName) 
+            ParseSpotName(name, &namelen); 
         {{
             char const *rgname;
             size_t rgnamelen;
@@ -1329,7 +1379,16 @@ rc_t ArchiveFile(const struct ReaderFile *reader,
             switch (AR_READNO(data)) {
             case 1:
                 if (CTX_VALUE_GET_P_ID(*value, 0) != 0)
+                {
                     isPrimary = false;
+                    if (value->seqHash[0] != SeqHashKey(seqDNA, readlen))
+                    {
+                        (void)PLOGERR(klogWarn, (klogWarn, RC(rcApp, rcFile, rcReading, rcData, rcInconsistent),
+                                                 "Read 1 of spot '$(name)', possible sequence mismatch", "name=%s", name));
+                        rc = CheckLimitAndLogError(G);
+                        goto LOOP_END;
+                    }
+                }
                 else if (aligned && value->unaligned_1) {
                     (void)PLOGMSG(klogWarn, (klogWarn, "Read 1 of spot '$(name)', which was unmapped, is now being mapped at position $(pos) on reference '$(ref)'; this alignment will be considered as secondary", "name=%s,ref=%s,pos=%u", name, refSeq.name, rpos));
                     isPrimary = false;
@@ -1337,7 +1396,16 @@ rc_t ArchiveFile(const struct ReaderFile *reader,
                 break;
             case 2:
                 if (CTX_VALUE_GET_P_ID(*value, 1) != 0)
+                {
                     isPrimary = false;
+                    if (value->seqHash[1] != SeqHashKey(seqDNA, readlen))
+                    {
+                        (void)PLOGERR(klogWarn, (klogWarn, RC(rcApp, rcFile, rcReading, rcData, rcInconsistent),
+                                                 "Read 2 of spot '$(name)', possible sequence mismatch", "name=%s", name));
+                        rc = CheckLimitAndLogError(G);
+                        goto LOOP_END;
+                    }
+                }
                 else if (aligned && value->unaligned_2) {
                     (void)PLOGMSG(klogWarn, (klogWarn, "Read 2 of spot '$(name)', which was unmapped, is now being mapped at position $(pos) on reference '$(ref)'; this alignment will be considered as secondary", "name=%s,ref=%s,pos=%u", name, refSeq.name, rpos));
                     isPrimary = false;
@@ -1452,6 +1520,8 @@ rc_t ArchiveFile(const struct ReaderFile *reader,
                     int32_t mate_refSeqId = -1;
                     int64_t pnext = 0;
                     
+                    value->seqHash[AR_READNO(data) - 1] = SeqHashKey(seqDNA, readlen);
+                    
                     memset(&fi, 0, sizeof(fi));
                     fi.aligned = aligned;
                     fi.ti = ti;
@@ -1538,6 +1608,8 @@ rc_t ArchiveFile(const struct ReaderFile *reader,
                         unsigned read1 = 0;
                         unsigned read2 = 1;
                         uint8_t  *src  = (uint8_t*) fip + sizeof(*fip);
+                        
+                        value->seqHash[AR_READNO(data) - 1] = SeqHashKey(seqDNA, readlen);
                         
                         if (AR_READNO(data) < fip->otherReadNo) {
                             read1 = 1;
@@ -1639,6 +1711,8 @@ rc_t ArchiveFile(const struct ReaderFile *reader,
         else if (wasInserted & (isPrimary || !originally_aligned)) {
             /* new unmated fragment - no spot assembly */
             unsigned readLen[1];
+
+            value->seqHash[0] = SeqHashKey(seqDNA, readlen);
             
             readLen[0] = readlen;
             rc = SequenceRecordInit(&srec, 1, readLen);
@@ -1731,6 +1805,21 @@ rc_t ArchiveFile(const struct ReaderFile *reader,
                      "All records from the file were filtered out" :
                      "The file contained no records that were processed.");
         rc = RC(rcAlign, rcFile, rcReading, rcData, rcEmpty);
+    }
+    if (rc == 0 && reccount > 0) {
+        double percentage = ((double)G->errCount) / reccount; 
+        double allowed = G->maxErrPct/ 100.0;
+        if (percentage > allowed) {
+            rc = RC(rcExe, rcTable, rcClosing, rcData, rcInvalid);
+            (void)PLOGERR(klogErr, 
+                            (klogErr, rc,
+                             "Too many bad records: "
+                                 "records: $(records), bad records: $(bad_records), "
+                                 "bad records percentage: $(percentage), "
+                                 "allowed percentage: $(allowed)",
+                             "records=%lu,bad_records=%lu,percentage=%.2f,allowed=%.2f",
+                             reccount, G->errCount, percentage, allowed));
+        }
     }
 
     KDataBufferWhack(&buf);

@@ -88,7 +88,7 @@ typedef int64_t KTime_t;
 
 /*--------------------------------------------------------------------------
  * ver_t
- *  32 bit 2 part type
+ *  32 bit 4 part type
  */
 typedef uint32_t ver_t;
 

@@ -90,6 +90,7 @@ SRASTAT_LIB = \
 	-lvdb \
 	-lkdb \
 	-lvfs \
+	-lkurl \
 	-lkrypto \
 	-lkfg \
 	-lkfs \

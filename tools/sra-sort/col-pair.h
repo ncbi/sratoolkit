@@ -224,13 +224,13 @@ ColumnWriter *ColumnWriterDuplicate ( const ColumnWriter *self, const ctx_t *ctx
  *  write a row of data
  */
 #define ColumnWriterWrite( self, ctx, elem_bits, data, boff, row_len ) \
-    POLY_DISPATCH_INT ( write, self, COLWRITER_IMPL, ctx, elem_bits, data, boff, row_len )
+    POLY_DISPATCH_VOID ( write, self, COLWRITER_IMPL, ctx, elem_bits, data, boff, row_len )
 
 /* WriteStatic
  *  writes a repeated row
  */
 #define ColumnWriterWriteStatic( self, ctx, elem_bits, data, boff, row_len, count ) \
-    POLY_DISPATCH_INT ( write_static, self, COLWRITER_IMPL, ctx, elem_bits, data, boff, row_len, count )
+    POLY_DISPATCH_VOID ( write_static, self, COLWRITER_IMPL, ctx, elem_bits, data, boff, row_len, count )
 
 
 /* Commit

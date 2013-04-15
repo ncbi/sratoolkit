@@ -88,6 +88,8 @@ extern "C" {
 #define OPT_CURSOR_CACHE "cursor-cache"
 #define OPT_DUMP_MODE   "dump-mode"
 #define OPT_MIN_MAPQ    "min-mapq"
+#define OPT_NO_MATE_CACHE "no-mate-cache"
+#define OPT_LEGACY      "legacy"
 
 typedef struct range
 {
@@ -199,6 +201,10 @@ typedef struct samdump_opts
     /* how to process in case of: aligned reads requested + no regions given */
     enum dump_mode dump_mode;
 
+    /* use a mate-cache to dump aligned and half-aligned reads */
+    bool use_mate_cache;
+    bool force_legacy;
+
     /* which tables have to be processed/dumped */
     bool dump_primary_alignments;
     bool dump_secondary_alignments;
@@ -249,23 +255,23 @@ rc_t foreach_reference( BSTree * regions,
 
 
 rc_t gather_options( Args * args, samdump_opts * opts );
-void report_options( samdump_opts * opts );
+void report_options( const samdump_opts * opts );
 void release_options( samdump_opts * opts );
 
-bool filter_by_matepair_dist( samdump_opts * opts, int32_t tlen );
+bool filter_by_matepair_dist( const samdump_opts * opts, int32_t tlen );
 
-bool is_this_alignment_requested( samdump_opts * opts, const char *refname, uint32_t refname_len,
+bool is_this_alignment_requested( const samdump_opts * opts, const char *refname, uint32_t refname_len,
                                   uint64_t start, uint64_t len );
 
-bool test_limit_reached( samdump_opts * opts );
+bool test_limit_reached( const samdump_opts * opts, uint64_t rows_so_far );
 
-rc_t dump_name( samdump_opts * opts, int64_t seq_spot_id,
+rc_t dump_name( const samdump_opts * opts, int64_t seq_spot_id,
                 const char * spot_group, uint32_t spot_group_len );
-rc_t dump_name_legacy( samdump_opts * opts, const char * name, size_t name_len,
+rc_t dump_name_legacy( const samdump_opts * opts, const char * name, size_t name_len,
                        const char * spot_group, uint32_t spot_group_len );
 
-rc_t dump_quality( samdump_opts * opts, char const *quality, uint32_t qual_len, bool reverse );
+rc_t dump_quality( const samdump_opts * opts, char const *quality, uint32_t qual_len, bool reverse );
 
-rc_t dump_quality_33( samdump_opts * opts, char const *quality, uint32_t qual_len, bool reverse );
+rc_t dump_quality_33( const samdump_opts * opts, char const *quality, uint32_t qual_len, bool reverse );
 
 #endif

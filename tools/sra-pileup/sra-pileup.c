@@ -41,8 +41,11 @@
 #include <kfs/gzip.h>
 
 #include <insdc/sra.h>
+
 #include <vdb/manager.h>
 #include <vdb/schema.h>
+#include <vdb/report.h> /* ReportSetVDBManager */
+
 #include <sra/sraschema.h>
 #include <align/manager.h>
 
@@ -80,6 +83,9 @@
 #define OPTION_REREF   "report-ref"
 #define ALIAS_REREF    NULL
 
+#define OPTION_REREFEX "report-ref-ext"
+#define ALIAS_REREFEX  NULL
+
 enum
 {
     sra_pileup_samtools = 0,
@@ -108,6 +114,9 @@ static const char * seqname_usage[] = { "use original seq-name", NULL };
 
 static const char * reref_usage[] = { "report used references", NULL };
 
+static const char * rerefex_usage[] = { "report used references and coverage", NULL };
+
+
 OptDef MyOptions[] =
 {
     /*name,           alias,         hfkt, usage-help,    maxcount, needs value, required */
@@ -119,7 +128,8 @@ OptDef MyOptions[] =
     { OPTION_SHOWID,  ALIAS_SHOWID,  NULL, showid_usage,  1,        false,       false },
     { OPTION_SPOTGRP, ALIAS_SPOTGRP, NULL, spotgrp_usage, 1,        false,       false },
     { OPTION_SEQNAME, ALIAS_SEQNAME, NULL, seqname_usage, 1,        false,       false },
-    { OPTION_REREF,   ALIAS_REREF,   NULL, reref_usage,   1,        false,       false }
+    { OPTION_REREF,   ALIAS_REREF,   NULL, reref_usage,   1,        false,       false },
+    { OPTION_REREFEX, ALIAS_REREFEX, NULL, rerefex_usage, 1,        false,       false }
 };
 
 /* =========================================================================================== */
@@ -134,6 +144,7 @@ typedef struct pileup_options
     bool div_by_spotgrp;
     bool use_seq_name;
     bool reref;
+    bool rerefex;
     uint32_t minmapq;
     uint32_t output_mode;
     uint32_t source_table;
@@ -236,6 +247,9 @@ static rc_t get_pileup_options( Args * args, pileup_options *opts )
     if ( rc == 0 )
         rc = get_bool_option( args, OPTION_REREF, &opts->reref, false );
 
+    if ( rc == 0 )
+        rc = get_bool_option( args, OPTION_REREFEX, &opts->rerefex, false );
+
     return rc;
 }
 
@@ -281,6 +295,7 @@ rc_t CC Usage ( const Args * args )
     HelpOptionLine ( ALIAS_SPOTGRP, OPTION_SPOTGRP, "spotgroups-modes", spotgrp_usage );
     HelpOptionLine ( ALIAS_SEQNAME, OPTION_SEQNAME, "org. seq-name", seqname_usage );
     HelpOptionLine ( ALIAS_REREF, OPTION_REREF, "report reference", reref_usage );
+    HelpOptionLine ( ALIAS_REREFEX, OPTION_REREFEX, "report reference", rerefex_usage );
     HelpOptionsStandard ();
     HelpVersion ( fullpath, KAppVersion() );
     return rc;
@@ -787,6 +802,8 @@ static rc_t walk_alignments( ReferenceIterator *ref_iter,
         rc = ReferenceIteratorNextPlacement ( ref_iter, &rec );
         if ( rc == 0 )
             rc = walk_ref_position( ref_iter, rec, line, &( qualities->data[ depth++ ] ), options );
+        if ( rc == 0 )
+            rc = Quitting();
     } while ( rc == 0 );
 
     if ( !options->omit_qualities )
@@ -1468,7 +1485,7 @@ static rc_t prepare_evidence_cursor( const VDatabase *db, const VCursor ** curso
     return rc;
 }
 
-
+#if 0
 static void show_placement_params( const char * prefix, const ReferenceObj *refobj,
                                    uint32_t start, uint32_t end )
 {
@@ -1483,7 +1500,7 @@ static void show_placement_params( const char * prefix, const ReferenceObj *refo
         KOutMsg( "prepare %s: <%s> %u..%u\n", prefix, name, start, end ) ;
     }
 }
-
+#endif
 
 static rc_t CC prepare_section_cb( prepare_ctx * ctx, uint32_t start, uint32_t end )
 {
@@ -1492,6 +1509,10 @@ static rc_t CC prepare_section_cb( prepare_ctx * ctx, uint32_t start, uint32_t e
     if ( ctx->db == NULL || ctx->refobj == NULL )
     {
         rc = SILENT_RC ( rcApp, rcNoTarg, rcOpening, rcSelf, rcInvalid );
+        /* it is opened in prepare_db_table even if ctx->db == NULL */
+        PLOGERR(klogInt, (klogInt, rc, "failed to process $(path)",
+            "path=%s", ctx->path == NULL ? "input argument" : ctx->path));
+        ReportSilence();
     }
     else
     {
@@ -1621,6 +1642,7 @@ static rc_t CC on_argument( const char * path, const char * spot_group, void * d
     prep.spot_group = spot_group;
     prep.on_section = prepare_section_cb;
     prep.data = NULL;
+    prep.path = path;
 
     rc = prepare_ref_iter( &prep, ctx->vdb_mgr, ctx->vdb_schema, path, ctx->ranges );
     if ( rc == 0 && prep.db == NULL )
@@ -1684,6 +1706,9 @@ static rc_t pileup_main( Args * args, pileup_options *options )
         if ( rc != 0 )
         {
             LOGERR( klogInt, rc, "VDBManagerMakeRead() failed" );
+        }
+        else {
+            ReportSetVDBManager(arg_ctx.vdb_mgr);
         }
     }
 
@@ -1779,9 +1804,9 @@ rc_t CC KMain( int argc, char *argv [] )
 
                     if ( rc == 0 )
                     {
-                        if ( options.reref )
+                        if ( options.reref || options.rerefex )
                         {
-                            rc = report_on_reference( args, true ); /* reref.c */
+                            rc = report_on_reference( args, options.rerefex ); /* reref.c */
                         }
                         else
                         {

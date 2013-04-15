@@ -27,6 +27,18 @@
 #ifndef _h_sra_sradb_priv_
 #define _h_sra_sradb_priv_
 
+#ifndef _h_klib_container_
+#include <klib/container.h>
+#endif
+
+#ifndef _h_klib_text
+#include <klib/text.h>
+#endif
+
+#ifndef _h_klib_vector
+#include <klib/vector.h>
+#endif
+
 #ifndef _h_sra_sradb_
 #include <sra/sradb.h>
 #endif
@@ -55,11 +67,11 @@ struct KFile;
 struct KDirectory;
 struct KDBManager;
 struct KTable;
+struct KLock;
 struct VDBManager;
 struct VTable;
 struct VSchema;
 struct SRAPath;
-
 
 /*--------------------------------------------------------------------------
  * SRAMgr
@@ -273,7 +285,102 @@ SRA_EXTERN const SRATableData *CC SRATableGetTableData ( const SRATable *self );
 
 #endif
 
+/*--------------------------------------------------------------------------
+ * SRA Accession Cache
+ */
+struct SRACacheIndex;
 
+typedef struct SRACacheMetrics
+{   /* 0 = metric not used */
+
+    /* sizeof table data */
+    /* expanded cache bytes, i.e. cursor */
+    uint64_t bytes;
+    uint32_t elements; /* open tables */
+    uint32_t threads;
+    uint32_t fds;
+} SRACacheMetrics;
+
+#define SRACacheThresholdSoftBytesDefault       ((uint64_t)0)
+#define SRACacheThresholdSoftElementsDefault    ((uint32_t)1000)
+#define SRACacheThresholdSoftThreadsDefault     ((uint32_t)0)
+#define SRACacheThresholdSoftFdsDefault         ((uint32_t)0)
+
+#define SRACacheThresholdHardBytesDefault       ((uint64_t)0)
+#define SRACacheThresholdHardElementsDefault    ((uint32_t)10000)
+#define SRACacheThresholdHardThreadsDefault     ((uint32_t)0)
+#define SRACacheThresholdHardFdsDefault         ((uint32_t)0)
+
+SRA_EXTERN bool CC SRACacheMetricsLessThan(const SRACacheMetrics* a, const SRACacheMetrics* b);
+
+typedef struct SRACacheElement 
+{
+    DLNode dad;
+    
+    SRATable*   object;
+    
+    KTime_t lastAccessed;
+    
+    struct SRACacheIndex* index;
+    uint32_t key;
+
+    SRACacheMetrics metrics;
+} SRACacheElement;
+
+SRA_EXTERN rc_t CC SRACacheElementMake(SRACacheElement**        self, 
+                                       SRATable*                object, 
+                                       struct SRACacheIndex*    index, 
+                                       uint32_t                 key, 
+                                       const SRACacheMetrics*   metrics);
+SRA_EXTERN rc_t CC SRACacheElementDestroy(SRACacheElement* self);
+
+typedef struct SRACacheIndex
+{
+    BSTNode dad;
+    
+    String* prefix;
+    KVector* body; /* KVector<SRACacheElement*> */
+} SRACacheIndex;
+
+SRA_EXTERN rc_t CC SRACacheIndexMake(SRACacheIndex** self, String* prefix);
+SRA_EXTERN rc_t CC SRACacheIndexDestroy(SRACacheIndex* self);
+
+typedef struct SRACache
+{
+    BSTree indexes; /* grows as needed */
+
+    DLList lru; /* DLList<SRACacheElement*>;  head is the oldest */
+    
+    SRACacheMetrics softThreshold;
+    SRACacheMetrics hardThreshold;
+    SRACacheMetrics usage;
+    
+    struct KLock* mutex; 
+    
+} SRACache;
+
+SRA_EXTERN rc_t CC SRACacheInit(SRACache**);
+
+SRA_EXTERN rc_t CC SRACacheGetSoftThreshold(SRACache* self, SRACacheMetrics* metrics);
+SRA_EXTERN rc_t CC SRACacheSetSoftThreshold(SRACache* self, const SRACacheMetrics* metrics);
+
+SRA_EXTERN rc_t CC SRACacheGetHardThreshold(SRACache* self, SRACacheMetrics* metrics);
+SRA_EXTERN rc_t CC SRACacheSetHardThreshold(SRACache* self, const SRACacheMetrics* metrics);
+
+SRA_EXTERN rc_t CC SRACacheGetUsage(SRACache* self, SRACacheMetrics* metrics);
+
+/* flush tables until usage is lower than specified in self->softThreshold */
+SRA_EXTERN rc_t CC SRACacheFlush(SRACache* self); 
+
+/* if found, moves element to the back of the list; return NULL object if not in the cache */
+SRA_EXTERN rc_t CC SRACacheGetTable(SRACache* self, const char* acc, const SRATable** object); 
+
+/* 
+ * fails if table is already in the cache
+ */
+SRA_EXTERN rc_t CC SRACacheAddTable(SRACache* self, const char* acc, SRATable*); 
+
+SRA_EXTERN rc_t CC SRACacheWhack(SRACache* self);
 
 #ifdef __cplusplus
 }

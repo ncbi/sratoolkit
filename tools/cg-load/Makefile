@@ -105,6 +105,7 @@ CGLOAD_LIB = \
 	-lwvdb \
 	-lwkdb \
 	-lvfs \
+	-lkurl \
 	-lkrypto \
 	-lksrch \
 	-lkfg \

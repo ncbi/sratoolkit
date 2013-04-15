@@ -38,6 +38,7 @@
 #include <klib/log.h>
 #include <klib/rc.h>
 #include <klib/printf.h>
+#include <os-native.h>
 #include <sysalloc.h>
 
 #include <limits.h>

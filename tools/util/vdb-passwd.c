@@ -50,7 +50,7 @@
 
 /******************************************************************************/
 static
-rc_t SetPwd(const char *password, bool quiet)
+rc_t SetPwd(const char *password, bool no_prompt)
 {
     rc_t rc = 0;
 
@@ -68,7 +68,7 @@ rc_t SetPwd(const char *password, bool quiet)
         rc = VFSManagerUpdateKryptoPassword
             (mgr, password, strlen(password), pwd_dir, sizeof pwd_dir);
         if (rc) {
-            if (quiet) {
+            if (no_prompt) {
                 LOGERR(klogInt, rc, "while updating the password");
             }
             else if (rc == SILENT_RC(rcVFS, rcEncryptionKey, rcUpdating,
@@ -77,8 +77,8 @@ rc_t SetPwd(const char *password, bool quiet)
                 OUTMSG((
                     "\nSecurity warning:\n"
                     "Directory \"%s\" has excessive access permissions.\n"
-                    "Run \"chmod 700 %s\" to fix it\n"
-                    "or ask your system administrator to do it.\n",
+                    "Run \"chmod 700 %s\" to repair\n"
+                    "or ask your system administrator for assistance.\n",
                     pwd_dir, pwd_dir));
                 rc = 0;
             }
@@ -106,7 +106,7 @@ rc_t SetPwd(const char *password, bool quiet)
                     "\nError:\n"
                     "Cannot set the password.\n"
                     "Path to password file is too long.\n"
-                    "Your configuration should be fixed.\n"));
+                    "Your configuration should be updated.\n"));
             }
             else if (rc == SILENT_RC(rcVFS, rcEncryptionKey, rcUpdating,
                 rcPath, rcIncorrect))
@@ -114,8 +114,8 @@ rc_t SetPwd(const char *password, bool quiet)
                 OUTMSG((
                     "\nError:\n"
                     "Cannot set the password.\n"
-                    "Existing password path/file name is not a file.\n"
-                    "Your configuration should be fixed.\n"));
+                    "Existing path to password is not a file.\n"
+                    "Your configuration should be updated.\n"));
             }
             else if (rc == SILENT_RC(rcVFS, rcEncryptionKey, rcUpdating,
                 rcPath, rcCorrupt))
@@ -124,7 +124,7 @@ rc_t SetPwd(const char *password, bool quiet)
                     "\nError:\n"
                     "Cannot set the password.\n"
                     "Unknown file type for configured path/file name.\n"
-                    "Your configuration should be fixed.\n"));
+                    "Your configuration should be updated.\n"));
             }
             else if (rc == SILENT_RC(rcVFS, rcEncryptionKey, rcWriting,
                 rcFile, rcInsufficient))
@@ -136,7 +136,7 @@ rc_t SetPwd(const char *password, bool quiet)
             }
             else {
                 OUTMSG(("\nCannot set the password. Please run "
-                 "\"perl configuration-assistant.perl\" and try again\n"));
+                 "\"perl configuration-assistant.perl\" and try again.\n"));
             }
         }
     }
@@ -176,7 +176,7 @@ rc_t run(bool quiet)
                 break;
             }
             if (password[0] == '\0') {
-                OUTMSG(("BAD PASSWORD: it is WAY too short\n"));
+                OUTMSG(("BAD PASSWORD: too short\n"));
             }
             else {
                 break;
@@ -218,18 +218,20 @@ rc_t run(bool quiet)
     return rc;
 }
 
-#define SL_OPTION "quiet"
-#define SL_ALIAS "q"
+#define SL_OPTION "noprompt"
+#define SL_ALIAS "n"
 static const char *SL_USAGE[]
-    = { "not to suggest to run configuration-assistant", NULL };
+    = { "Do not suggest running configuration-assistant", NULL };
 
 OptDef Options[] = { { SL_OPTION, SL_ALIAS, NULL, SL_USAGE, 1, false, false } };
 
 const char UsageDefaultName[] = "vdb-passwd";
 
 rc_t CC UsageSummary(const char *progname) {
-    KOutMsg("Update user's NCBI VDB crypto password\n");
-    KOutMsg("\n");
+    KOutMsg("Update user's NCBI VDB crypto password\n"
+            "If not run with --quiet recommendations\n"
+            "are given if errors are detected.\n"
+            "\n");
 
     return 0;
 }
@@ -248,27 +250,26 @@ rc_t CC Usage(const Args *args) {
 ver_t CC KAppVersion(void) { return VDB_PASSWD_VERS; }
 
 rc_t CC KMain(int argc, char *argv[]) {
-    Args *args = NULL;
-    rc_t rc = ArgsMakeAndHandle(&args, argc, argv, 1,
-        Options, sizeof Options / sizeof (OptDef));
+    Args *args;
+    rc_t rc, orc;
 
-    while (rc == 0) {
-        uint32_t pcount = 0;
-        rc = ArgsOptionCount(args, SL_OPTION, &pcount);
-        if (rc) {
-            LOGERR(klogErr, rc, "cannot count " SL_OPTION " option");
-            break;
-        }
-
-        rc = run(pcount > 0);
-        break;
-    }
-
+    rc = ArgsMakeAndHandle(&args, argc, argv, 0);
+    if (rc == 0)
     {
-        rc_t rc2 = ArgsWhack(args);
-        args = NULL;
-        if (rc2 != 0 && rc == 0)
-        {   rc = rc2; }
+        uint32_t pcount;
+        rc_t orc;
+
+        /* non standard use of --quiet */
+        rc = ArgsOptionCount(args, OPTION_QUIET, &pcount);
+        if (rc)
+            LOGERR(klogErr, rc, "error check " OPTION_QUIET " option");
+
+        else
+            rc = run (pcount != 0);
+
+        orc = ArgsWhack(args);
+        if (rc == 0)
+            rc = orc;
     }
 
     return rc;

@@ -316,7 +316,7 @@ LIB_EXPORT rc_t CC KDyldHomeDirectory ( const KDyld *self, const KDirectory **di
              * a type safe way to do this */
             BOOL success = GetModuleHandleEx ( GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS
                                                | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-                                               (LPCSTR)func, & h );
+                                               ( const TCHAR * )func, & h );
             if ( success )
             {
                 wchar_t fname [ MAX_PATH ];

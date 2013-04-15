@@ -30,6 +30,7 @@ MODULE = libs/kns
 INT_LIBS = \
 
 EXT_LIBS = \
+	libkns \
 	libkurl
 
 ALL_LIBS = \
@@ -71,12 +72,37 @@ clean: stdclean
 .PHONY: clean
 
 #-------------------------------------------------------------------------------
+# kns
+#
+$(LIBDIR)/libkns: $(addprefix $(LIBDIR)/libkns.,$(LIBEXT))
+
+KNS_SRC = \
+	kns_manager \
+	stream \
+	stream-from-files \
+	stream-from-streams \
+#	sysstream \
+
+KNS_OBJ = \
+	$(addsuffix .$(LOBX),$(KNS_SRC))
+
+KNS_LIB = \
+    -lkfs \
+	-dklib
+
+$(LIBDIR)/libkns.$(SHLX): $(KNS_OBJ)
+	$(LD) --dlib --vers $(SRCDIR) -o $@ $^ $(KNS_LIB)
+
+$(LIBDIR)/libkns.$(LIBX): $(KNS_OBJ)
+	$(LD) --slib --vers $(SRCDIR) -o $@ $^ $(KNS_LIB)
+
+
+#-------------------------------------------------------------------------------
 # kurl
 #
 $(LIBDIR)/libkurl: $(addprefix $(LIBDIR)/libkurl.,$(LIBEXT))
 
 KURL_SRC = \
-	kns_manager \
 	KCurlFile \
 	KCurlRequest \
 	url-fetcher \
@@ -87,8 +113,9 @@ KURL_OBJ = \
 	$(addsuffix .$(LOBX),$(KURL_SRC))
 
 KURL_LIB = \
-	-dklib \
+	-skns \
 	-dkfs \
+	-dklib \
 	-dz
 
 $(LIBDIR)/libkurl.$(SHLX): $(KURL_OBJ)

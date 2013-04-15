@@ -113,14 +113,19 @@ rc_t XMLLogger_Encode(const char* src, char *dst,
     return rc;
 }
 
+typedef rc_t (CC ReportObj)(const ReportFuncs *f, uint32_t indent,
+                              const char *path, bool *wasDbOrTableSet);
+typedef rc_t (CC ReportSoftware)(const ReportFuncs *f, uint32_t indent,
+                          const char *argv_0, const char *date, ver_t tool_ver);
+typedef rc_t (CC Whack )(void);
 typedef struct Report {
     rc_t ( CC * report_redirect ) ( KWrtHandler* handler,
         const char* filename, bool* to_file, bool finalize );
     rc_t ( CC * report_cwd ) ( const ReportFuncs *f, uint32_t indent );
     rc_t ( CC * report_config ) ( const ReportFuncs *f, uint32_t indent );
-    rc_t ( CC * report_vdb ) ( const ReportFuncs *f, uint32_t indent, const char *path );
-    rc_t ( CC * report_software ) ( const ReportFuncs *f, uint32_t indent, const char *argv_0, const char *date, ver_t tool_ver );
-    rc_t ( CC * whack_vdb ) ( void );
+    ReportObj *report_vdb;
+    ReportSoftware *report_software;
+    Whack *whack_vdb;
     char* volatile object; /* path: to free */
     const char* date;
     char** argv;
@@ -136,7 +141,7 @@ static rc_t ReportReplaceObjectPtr(Report* self, const char* path) {
 
     assert(self);
 
-    copy = strdup ( path );
+    copy = string_dup_measure(path, NULL);
     if (copy == NULL)
         return RC(rcExe, rcMemory, rcAllocating, rcMemory, rcExhausted);
 
@@ -369,8 +374,8 @@ static void CC reportError(uint32_t indent, rc_t rc, const char* function) {
          "function", 's', function);
 }
 
-static void CC reportErrorStrImpl(uint32_t indent, rc_t rc, const char* function,
-    const char* name, const char* val, bool eol)
+static void CC reportErrorStrImpl(uint32_t indent, rc_t rc,
+    const char* function, const char* name, const char* val, bool eol)
 {
     int sign = eol ? 1 : -1;
     if (rc || function) {
@@ -533,11 +538,22 @@ LIB_EXPORT rc_t CC ReportFinalize(rc_t rc_in) {
     Report* self = NULL;
     ReportGet(&self);
 
-    if (GetRCTarget(rc_in) == rcArgv)
-    {   force = false; }
+    if (self == NULL) {
+        return rc;
+    }
 
-    if ( self == NULL )
-    {   return rc; }
+    if (GetRCTarget(rc_in) == rcArgv) {
+        force = false;
+    }
+    else {
+        bool wasDbOrTableSet = true;
+        if (self->report_vdb != NULL) {
+            (*self->report_vdb)(&report_funcs, 0, NULL, &wasDbOrTableSet);
+            if (!wasDbOrTableSet) {
+                force = false;
+            }
+        }
+    }
 
     if (self->argv) {
         int i = 0;
@@ -550,16 +566,16 @@ LIB_EXPORT rc_t CC ReportFinalize(rc_t rc_in) {
             }
         }
     }
-    if ( ! self -> silence )
-    {
+
+    if (report_arg && strcmp("always", report_arg) == 0) {
+        force = true;
+        self -> silence = false;
+    }
+
+    if (!self -> silence) {
         if (force) { 
             if (report_arg && strcmp("never", report_arg) == 0) {
                 force = false;
-            }
-        }
-        else {
-            if (report_arg && strcmp("always", report_arg) == 0) {
-                force = true;
             }
         }
 /*                              PLOGERR(klogErr, (klogErr,
@@ -636,11 +652,12 @@ LIB_EXPORT rc_t CC ReportFinalize(rc_t rc_in) {
                     {   rc = rc2; }
                 }
 
-                if ( self -> report_vdb != NULL )
-                {
-                    rc_t rc2 = ( * self -> report_vdb ) ( & report_funcs, indent + 1, self -> object );
-                    if (rc == 0 && rc2 != 0)
-                    {   rc = rc2; }
+                if (self -> report_vdb != NULL) {
+                    rc_t rc2 = (*self->report_vdb)
+                        (&report_funcs, indent + 1, self -> object, NULL);
+                    if (rc == 0 && rc2 != 0) {
+                        rc = rc2;
+                    }
                 }
 
                 if ( self -> report_software != NULL )
@@ -678,11 +695,11 @@ static
 char **copy_argv ( int argc, char **argv )
 {
     char **argv2 = calloc ( argc, sizeof * argv2 );
-    if ( argv2 != NULL )
-    {
-        int i;
-        for ( i = 0; i < argc; ++ i )
-            argv2 [ i ] = strdup ( argv [ i ] );
+    if (argv2 != NULL) {
+        int i = 0;
+        for (i = 0; i < argc; ++i) {
+            argv2[i] = string_dup_measure(argv[i], NULL);
+        }
     }
     return argv2;
 }
@@ -758,9 +775,8 @@ LIB_EXPORT const char* CC ReportInitConfig ( rc_t ( CC * report ) ( const Report
 
 /* InitVDB
  */
-LIB_EXPORT rc_t CC ReportInitVDB ( rc_t ( CC * report_obj ) ( const ReportFuncs *f, uint32_t indent, const char *path ),
-    rc_t ( CC * report_software ) ( const ReportFuncs *f, uint32_t indent, const char *argv_0, const char *date, ver_t tool_ver ),
-    rc_t ( CC * whack ) ( void ) )
+LIB_EXPORT rc_t CC ReportInitVDB(
+    ReportObj *report_obj, ReportSoftware *report_software, Whack *whack)
 {
     Report* self = NULL;
     rc_t rc = ReportGet(&self);

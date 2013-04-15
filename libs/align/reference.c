@@ -397,6 +397,13 @@ LIB_EXPORT rc_t CC ReferenceList_MakeCursor( const ReferenceList** cself, const 
                             }
                             if ( rc == 0 )
                             {
+                                INSDC_coord_len cur_seq_len = h[ 2 ].base.coord_len[ 0 ];
+                                if ( cur_seq_len == 0 )
+                                {
+                                    /* assign it to max-seq-len */
+                                    cur_seq_len = h[ 4 ].base.coord_len[ 0 ];
+                                }
+
                                 if ( h[ 6 ].len > 0 )
                                 {/** CMP_READ > 0 -- truly local ***/
                                     node->read_present = true; 
@@ -407,6 +414,7 @@ LIB_EXPORT rc_t CC ReferenceList_MakeCursor( const ReferenceList** cself, const 
                                     node->read_present = false;
                                     read_determination_done = true;
                                 } /*** else still not sure **/
+
                                 if ( read_determination_done && iname != NULL )
                                 {
                                     /* scroll to last row for this reference projecting the seq_len */
@@ -422,13 +430,13 @@ LIB_EXPORT rc_t CC ReferenceList_MakeCursor( const ReferenceList** cself, const 
                                             so we step back 2 rows in table from this ref end row
                                             and also skip rows already scanned for read presence */
                                             r_count -= ( start - r_start ) + 2;
-                                            node->seq_len += h[ 2 ].base.coord_len[ 0 ] * r_count;
+                                            node->seq_len += cur_seq_len * r_count;
                                             start += r_count;
                                             count -= r_count;
                                         }
                                     }
                                 }
-                                node->seq_len += h[ 2 ].base.coord_len[ 0 ];
+                                node->seq_len += cur_seq_len;
                                 node->end_rowid = start;
                             }
                         }
@@ -955,7 +963,7 @@ LIB_EXPORT rc_t CC ReferenceObj_External( const ReferenceObj* cself, bool* exter
             if ( rc == 0 )
             {
                 *path = NULL;
-                rc = RefSeqMgr_Exists( rmgr, cself->seqid, strlen( cself->seqid ), NULL );
+                rc = RefSeqMgr_Exists( rmgr, cself->seqid, string_size( cself->seqid ), NULL );
                 if ( GetRCObject( rc ) == rcTable && GetRCState( rc ) == rcNotFound )
                 {
                     rc = 0;
@@ -1370,7 +1378,9 @@ LIB_EXPORT rc_t CC ReferenceObj_MakePlacementIterator ( const ReferenceObj* csel
                 o->ref_window_len = ref_window_len;
 
                 /* in reference-rows */
-                o->last_ref_row_of_window_rel = ( ( ref_window_start + ref_window_len ) / mgr->max_seq_len );
+                o->last_ref_row_of_window_rel = ref_window_start;
+                o->last_ref_row_of_window_rel += ref_window_len;
+                o->last_ref_row_of_window_rel /= mgr->max_seq_len;
                 o->rowcount_of_ref = ( cself->end_rowid - cself->start_rowid );
 
                 /* get effective starting offset based on overlap
@@ -1393,6 +1403,11 @@ LIB_EXPORT rc_t CC ReferenceObj_MakePlacementIterator ( const ReferenceObj* csel
                     ALIGN_DBG( "iter.rowcount_of_ref: %li", o->rowcount_of_ref );
                     ALIGN_DBG( "iter.cur_ref_row_rel: %li", o->cur_ref_row_rel );
                 }
+            }
+
+            if ( rc != 0 )
+            {
+                ReferenceObj_Release( o->obj );
             }
         }
     }

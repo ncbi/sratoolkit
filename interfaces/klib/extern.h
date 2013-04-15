@@ -40,7 +40,11 @@
 #else
 
 #define KLIB_EXTERN LIB_IMPORT
+#ifdef __cplusplus
+#define KLIB_EXTERN_DATA extern /* LIB_IMPORT_DATA */
+#else
 #define KLIB_EXTERN_DATA LIB_IMPORT_DATA
+#endif
 
 #endif
 

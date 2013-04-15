@@ -78,7 +78,7 @@ static void	SraHeaderInit (KSraHeader * self, size_t treesize, KSRAFileAlignment
     self->u.v1.file_offset = add_filler (sizeof * self + treesize, alignment);
 }
 
-LIB_EXPORT rc_t CC SraHeaderMake (KSraHeader ** pself, size_t treesize, KSRAFileAlignment alignment)
+rc_t SraHeaderMake (KSraHeader ** pself, size_t treesize, KSRAFileAlignment alignment)
 {
     KSraHeader * self = malloc (sizeof (KSraHeader));
     if (self == NULL)
@@ -89,7 +89,7 @@ LIB_EXPORT rc_t CC SraHeaderMake (KSraHeader ** pself, size_t treesize, KSRAFile
 }
 
 
-LIB_EXPORT rc_t CC SraHeaderValidate ( const KSraHeader * self, bool * reverse, uint32_t * _version )
+static rc_t  SraHeaderValidate ( const KSraHeader * self, bool * reverse, uint32_t * _version, size_t bytes_available )
 {
     uint64_t offset;
     rc_t rc;
@@ -100,11 +100,17 @@ LIB_EXPORT rc_t CC SraHeaderValidate ( const KSraHeader * self, bool * reverse, 
 	*reverse = false;
     if (_version != NULL)
 	*_version = 0;
+
+    if (bytes_available < 8)
+        return RC (rcFS, rcArc, rcParsing, rcHeader, rcInsufficient);
+
     if (memcmp ((void*)self, &ksraheader_v1,
 		sizeof (ksraheader_v1.ncbi) + sizeof (ksraheader_v1.sra)) != 0)
-    {
 	return RC (rcFS, rcArc, rcParsing, rcHeader, rcInvalid);
-    }
+
+    if (bytes_available < 12)
+        return 0;
+
     switch (self->byte_order)
     {
     default:
@@ -117,6 +123,9 @@ LIB_EXPORT rc_t CC SraHeaderValidate ( const KSraHeader * self, bool * reverse, 
 	break;
     }
     rc = 0;
+
+    if (bytes_available < 16)
+        return 0;
 
     version = rev ? bswap_32 (self->version) : self->version;
     offset = rev ? bswap_64 (self->u.v1.file_offset) : self->u.v1.file_offset;
@@ -264,7 +273,7 @@ rc_t CC KArcParseSRAInt ( struct KToc * self,
     }
 
     /* version is ignored at this point as there is only one version */
-    rc = SraHeaderValidate ( &header, &reverse, &version );
+    rc = SraHeaderValidate ( &header, &reverse, &version, sizeof header );
     if ( rc != 0 )
     {
         if ( !silent )
@@ -467,15 +476,9 @@ LIB_EXPORT rc_t CC KFileIsSRA (const char * b, size_t z)
 {
     const KSraHeader * h = (const KSraHeader *)b;
 
-    if (z >= sizeof (KSraHeader))
-    {
-        bool ii;
-        uint32_t iii;
-
-        if (SraHeaderValidate (h, &ii, &iii) == 0)
-            return 0;
-    }
-
+    if (SraHeaderValidate (h, NULL, NULL, z) == 0)
+        return 0;
+    
     return RC (rcFS, rcFile, rcIdentifying, rcBuffer, rcWrongType);
 }
 

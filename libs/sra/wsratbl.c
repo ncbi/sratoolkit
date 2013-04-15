@@ -32,6 +32,7 @@
 #include <vdb/cursor.h>
 #include <vdb/vdb-priv.h>
 #include <kdb/meta.h>
+#include <klib/printf.h> /* string_vprintf */
 #include <klib/refcount.h>
 #include <klib/log.h>
 #include <klib/debug.h>

@@ -26,9 +26,11 @@
 
 #include "reref.h"
 
+#include <klib/text.h>
 #include <kfs/file.h>
 #include <vfs/manager.h>
 #include <vfs/path.h>
+#include <vfs/resolver.h>
 #include <align/reference.h>
 
 #include <sysalloc.h>
@@ -143,23 +145,159 @@ static rc_t report_ref_table( const VDBManager *vdb_mgr, const char * path, int6
 static rc_t report_ref_table2( const ReferenceObj* ref_obj, int64_t start, int64_t stop )
 {
     rc_t rc = 0;
-    int64_t row_id;
+    int64_t row_id, max_prim_at, max_sec_at, max_ev_at;
+    uint64_t sum_prim, sum_sec, sum_ev, max_prim, max_sec, max_ev;
+    sum_prim = sum_sec = sum_ev = max_prim = max_sec = max_ev = 0;
+
     for ( row_id = start; rc == 0 && row_id <= stop; ++row_id )
     {
         uint32_t count[ 3 ];
         rc = ReferenceObj_GetIdCount( ref_obj, row_id, count );
-        if ( rc == 0 && ( count[ 0 ] > 0 || count[ 1 ] > 0 || count[ 2 ] > 0 ) )
-            rc = KOutMsg( "#%,lu:\t%,u PRI\t%,u SEC\t%,u EV\n",
-                          row_id, count[ 0 ], count[ 1 ], count[ 2 ] );
+        if ( rc == 0 )
+        {
+            sum_prim += count[ 0 ];
+            sum_sec  += count[ 1 ];
+            sum_ev   += count[ 2 ];
+
+            if ( count[ 0 ] > max_prim )
+            {
+                max_prim = count[ 0 ];
+                max_prim_at = row_id;
+            }
+            if ( count[ 1 ] > max_sec )
+            {
+                max_sec = count[ 1 ];
+                max_sec_at = row_id;
+            }
+            if ( count[ 2 ] > max_ev )
+            {
+                max_ev = count[ 2 ];
+                max_ev_at = row_id;
+            }
+        }
+    }
+
+    rc = KOutMsg( "alignments:\t%,u PRI\t%,u SEC\t%,u EV\n", sum_prim, sum_sec, sum_ev );
+    if ( rc == 0 && max_prim > 0 )
+    {
+        uint64_t from = ( ( max_prim_at - start ) * 5000 ) + 1;
+        rc = KOutMsg( "max. PRI:\t%,u\tat row #%,i ( from pos: %,u ... %,u )\n", max_prim, max_prim_at, from, from + 4999 );
+    }
+    if ( rc == 0 && max_sec > 0 )
+    {
+        uint64_t from = ( ( max_sec_at - start ) * 5000 ) + 1;
+        rc = KOutMsg( "max. SEC:\t%,u\tat row #%,i ( from pos: %,u ... %,u )\n", max_sec, max_sec_at, from, from + 4999 );
+    }
+    if ( rc == 0 && max_ev > 0 )
+    {
+        uint64_t from = ( ( max_ev_at - start ) * 5000 ) + 1;
+        rc = KOutMsg( "max. EV:\t%,u\tat row #%,i ( from pos: %,u ... %,u )\n", max_ev, max_ev_at, from, from + 4999 );
     }
     return rc;
 }
 
 
-static rc_t report_ref_obj( const VDBManager *vdb_mgr, const char * path, uint32_t idx,
-                            const ReferenceObj* ref_obj, bool short_report )
+const char * ss_Database        = "Database";
+const char * ss_Table           = "Table";
+const char * ss_PrereleaseTbl   = "Prerelease Table";
+const char * ss_Column          = "Column";
+const char * ss_Index           = "Index";
+const char * ss_NotFound        = "not found";
+const char * ss_BadPath         = "bad path";
+const char * ss_File            = "File";
+const char * ss_Dir             = "Dir";
+const char * ss_CharDev         = "CharDev";
+const char * ss_BlockDev        = "BlockDev";
+const char * ss_FIFO            = "FIFO";
+const char * ss_ZombieFile      = "ZombieFile";
+const char * ss_Dataset         = "Dataset";
+const char * ss_Datatype        = "Datatype";
+const char * ss_unknown         = "unknown pathtype";
+
+
+static const char * path_type_2_str( const uint32_t pt )
+{
+    const char * res = ss_unknown;
+    switch ( pt )
+    {
+    case kptDatabase      :   res = ss_Database; break;
+    case kptTable         :   res = ss_Table; break;
+    case kptPrereleaseTbl :   res = ss_PrereleaseTbl; break;
+    case kptColumn        :   res = ss_Column; break;
+    case kptIndex         :   res = ss_Index; break;
+    case kptNotFound      :   res = ss_NotFound; break;
+    case kptBadPath       :   res = ss_BadPath; break;
+    case kptFile          :   res = ss_File; break;
+    case kptDir           :   res = ss_Dir; break;
+    case kptCharDev       :   res = ss_CharDev; break;
+    case kptBlockDev      :   res = ss_BlockDev; break;
+    case kptFIFO          :   res = ss_FIFO; break;
+    case kptZombieFile    :   res = ss_ZombieFile; break;
+    case kptDataset       :   res = ss_Dataset; break;
+    case kptDatatype      :   res = ss_Datatype; break;
+    default               :   res = ss_unknown; break;
+    }
+    return res;
+}
+
+
+static rc_t resolve_accession( VFSManager * vfs_mgr, const char * accession, const String ** path )
+{
+    VResolver * resolver;
+    rc_t rc = VFSManagerGetResolver( vfs_mgr, &resolver );
+    if ( rc == 0 )
+    {
+        const VPath * vpath;
+        rc = VPathMakeSysPath( ( VPath** )&vpath, accession );
+        if ( rc == 0 )
+        {
+            const VPath * rpath;
+            rc = VResolverLocal( resolver, vpath, &rpath );
+            if ( GetRCState( rc ) == rcNotFound )
+                rc = VResolverRemote( resolver, vpath, &rpath, NULL );
+            if ( rc == 0 )
+            {
+                const String * s;
+                rc = VPathMakeString( rpath, &s );
+                if ( rc == 0 )
+                {
+                    rc = StringCopy ( path, s );
+                    free ((void*)s);
+                }
+                VPathRelease ( rpath );
+            }
+            VPathRelease ( vpath );
+        }
+        VResolverRelease( resolver );
+    }
+    return rc;
+}
+
+
+static rc_t report_ref_loc( const VDBManager *vdb_mgr, VFSManager * vfs_mgr, const char * seq_id )
+{
+    const String * path;
+    rc_t rc = resolve_accession( vfs_mgr, seq_id, &path );
+    if ( rc == 0 )
+    {
+        rc = KOutMsg( "location:\t%S\n", path );
+        if ( rc == 0 )
+        {
+            uint32_t pt = VDBManagerPathType ( vdb_mgr, "%S", path );
+            const char * spt = path_type_2_str( pt );
+            rc = KOutMsg( "pathtype:\t%s\n", spt );
+        }
+        free ( (void*) path );
+    }
+    return rc;
+}
+
+
+static rc_t report_ref_obj( const VDBManager *vdb_mgr, VFSManager * vfs_mgr, const char * path, uint32_t idx,
+                            const ReferenceObj* ref_obj, bool extended )
 {
     const char * s;
+    const char * seq_id;
     INSDC_coord_len len;
     bool circular, external;
     int64_t start, stop;
@@ -169,9 +307,9 @@ static rc_t report_ref_obj( const VDBManager *vdb_mgr, const char * path, uint32
         rc = KOutMsg( "\nREF[%u].Name     = '%s'\n", idx, s );
 
     if ( rc == 0 )
-        rc = ReferenceObj_SeqId( ref_obj, &s );
+        rc = ReferenceObj_SeqId( ref_obj, &seq_id );
     if ( rc == 0 )
-        rc = KOutMsg( "REF[%u].SeqId    = '%s'\n", idx, s );
+        rc = KOutMsg( "REF[%u].SeqId    = '%s'\n", idx, seq_id );
 
     if ( rc == 0 )
         rc = ReferenceObj_SeqLength( ref_obj, &len );
@@ -192,20 +330,19 @@ static rc_t report_ref_obj( const VDBManager *vdb_mgr, const char * path, uint32
         rc = ReferenceObj_External( ref_obj, &external, NULL );
     if ( rc == 0 )
         rc = KOutMsg( "REF[%u].Extern   = %s\n", idx, external ? "yes" : "no" );
+    if ( rc == 0 && external )
+    {
+        rc = report_ref_loc( vdb_mgr, vfs_mgr, seq_id );
+    }
 
-    if ( rc == 0 && !short_report )
+    if ( rc == 0 && extended )
         rc = report_ref_table2( ref_obj, start, stop );
 
-
-/*
-    if ( rc == 0 )
-        rc = report_ref_table( vdb_mgr, path, start, stop );
-*/
     return rc;
 }
 
 
-static rc_t report_ref_database( const VDBManager *vdb_mgr, const char * path, bool short_report )
+static rc_t report_ref_database( const VDBManager *vdb_mgr, VFSManager * vfs_mgr, const char * path, bool extended )
 {
     const ReferenceList* reflist;
     uint32_t options = ( ereferencelist_usePrimaryIds | ereferencelist_useSecondaryIds | ereferencelist_useEvidenceIds );
@@ -238,7 +375,7 @@ static rc_t report_ref_database( const VDBManager *vdb_mgr, const char * path, b
                     }
                     else
                     {
-                        rc = report_ref_obj( vdb_mgr, path, idx, ref_obj, short_report );
+                        rc = report_ref_obj( vdb_mgr, vfs_mgr, path, idx, ref_obj, extended );
                         ReferenceObj_Release( ref_obj );
                     }
                 }
@@ -249,7 +386,9 @@ static rc_t report_ref_database( const VDBManager *vdb_mgr, const char * path, b
     return rc;
 }
 
-static rc_t report_references( const VDBManager *vdb_mgr, VFSManager * vfs_mgr, const char * spec, bool short_report )
+
+static rc_t report_references( const VDBManager *vdb_mgr, VFSManager * vfs_mgr, const char * spec,
+                               bool extended )
 {
     rc_t rc = KOutMsg( "\nreporting references of '%s'\n", spec );
     if ( rc == 0 )
@@ -276,27 +415,17 @@ static rc_t report_references( const VDBManager *vdb_mgr, VFSManager * vfs_mgr, 
                 rc = KOutMsg( "resolved into '%s'\n", buffer );
                 if ( rc == 0 )
                 {
-                    const KDBManager * kdb_mgr;
-                    rc = VDBManagerOpenKDBManagerRead( vdb_mgr, &kdb_mgr );
-                    if ( rc != 0 )
+                    int path_type = ( VDBManagerPathType ( vdb_mgr, "%s", buffer ) & ~ kptAlias );
+                    switch( path_type )
                     {
-                        (void)LOGERR( klogErr, rc, "cannot get kdb-manager from vdb-manager" );
-                    }
-                    else
-                    {
-                        int path_type = ( KDBManagerPathType( kdb_mgr, buffer ) & ~ kptAlias );
-                        switch( path_type )
-                        {
-                            case kptDatabase : rc = report_ref_database( vdb_mgr, buffer, short_report );
-                                               break;
+                        case kptDatabase : rc = report_ref_database( vdb_mgr, vfs_mgr, buffer, extended );
+                                           break;
 
-                            case kptTable    : rc = KOutMsg( "cannot report references on a table-object\n" );
-                                               break;
+                        case kptTable    : rc = KOutMsg( "cannot report references on a table-object\n" );
+                                           break;
 
-                            default          : rc = KOutMsg( "the given object is not a vdb-database\n" );
-                                               break;
-                        }
-                        KDBManagerRelease( kdb_mgr );
+                        default          : rc = KOutMsg( "the given object is not a vdb-database\n" );
+                                           break;
                     }
                 }
             }
@@ -309,7 +438,7 @@ static rc_t report_references( const VDBManager *vdb_mgr, VFSManager * vfs_mgr, 
 }
 
 
-rc_t report_on_reference( Args * args, bool short_report )
+rc_t report_on_reference( Args * args, bool extended )
 {
     uint32_t count;
     rc_t rc = ArgsParamCount( args, &count );
@@ -355,7 +484,7 @@ rc_t report_on_reference( Args * args, bool short_report )
                         else
                         {
                             /* rc value not used, because it can be something that has no references */
-                            report_references( vdb_mgr, vfs_mgr, param, short_report );
+                            report_references( vdb_mgr, vfs_mgr, param, extended );
                         }
                     }
                     VFSManagerRelease ( vfs_mgr );

@@ -28,7 +28,6 @@
 #include "idx-mapping.h"
 #include "ctx.h"
 #include "caps.h"
-#include "except.h"
 #include "status.h"
 #include "mem.h"
 #include "sra-sort.h"
@@ -44,6 +43,7 @@
 #include <endian.h>
 #include <byteswap.h>
 
+#include "except.h"
 
 FILE_ENTRY ( map-file );
 

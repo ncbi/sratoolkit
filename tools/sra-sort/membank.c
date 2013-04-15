@@ -27,6 +27,8 @@
 typedef struct MemBankImpl MemBankImpl;
 #define MEMBANK_IMPL MemBankImpl
 
+#include <sysalloc.h>
+
 #include "caps.h"
 #include "ctx.h"
 #include "mem.h"
@@ -40,7 +42,6 @@ typedef struct MemBankImpl MemBankImpl;
 #include <klib/container.h>
 #include <klib/rc.h>
 #include <atomic.h>
-#include <sysalloc.h>
 
 #include <stdlib.h>
 #include <string.h>

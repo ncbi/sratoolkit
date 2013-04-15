@@ -32,7 +32,6 @@ include $(TOP)/build/Makefile.env
 
 INT_TOOLS = \
 
-
 EXT_TOOLS = \
 	sra-dbcc
 
@@ -99,6 +98,7 @@ SRA_DBCC_LIB = \
 	-lkdb \
 	-lkapp \
 	-lvfs \
+	-lkurl \
 	-lkrypto \
 	-lkfg \
 	-lkfs \

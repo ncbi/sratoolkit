@@ -25,7 +25,7 @@
 
 default: std
 
-TOP ?= $(abspath ../..)
+TOP ?= $(shell ../../build/abspath.sh ../..)
 MODULE = tools/prefetch
 
 include $(TOP)/build/Makefile.env
@@ -97,7 +97,7 @@ PREFETCH_LIB = \
 	-lkapp \
 	-lkdb \
 	-lvfs \
-	-ssrapath \
+	-lkurl \
 	-lkrypto \
 	-lkfg \
 	-lkfs \

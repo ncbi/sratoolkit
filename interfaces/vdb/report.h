@@ -62,7 +62,10 @@ VDB_EXTERN rc_t CC ReportSetVDBManager ( struct VDBManager const *mgr );
 
 
 /* SetDatabase
- *  call it if you work with Database
+ *  To be called after application successfully opened Database
+ *  specified in command line.
+ *  If the application supports multiple objects passed in command line
+ *  to be processed in a loop: should be called for each argument database.
  *
  *  "path" [ IN ] - path to the database that is used to access it
  */
@@ -71,7 +74,10 @@ VDB_EXTERN rc_t CC ReportResetDatabase ( const char *path,
 
 
 /* SetTable
- *  call it if you work with Table
+ *  To be called after application successfully opened Table
+ *  specified in command line.
+ *  If the application supports multiple objects passed in command line
+ *  to be processed in a loop: should be called for each argument table.
  *
  *  "path" [ IN ] - path to the table that is used to access it
  */

@@ -25,6 +25,7 @@
 */
 
 #include "vdb-dump-filter.h"
+#include <klib/text.h>
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -40,7 +41,7 @@ bool vdfi_make_filter( filter **flt, const char *expression )
     (*flt) = malloc( sizeof( flt ) );
     if ( *flt )
     {
-        (*flt)->expression = strdup( expression );
+        (*flt)->expression = string_dup_measure( expression, NULL );
         (*flt)->filter_type = filter_unknown;
         res = true;
     }

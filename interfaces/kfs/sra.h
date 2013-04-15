@@ -55,7 +55,7 @@ extern "C" {
  * just these enumerated values.  
  */
 typedef uint32_t KSRAFileAlignment;
-enum KSRAFileAlignment
+enum eKSRAFileAlignment
 {
     /* align on byte count unit boundaries
      * set this to the number of bytes in the alignment unit
@@ -109,9 +109,6 @@ struct KSraHeader
 
 
 
-KFS_EXTERN rc_t CC SraHeaderMake (KSraHeader ** self, size_t treesize, KSRAFileAlignment alignment);
-KFS_EXTERN rc_t CC SraHeaderValidate (const KSraHeader * self, bool * reverse, uint32_t * version);
-KFS_EXTERN size_t CC SraHeaderSize (const KSraHeader * self);
 #define FS_SRA_CUR_VERSION 1
 
 KFS_EXTERN uint64_t CC SraHeaderGetFileOffset (const KSraHeader * self);

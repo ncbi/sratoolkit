@@ -110,6 +110,7 @@ typedef struct prepare_ctx
     bool use_evidence_alignments;
     void * data;
     rc_t ( CC * on_section ) ( struct prepare_ctx * ctx, uint32_t start, uint32_t end );
+    const char *path;
 } prepare_ctx;
 
 

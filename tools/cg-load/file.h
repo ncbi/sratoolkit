@@ -64,7 +64,12 @@ static __inline__
 rc_t str2buf(const char* str, const size_t len, char* buf, const size_t buf_sz)
 {
     if( buf_sz <= len ) {
-        return RC(rcRuntime, rcString, rcCopying, rcBuffer, rcInsufficient);
+        rc_t rc = RC(rcRuntime, rcString, rcCopying, rcBuffer, rcInsufficient);
+        if (rc != 0) {
+            PLOGERR(klogErr, (klogErr, rc,  "'$(str)': $(sz) <= $(len)",
+                "str=%.*s,sz=%lu,len=%lu", len, str, buf_sz, len));
+        }
+        return rc;
     }
     memcpy(buf, str, len);
     buf[len] = '\0';
@@ -145,7 +150,7 @@ rc_t str2i32(const char* str, const size_t len, int32_t* value)
     int64_t q;
 
     if( (rc = str2signed(str, len, -0x7FFFFFFF - 1, 0x7FFFFFFF, &q)) == 0 ) {
-        *value = q;
+        *value = ( int32_t ) q;
     }
     return rc;
 }
@@ -156,7 +161,7 @@ rc_t str2u32(const char* str, const size_t len, uint32_t* value)
     uint64_t q;
 
     if( (rc = str2unsigned(str, len, 0xFFFFFFFF, &q)) == 0 ) {
-        *value = q;
+        *value = ( uint32_t ) q;
     }
     return rc;
 }
@@ -167,7 +172,7 @@ rc_t str2i16(const char* str, const size_t len, int16_t* value)
     int64_t q;
 
     if( (rc = str2signed(str, len, -0x7FFF - 1, 0x7FFF, &q)) == 0 ) {
-        *value = q;
+        *value = ( int16_t ) q;
     }
     return rc;
 }
@@ -178,7 +183,7 @@ rc_t str2u16(const char* str, const size_t len, uint16_t* value)
     uint64_t q;
 
     if( (rc = str2unsigned(str, len, 0xFFFF, &q)) == 0 ) {
-        *value = q;
+        *value = ( uint16_t ) q;
     }
     return rc;
 }

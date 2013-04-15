@@ -95,6 +95,7 @@ KAR_OBJ = \
 KAR_LIB = \
 	-skapp \
 	-lvfs \
+	-lkurl \
 	-lkfg \
 	-lkrypto \
 	-lkfs \
@@ -124,6 +125,7 @@ SRA_KAR_LIB = \
 	-lvdb \
 	-lkdb \
 	-lvfs \
+	-lkurl \
 	-lkfg \
 	-lkrypto \
 	-lkfs \

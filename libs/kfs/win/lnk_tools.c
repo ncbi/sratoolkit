@@ -23,6 +23,9 @@
 * ===========================================================================
 *
 */
+
+#include <sysalloc.h>
+
 #include <Shlobj.h>
 
 #define LNK_RES_ERROR 0

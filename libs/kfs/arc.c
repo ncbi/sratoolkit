@@ -3548,7 +3548,24 @@ rc_t KDirectoryOpenArcDirRead_intern( const KDirectory * self,
     StringInitCString ( &spath, cpath );
     pathlen = strlen ( cpath );
 
-    if (_archive == NULL)
+    if (_archive != NULL)
+    {
+        switch (baseType)
+        {
+        case tocKFile:
+            rc = KFileAddRef (_archive);
+            break;
+        case tocKDirectory:
+            rc = KDirectoryAddRef (_archive);
+            break;
+        default:
+            /* i dunno */
+            break;
+        }
+        if (rc)
+            return rc;
+    }
+    else
     {
         type = KDirectoryVPathType ( self, cpath, NULL );
         switch ( type & ~kptAlias )

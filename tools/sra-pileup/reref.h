@@ -43,6 +43,6 @@ extern "C" {
 #include <vdb/vdb-priv.h>
 #include <kdb/manager.h>
 
-rc_t report_on_reference( Args * args, bool short_report );
+rc_t report_on_reference( Args * args, bool extended );
 
 #endif

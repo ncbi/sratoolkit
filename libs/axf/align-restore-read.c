@@ -98,8 +98,8 @@ rc_t CC align_restore_read_impl ( void *data, const VXformInfo *info, int64_t ro
         if(has_ref_offset[di] && bi >= 0){ /** bi can only become negative on Bs; skip has_ref_offset if Bs are not exhausted ***/
             if(roi >= ref_offset_len)
                 return RC(rcXF, rcFunction, rcExecuting, rcData, rcInconsistent);
-            rri += ref_offset[roi]; /** can lead to negative rri ***/
-	    bi = ref_offset[roi];
+            memcpy ( & bi, ref_offset + roi, sizeof bi );
+            rri += bi; /** can lead to negative rri ***/                
             roi++;
         }
         if(has_mismatch[di]){

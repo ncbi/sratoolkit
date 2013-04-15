@@ -82,6 +82,11 @@ VDB_EXTERN rc_t CC VDBManagerOpenKDBManagerUpdate ( struct VDBManager *self,
 VDB_EXTERN rc_t CC VDBManagerListExternalSchemaModules ( struct VDBManager const *self,
     struct KNamelist **list );
 
+/* DisablePagemapThread
+ *  this can cause difficulties for some clients
+ */
+VDB_EXTERN rc_t CC VDBManagerDisablePagemapThread ( struct VDBManager const *self );
+
 
 /*--------------------------------------------------------------------------
  * VSchema

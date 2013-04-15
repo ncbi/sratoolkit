@@ -666,6 +666,8 @@ static yyconst flex_int32_t yy_rule_can_match_eol[36] =
 * ===========================================================================
 *
 */
+	#include <sysalloc.h>
+    
 	#include "kfg-parse.h"
 	#include "config-tokens.h"    
 	

@@ -26,6 +26,7 @@
 #include "sam-dump.vers.h"
 
 #include <kapp/main.h>
+#include <vdb/report.h> /* ReportSetVDBManager */
 #include <klib/report.h>
 #include <sysalloc.h>
 
@@ -39,7 +40,8 @@
 #include "sam-unaligned.h"
 
 
-char const *sd_unaligned_usage[]      = { "Output unaligned reads", NULL };
+char const *sd_unaligned_usage[]      = { "Output unaligned reads along with aligned reads",
+                                       NULL };
 
 char const *sd_primaryonly_usage[]    = { "Output only primary alignments",
                                        NULL };
@@ -130,7 +132,7 @@ char const *sd_outbufsize_usage[]     = { "size of output-buffer(dflt:32k, 0...o
 char const *sd_cachereport_usage[]    = { "print report about mate-pair-cache",
                                        NULL };
 
-char const *sd_unaligned_only_usage[] = { "print only unaligned spots",
+char const *sd_unaligned_only_usage[] = { "output reads for spots with no aligned reads",
                                        NULL };
 
 char const *sd_cg_names_usage[]       = { "prints cg-style spotgroup.spotid fromed names",
@@ -140,6 +142,9 @@ char const *sd_cur_cache_usage[]      = { "open cached cursor with this size",
                                        NULL };
 
 char const *sd_min_mapq_usage[]       = { "min. mapq an alignment has to have, to be printed",
+                                       NULL };
+
+char const *sd_no_mate_cache_usage[]  = { "do not use a mate-cache, slower but less memory usage",
                                        NULL };
 
 OptDef SamDumpArgs[] =
@@ -175,12 +180,14 @@ OptDef SamDumpArgs[] =
     { OPT_OUTPUTFILE,   NULL, NULL, sd_outputfile_usage,     0, true,  false },  /* write into output-file */
     { OPT_OUTBUFSIZE,   NULL, NULL, sd_outbufsize_usage,     0, true,  false },  /* size of output-buffer */
     { OPT_CACHEREPORT,  NULL, NULL, sd_cachereport_usage,    0, false, false },  /* report usage of mate-pair-cache */
-    { OPT_UNALIGNED_ONLY,NULL, NULL, sd_unaligned_only_usage, 0, false, false },  /* print only unaligned spots */
+    { OPT_UNALIGNED_ONLY,NULL, NULL, sd_unaligned_only_usage, 0, false, false }, /* print only unaligned spots */
     { OPT_CG_NAMES,     NULL, NULL, sd_cg_names_usage,       0, false, false },  /* print cg-style spotnames */
     { OPT_CURSOR_CACHE, NULL, NULL, sd_cur_cache_usage,      0, true,  false },  /* size of cursor cache */
     { OPT_MIN_MAPQ,     NULL, NULL, sd_min_mapq_usage,       0, true,  false },  /* minimal mapping quality */
+    { OPT_NO_MATE_CACHE,NULL, NULL, sd_no_mate_cache_usage,  0, false, false },  /* do not use mate-cache */
     { OPT_DUMP_MODE,    NULL, NULL, NULL,                    0, true,  false },  /* how to produce aligned reads if no regions given */
-    { OPT_CIGAR_TEST,   NULL, NULL, NULL,                    0, true,  false }   /* test cg-treatment of cigar string */
+    { OPT_CIGAR_TEST,   NULL, NULL, NULL,                    0, true,  false },  /* test cg-treatment of cigar string */
+    { OPT_LEGACY,       NULL, NULL, NULL,                    0, false, false }   /* force legacy code-path */
 };
 
 char const *sd_usage_params[] =
@@ -220,8 +227,10 @@ char const *sd_usage_params[] =
     NULL,                       /* CG-names */
     NULL,                       /* cursor cache */
     NULL,                       /* min_mapq */
+    NULL,                       /* no mate-cache */
     NULL,                       /* dump_mode */
-    NULL                        /* cigar test */
+    NULL,                       /* cigar test */
+    NULL                        /* force legacy code path */
 };
 
 ver_t CC KAppVersion( void )
@@ -286,7 +295,7 @@ static rc_t CC write_to_FILE( void *f, const char *buffer, size_t bytes, size_t 
 /* =========================================================================================== */
 
 
-static uint32_t tabsel_2_ReferenceList_Options( samdump_opts * opts )
+static uint32_t tabsel_2_ReferenceList_Options( const samdump_opts * opts )
 {
     uint32_t res = 0;
     if ( opts->dump_primary_alignments )
@@ -299,7 +308,7 @@ static uint32_t tabsel_2_ReferenceList_Options( samdump_opts * opts )
 }
 
 
-static rc_t print_samdump( samdump_opts * opts )
+static rc_t print_samdump( const samdump_opts * const opts )
 {
     KDirectory *dir;
 
@@ -320,6 +329,7 @@ static rc_t print_samdump( samdump_opts * opts )
         {
             input_files * ifs; /* input_files.h */
             uint32_t reflist_opt = tabsel_2_ReferenceList_Options( opts );
+            ReportSetVDBManager(mgr);
             rc = discover_input_files( &ifs, mgr, opts->input_files, reflist_opt ); /* inputfiles.c */
             if ( rc == 0 )
             {
@@ -330,11 +340,15 @@ static rc_t print_samdump( samdump_opts * opts )
                 }
                 else
                 {
-                    matecache *mc;
+                    matecache * mc = NULL;
 
-                    rc = make_matecache( &mc, ifs->database_count );
+                    if ( opts->use_mate_cache )
+                        rc = make_matecache( &mc, ifs->database_count );
+
                     if ( rc == 0 )
                     {
+                        uint64_t rows_so_far = 0;
+
                         /* print output of header */
                         if ( ( opts->output_format == of_sam )  &&
                              ( ifs->database_count > 0 )        &&
@@ -350,7 +364,7 @@ static rc_t print_samdump( samdump_opts * opts )
                              ifs->database_count > 0 && 
                              !opts->dump_unaligned_only )
                         /* ------------------------------------------------------ */
-                            rc = print_aligned_spots( opts, ifs, mc ); /* sam-aligned.c */
+                            rc = print_aligned_spots( opts, ifs, mc, &rows_so_far ); /* sam-aligned.c */
                         /* ------------------------------------------------------ */
 
 
@@ -358,14 +372,16 @@ static rc_t print_samdump( samdump_opts * opts )
                         if ( rc == 0 )
                         {
                             /* ------------------------------------------------------ */
-                            rc = print_unaligned_spots( opts, ifs, mc ); /* sam-unaligned.c */
+                            rc = print_unaligned_spots( opts, ifs, mc, &rows_so_far ); /* sam-unaligned.c */
                             /* ------------------------------------------------------ */
                         }
 
-                        if ( opts->report_cache )
-                            rc = matecache_report( mc ); /* matecache.c */
-
-                        release_matecache( mc ); /* matecache.c */
+                        if ( opts->use_mate_cache )
+                        {
+                            if ( opts->report_cache )
+                                rc = matecache_report( mc ); /* matecache.c */
+                            release_matecache( mc ); /* matecache.c */
+                        }
                     }
                 }
                 release_input_files( ifs ); /* inputfiles.c */
@@ -378,7 +394,7 @@ static rc_t print_samdump( samdump_opts * opts )
 }
 
 
-static rc_t perform_cigar_test( samdump_opts * opts )
+static rc_t perform_cigar_test( const samdump_opts * const opts )
 {
     rc_t rc;
     cg_cigar_input input;
@@ -387,7 +403,7 @@ static rc_t perform_cigar_test( samdump_opts * opts )
     memset( &input, 0, sizeof input );
     memset( &output, 0, sizeof output );
 
-    input.cigar_len = strlen( opts->cigar_test );
+    input.cigar_len = string_size( opts->cigar_test );
     input.cigar = opts->cigar_test;
 
     rc = make_cg_cigar( &input, &output );
@@ -405,7 +421,7 @@ static rc_t perform_cigar_test( samdump_opts * opts )
 
 /* =========================================================================================== */
 
-static rc_t samdump_main( Args * args, samdump_opts * opts )
+static rc_t samdump_main( Args * args, const samdump_opts * const opts )
 {
     rc_t rc = 0;
     out_redir redir; /* from out_redir.h */
@@ -485,6 +501,7 @@ rc_t CC KMain( int argc, char *argv [] )
                     call_legacy_dumper = (  opts.dump_cg_evidence ||
                                             opts.dump_cg_sam ||
                                             opts.dump_cg_ev_dnb ||
+                                            opts.force_legacy ||
                                             opts.merge_cg_cigar );
                 }
                 if ( !call_legacy_dumper )

@@ -93,6 +93,7 @@ VDB_DECRYPT_OBJ = \
 VDB_DECRYPT_LIB = \
 	-lkapp \
 	-lvfs \
+	-lkurl \
 	-lkrypto \
 	-lkfg \
 	-lkfs \
@@ -117,6 +118,7 @@ VDB_ENCRYPT_OBJ = \
 VDB_ENCRYPT_LIB = \
 	-lkapp \
 	-lvfs \
+	-lkurl \
 	-lkrypto \
 	-lkfg \
 	-lkfs \

@@ -132,6 +132,9 @@ bool vdh_is_path_table( const VDBManager *my_manager, const char *path,
     return res;
 }
 
+
+const char * backback = "/../..";
+
 /********************************************************************
 helper function to test if a given path is a vdb-column
 by testing if the parent/parent dir is a vdb-table
@@ -140,7 +143,7 @@ bool vdh_is_path_column( const VDBManager *my_manager, const char *path,
                          Vector *schema_list )
 {
     bool res = false;
-    size_t path_len = strlen( path );
+    size_t path_len = string_size( path );
     char *pp_path = malloc( path_len + 20 );
     if ( pp_path )
     {
@@ -152,8 +155,8 @@ bool vdh_is_path_column( const VDBManager *my_manager, const char *path,
             DISP_RC( rc, "KDirectoryNativeDir() failed" );
             if ( rc == 0 )
             {
-                strcpy( pp_path, path );
-                strcat( pp_path, "/../.." );
+                string_copy( pp_path, path_len + 20, path, path_len );
+                string_copy( &pp_path[ path_len ], 20, backback, string_size( backback ) );
                 rc = KDirectoryResolvePath( my_directory, true, resolved, 1023, pp_path );
                 if ( rc == 0 )
                     res = vdh_is_path_table( my_manager, resolved, schema_list );
@@ -275,6 +278,8 @@ bool vdh_take_this_table_from_db( dump_context *ctx, const VDatabase *my_databas
 }
 
 
+const char * s_unknown_tab = "unknown table";
+
 static rc_t vdh_print_full_col_info( dump_context *ctx,
                                      const p_col_def col_def,
                                      const VSchema *my_schema )
@@ -285,7 +290,7 @@ static rc_t vdh_print_full_col_info( dump_context *ctx,
     {
         if ( ctx->table == NULL )
         {
-            ctx->table = strdup( "unknown table" ); /* will be free'd when ctx get free'd */
+            ctx->table = string_dup_measure( s_unknown_tab, NULL ); /* will be free'd when ctx get free'd */
         }
 
         if ( ( ctx->table != NULL )&&( col_def->name != NULL ) )

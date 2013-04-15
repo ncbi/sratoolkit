@@ -59,7 +59,7 @@ http://ftp-trace.ncbi.nlm.nih.gov/sra/sra-instant/reads/ByRun/sra/SRR/SRR619/SRR
 #include <vfs/manager.h> /* VFSManager */
 #include <vfs/resolver.h> /* VResolver */
 #include <vfs/path.h> /* VPath */
-#include <kns/kns_mgr.h> /* KNSManager */
+#include <kns/manager.h> /* KNSManager */
 #include <kfg/config.h> /* KConfig */
 #include <kfs/directory.h> /* KDirectory */
 #include <kfs/file.h> /* KFile */
@@ -68,10 +68,10 @@ http://ftp-trace.ncbi.nlm.nih.gov/sra/sra-instant/reads/ByRun/sra/SRR/SRR619/SRR
 #include <klib/out.h> /* KOutMsg */
 #include <klib/text.h> /* String */
 #include <klib/rc.h>
-#include <assert.h>
 #include <ctype.h> /* isprint */
 #include <stdlib.h> /* calloc */
 #include <string.h> /* memset */
+#include <assert.h>
 
 #ifndef PATH_MAX
 #define PATH_MAX 4096
@@ -235,6 +235,8 @@ static bool MainHasTest(const Main *self, Type type) {
 }
 
 static void MainPrint(const Main *self) {
+    return;
+
     assert(self);
 
     if (MainHasTest(self, eCfg)) {
@@ -350,7 +352,7 @@ static rc_t MainPrintConfig(const Main *self) {
     assert(self);
 
     if (rc == 0) {
-        rc = KConfigPrint(self->cfg);
+        rc = KConfigPrint(self->cfg, 0);
         if (rc != 0) {
             OUTMSG(("KConfigPrint() = %R", rc));
         }
@@ -1067,17 +1069,17 @@ static rc_t MainFini(Main *self) {
     return rc;
 }
 
-#define ALIAS_REC  "R"
-#define OPTION_REC "recursive"
-static const char* USAGE_REC[] = { "check object type recursively", NULL };
-
 #define ALIAS_NO_VDB  "N"
 #define OPTION_NO_VDB "no-vdb"
 static const char* USAGE_NO_VDB[] = { "do not call VDBManagerPathType", NULL };
 
+#define ALIAS_REC  "R"
+#define OPTION_REC "recursive"
+static const char* USAGE_REC[] = { "check object type recursively", NULL };
+
 OptDef Options[] = {                             /* needs_value, required */
-    { OPTION_REC   , ALIAS_REC   , NULL, USAGE_REC   , 1, false, false },
-    { OPTION_NO_VDB, ALIAS_NO_VDB, NULL, USAGE_NO_VDB, 1, false, false }
+    { OPTION_NO_VDB, ALIAS_NO_VDB, NULL, USAGE_NO_VDB, 1, false, false },
+    { OPTION_REC   , ALIAS_REC   , NULL, USAGE_REC   , 1, false, false }
 };
 
 rc_t CC KMain(int argc, char *argv[]) {
@@ -1148,6 +1150,7 @@ rc_t CC KMain(int argc, char *argv[]) {
     }
 
     RELEASE(Args, args);
+
     {
         rc_t rc2 = MainFini(&prms);
         if (rc == 0 && rc2 != 0) {

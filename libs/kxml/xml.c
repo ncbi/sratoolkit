@@ -35,6 +35,7 @@ struct s_KNodeNamelist;
 #include <klib/log.h>
 #include <klib/rc.h>
 #include <klib/debug.h>
+#include <klib/text.h>
 
 #include <os-native.h> /* for strndup on mac */
 #include <strtol.h>
@@ -348,6 +349,7 @@ static rc_t KXMLNodeset_cTor(const KXMLDoc *parent,
         return RC ( rcXML, rcDoc, rcConstructing, rcData, rcIncorrect );
     }
     {
+        size_t size;
         KXMLNodeset *obj = (KXMLNodeset*) malloc(sizeof(KXMLNodeset));
         if (!obj) {
             return RC ( rcXML, rcDoc, rcConstructing, rcMemory, rcExhausted );
@@ -365,7 +367,7 @@ static rc_t KXMLNodeset_cTor(const KXMLDoc *parent,
             KXMLNodesetRelease(obj);
             return RC(rcXML, rcDoc, rcConstructing, rcData, rcUnsupported );
         }
-        obj->path = strdup(path);
+        obj->path = string_dup(path, string_measure(path, &size));
         if (!obj->path) {
             KXMLNodesetRelease(obj);
             return RC ( rcXML, rcDoc, rcConstructing, rcMemory, rcExhausted );
@@ -509,12 +511,15 @@ static rc_t s_KXMLNode_cTor(const KXMLNodeset *self,
     obj->path = 0;
     obj->children = children;
     if (children) {
-        /*TODO verify strlen(NULL)*/
         size_t size = 0;
+        size_t path_size;
         if (path)
-        {   size += strlen(path) + 1; }
+        {   size += string_measure(path, &path_size) + 1; }
         if (children->name)
-        {   size += strlen((char*)children->name); }
+        {   
+            size_t sz;
+            size += string_measure((char*)children->name, &sz); 
+        }
         obj->path = (char*)malloc(size + 1);
         if (!obj->path) {
             free(obj);
@@ -522,7 +527,7 @@ static rc_t s_KXMLNode_cTor(const KXMLNodeset *self,
         }
         *obj->path = 0;
         if (path && path[0]) {
-            strcpy(obj->path, path);
+            string_copy(obj->path, size + 1, path, path_size);
             strcat(obj->path, "/");
         }
         strcat(obj->path, (char*)children->name);
@@ -628,7 +633,8 @@ rc_t KXMLNodeVOpenNodesetRead ( const KXMLNode *self,
         if (path[0] == '/')
         { newPath = outpath; }
         else {
-            if ((strlen(self->parent->path) + 1 + strlen(outpath) + 1 + 3)
+            size_t size;
+            if ((string_measure(self->parent->path, &size) + 1 + string_measure(outpath, &size) + 1 + 3)
                 > XPATH_MAX_LEN)
             {
                 /* buffer is too small */
@@ -717,7 +723,8 @@ int s_KXMLNode_readTextNode(const xmlNodePtr firstChild,
     while (node) {
         if (node->type == XML_TEXT_NODE) {
             char* content = (char*) node->content;
-            size_t chunkSz = strlen(content);
+            size_t size;
+            size_t chunkSz = string_measure(content, &size);
             switch (state) {
                 case eNotFound: {
                     if (offset < head + chunkSz) {
@@ -733,7 +740,7 @@ int s_KXMLNode_readTextNode(const xmlNodePtr firstChild,
                         }
                         if (size) {
                             assert(buffer);
-                            strncpy((char*) buffer + copied,
+                            string_copy((char*) buffer + copied, bsize - copied, 
                                 content + chunkOffset, size);
                         }
                         copied += size;
@@ -753,7 +760,7 @@ int s_KXMLNode_readTextNode(const xmlNodePtr firstChild,
                     }
                     if (size) {
                         assert(buffer);
-                        strncpy((char*) buffer + copied,
+                        string_copy((char*) buffer + copied, bsize - copied,
                             content + chunkOffset, size);
                     }
                     copied += size;
@@ -1172,9 +1179,10 @@ rc_t KXMLNodeReadCStr( const KXMLNode *self, char** str, const char* default_val
         *str = NULL;
         if( (rc = KXMLNodeReadCString(self, b, to_read, &nread)) == 0 ) {
             if( nread == 0 && default_value != NULL ) {
-                *str = strdup(default_value);
+                size_t size;
+                *str = string_dup(default_value, string_measure(default_value, &size));
             } else {
-                *str = strndup(b, nread);
+                *str = string_dup(b, nread);
             }
             if( *str == NULL ) {
                 rc = RC(rcXML, rcNode, rcReading, rcMemory, rcInsufficient);
@@ -1329,12 +1337,14 @@ rc_t KXMLNodeReadAttrCStr( const KXMLNode *self, const char *attr, char** str, c
         *str = NULL;
         if( (rc = KXMLNodeReadAttrCString(self, attr, b, to_read, &nread)) == 0 ) {
             if( nread == 0 && default_value != NULL ) {
-                *str = strdup(default_value);
+                size_t size;
+                *str = string_dup(default_value, string_measure(default_value, &size));
             } else {
-                *str = strndup(b, nread);
+                *str = string_dup(b, nread);
             }
         } else if( GetRCState(rc) == rcNotFound && default_value != NULL ) {
-            *str = strdup(default_value);
+            size_t size;
+            *str = string_dup(default_value, string_measure(default_value, &size));
             rc = 0;
         }
         if( rc == 0 && *str == NULL ) {

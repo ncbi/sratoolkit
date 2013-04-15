@@ -29,7 +29,6 @@ struct KCacheTeeFile;
 #define KFILE_IMPL struct KCacheTeeFile
 #include <kfs/impl.h>
 #include <kfs/lockfile.h>
-#include <kfs/cacheteefile.h>
 
 #include <klib/rc.h>
 #include <klib/log.h>
@@ -37,6 +36,8 @@ struct KCacheTeeFile;
 #include <klib/text.h>
 #include <klib/printf.h>
 #include <klib/checksum.h>
+
+#include <kfs/cacheteefile.h>
 
 #include <sysalloc.h>
 #include <stdlib.h>
@@ -241,7 +242,7 @@ static rc_t init_new_local_file( KCacheTeeFile * cf )
 }
 
 
-static rc_t read_block_size( const struct KFile * self, uint64_t local_size, uint32_t *block_size )
+static rc_t read_block_size( const struct KFile * self, uint64_t local_size, uint32_t *block_size, bool silent )
 {
     size_t num_read;
     uint64_t pos = local_size - ( sizeof *block_size );
@@ -249,52 +250,73 @@ static rc_t read_block_size( const struct KFile * self, uint64_t local_size, uin
     rc_t rc =  KFileRead( self, pos, block_size, sizeof *block_size, &num_read );
     if ( rc != 0 )
     {
-        LOGERR( klogErr, rc, "cannot read block-size from local file" );
+        if ( !silent )
+        {
+            LOGERR( klogErr, rc, "cannot read block-size from local file" );
+        }
     }
     else if ( num_read != sizeof *block_size )
     {
         rc = RC ( rcFS, rcFile, rcValidating, rcParam, rcInvalid );
-        LOGERR( klogErr, rc, "cannot read block-size from local file" );
+        if ( !silent )
+        {
+            LOGERR( klogErr, rc, "cannot read block-size from local file" );
+        }
     }
     if ( rc == 0 && *block_size == 0 )
     {
         rc = RC ( rcFS, rcFile, rcValidating, rcParam, rcInvalid );
-        LOGERR( klogErr, rc, "block-size read from local file is zero" );
+        if ( !silent )
+        {
+            LOGERR( klogErr, rc, "block-size read from local file is zero" );
+        }
     }
     return rc;
 }
 
 
-static rc_t read_content_size( const struct KFile * self, uint64_t local_size, uint64_t *content_size )
+static rc_t read_content_size( const struct KFile * self, uint64_t local_size, uint64_t *content_size, bool silent )
 {
     size_t num_read;
     uint64_t pos = ( local_size - 4 ) - sizeof( *content_size );
     rc_t rc =  KFileRead ( self, pos, content_size, sizeof *content_size, &num_read );
     if ( rc != 0 )
     {
-        LOGERR( klogErr, rc, "cannot read content-size from local file" );
+        if ( !silent )
+        {
+            LOGERR( klogErr, rc, "cannot read content-size from local file" );
+        }
     }
     else if ( num_read != sizeof *content_size )
     {
         rc = RC ( rcFS, rcFile, rcValidating, rcParam, rcInvalid );
-        LOGERR( klogErr, rc, "cannot read content-size from local file" );
+        if ( !silent )
+        {
+            LOGERR( klogErr, rc, "cannot read content-size from local file" );
+        }
     }
     if ( rc == 0 && *content_size == 0 )
     {
         rc = RC ( rcFS, rcFile, rcValidating, rcParam, rcInvalid );
-        LOGERR( klogErr, rc, "content-size read from local file is zero" );
+        if ( !silent )
+        {
+            LOGERR( klogErr, rc, "content-size read from local file is zero" );
+        }
     }
     if ( rc == 0 && *content_size >= local_size )
     {
         rc = RC ( rcFS, rcFile, rcValidating, rcParam, rcInvalid );
-        LOGERR( klogErr, rc, "content-size read from local file is invalid" );
+        if ( !silent )
+        {
+            LOGERR( klogErr, rc, "content-size read from local file is invalid" );
+        }
     }
     return rc;
 }
 
 
 static rc_t verify_file_structure( const uint64_t local_size, const uint32_t block_size, const uint64_t content_size,
-                                   uint64_t * block_count, /* size_t */ uint64_t * bitmap_bytes )
+                                   uint64_t * block_count, /* size_t */ uint64_t * bitmap_bytes, bool silent )
 {
     rc_t rc = 0;
     uint64_t expected_size;
@@ -307,22 +329,25 @@ static rc_t verify_file_structure( const uint64_t local_size, const uint32_t blo
     if ( expected_size != local_size )
     {
         rc = RC ( rcFS, rcFile, rcValidating, rcParam, rcInvalid );
-        LOGERR( klogErr, rc, "content-size/blocksize do not make sense for this file" );
+        if ( !silent )
+        {
+            LOGERR( klogErr, rc, "content-size/blocksize do not make sense for this file" );
+        }
     }
     return rc;
 }
 
 
-static rc_t verify_existing_local_file( KCacheTeeFile * cf )
+static rc_t verify_existing_local_file( KCacheTeeFile * cf, bool silent )
 {
     /* size_t */ uint64_t bitmap_bytes;
     uint32_t block_size;
     uint64_t content_size, block_count;
 
-    rc_t rc = read_block_size ( cf -> local, cf -> local_size, &block_size );
+    rc_t rc = read_block_size ( cf -> local, cf -> local_size, &block_size, silent );
     /* read content-size, compare to the content-size of the remote file */
     if ( rc == 0 )
-        rc = read_content_size ( cf -> local, cf -> local_size, &content_size );
+        rc = read_content_size ( cf -> local, cf -> local_size, &content_size, silent );
 
     if ( rc == 0 && content_size != cf -> remote_size )
     {
@@ -333,7 +358,7 @@ static rc_t verify_existing_local_file( KCacheTeeFile * cf )
 
     /* check if the local file has the right size ( content + bitmap + content_size + block_size )*/
     if ( rc == 0 )
-        rc = verify_file_structure ( cf -> local_size, block_size, content_size, &block_count, &bitmap_bytes );
+        rc = verify_file_structure ( cf -> local_size, block_size, content_size, &block_count, &bitmap_bytes, silent );
 
     /* check if the requested block-size equals the stored block-size */
     if ( rc == 0 )
@@ -382,7 +407,7 @@ static rc_t verify_existing_local_file( KCacheTeeFile * cf )
 }
 
 
-LIB_EXPORT rc_t CC IsCacheFileComplete( const struct KFile * self, bool * is_complete )
+LIB_EXPORT rc_t CC IsCacheFileComplete( const struct KFile * self, bool * is_complete, bool silent )
 {
     rc_t rc;
     if ( self == NULL )
@@ -396,22 +421,35 @@ LIB_EXPORT rc_t CC IsCacheFileComplete( const struct KFile * self, bool * is_com
         rc = KFileSize( self, &local_size );
         if ( rc != 0 )
         {
-            LOGERR( klogErr, rc, "cannot detect filesize when checking if cached file is complete" );
+            if ( !silent )
+            {
+                LOGERR( klogErr, rc, "cannot detect filesize when checking if cached file is complete" );
+            }
+        }
+        /* TODO: need to do a better constant tha a magic number */
+        else if (local_size < 13)
+        {
+            rc = RC ( rcFS, rcFile, rcValidating, rcSize, rcInsufficient );
+            if ( !silent )
+            {
+                LOGERR( klogErr, rc, "cannot use filesize of zero when checking if cached file is complete" );
+            }
         }
         else
         {
             uint32_t block_size;
-            rc = read_block_size( self, local_size, &block_size );
+            rc = read_block_size( self, local_size, &block_size, silent );
             if ( rc == 0 )
             {
                 uint64_t content_size;
-                rc = read_content_size( self, local_size, &content_size );
+
+                rc = read_content_size( self, local_size, &content_size, silent );
                 /* create bitmap buffer */
                 if ( rc == 0 )
                 {
                     uint64_t block_count;
                     /* size_t */ uint64_t bitmap_bytes;
-                    rc = verify_file_structure( local_size, block_size, content_size, &block_count, &bitmap_bytes );
+                    rc = verify_file_structure( local_size, block_size, content_size, &block_count, &bitmap_bytes, silent );
                     if ( rc == 0 )
                     {
                         uint8_t * bitmap = NULL;
@@ -423,13 +461,17 @@ LIB_EXPORT rc_t CC IsCacheFileComplete( const struct KFile * self, bool * is_com
                             rc = KFileReadAll ( self, content_size, bitmap, bitmap_bytes, &num_read );
                             if ( rc != 0 )
                             {
-                                LOGERR( klogErr, rc, "cannot read bitmap from local file" );
+                                if ( !silent )
+                                    LOGERR( klogErr, rc, "cannot read bitmap from local file" );
                             }
                             else if ( num_read != bitmap_bytes )
                             {
                                 rc = RC ( rcFS, rcFile, rcConstructing, rcParam, rcInvalid );
-                                PLOGERR( klogErr, ( klogErr, rc, "cannot read $(ls) bitmap-bytes from local file, read $(rs) instead", 
-                                               "ls=%lu,rs=%lu", bitmap_bytes, num_read ));
+                                if ( !silent )
+                                {
+                                    PLOGERR( klogErr, ( klogErr, rc, "cannot read $(ls) bitmap-bytes from local file, read $(rs) instead", 
+                                                        "ls=%lu,rs=%lu", bitmap_bytes, num_read ));
+                                }
                             }
                         }
                         if ( rc == 0 )
@@ -462,16 +504,16 @@ LIB_EXPORT rc_t CC TruncateCacheFile( struct KFile * self )
         else
         {
             uint32_t block_size;
-            rc = read_block_size( self, local_size, &block_size );
+            rc = read_block_size( self, local_size, &block_size, false );
             if ( rc == 0 )
             {
                 uint64_t content_size;
-                rc = read_content_size( self, local_size, &content_size );
+                rc = read_content_size( self, local_size, &content_size, false );
                 if ( rc == 0 )
                 {
                     uint64_t block_count;
                     /* size_t */ uint64_t bitmap_bytes;
-                    rc = verify_file_structure( local_size, block_size, content_size, &block_count, &bitmap_bytes );
+                    rc = verify_file_structure( local_size, block_size, content_size, &block_count, &bitmap_bytes, false );
 
                     /* truncate the file by setting the new (shorter) filesize */
                     if ( rc == 0 )
@@ -542,7 +584,7 @@ static rc_t CC KCacheTeeFileDestroy( KCacheTeeFile *self )
 
     if ( !self -> local_read_only && self -> lock != NULL )
     {
-        rc_t rc = IsCacheFileComplete ( self -> local, &self -> fully_in_cache );
+        rc_t rc = IsCacheFileComplete ( self -> local, &self -> fully_in_cache, false );
         if ( rc == 0 && self -> fully_in_cache )
         {
             if ( self->report )
@@ -701,7 +743,7 @@ static rc_t rd_remote_wr_local( const KCacheTeeFile *cself, uint64_t pos,
     return rc;
 }
 
-
+#if 0
 static rc_t KCacheTeeFileRead_Starting_with_Cache_Hit( const KCacheTeeFile *cself, uint64_t pos,
                                void *buffer, size_t bsize, size_t *num_read, uint64_t first_requested_block )
 {
@@ -738,8 +780,9 @@ static rc_t KCacheTeeFileRead_Starting_with_Cache_Hit( const KCacheTeeFile *csel
 
     return rc;
 }
+#endif
 
-
+#if 0
 static rc_t KCacheTeeFileRead_Block_Aligned_Cache_Miss( const KCacheTeeFile *cself, uint64_t pos,
                                void *buffer, size_t bsize, size_t *num_read, uint64_t first_requested_block )
 {
@@ -772,8 +815,9 @@ static rc_t KCacheTeeFileRead_Block_Aligned_Cache_Miss( const KCacheTeeFile *cse
     }
     return rc;
 }
+#endif
 
-
+#if 0
 static rc_t KCacheTeeFileRead_Starting_with_Cache_Miss_small( const KCacheTeeFile *cself, uint64_t pos,
                                void *buffer, size_t bsize, size_t to_read, size_t *num_read,
                                uint64_t first_requested_block, uint64_t last_cache_miss_block )
@@ -816,7 +860,9 @@ static rc_t KCacheTeeFileRead_Starting_with_Cache_Miss_small( const KCacheTeeFil
     }
     return rc;
 }
+#endif
 
+#if 0
 static rc_t KCacheTeeFileRead_Starting_with_Cache_Miss_large( const KCacheTeeFile *cself, uint64_t pos,
                                void *buffer, size_t bsize, size_t to_read, size_t *num_read,
                                uint64_t first_requested_block, uint64_t last_cache_miss_block )
@@ -873,15 +919,15 @@ static rc_t KCacheTeeFileRead_Starting_with_Cache_Miss_large( const KCacheTeeFil
     }
     return rc;
 }
+#endif
 
-
+#if 0
 static rc_t KCacheTeeFileRead_Starting_with_Cache_Miss( const KCacheTeeFile *cself, uint64_t pos,
                                void *buffer, size_t bsize, size_t *num_read, uint64_t first_requested_block )
 {
     rc_t rc = 0;
     size_t to_read = check_rd_len( cself, pos, bsize );
     uint64_t end_pos = pos + to_read;
-/*    uint64_t last_requested_block = SIZE_2_BLOCK_COUNT( end_pos, cself->block_size ); */
     uint64_t last_requested_block = ( end_pos / cself->block_size );
     uint64_t last_cache_miss_block = first_requested_block;
 
@@ -923,8 +969,9 @@ static rc_t KCacheTeeFileRead_Starting_with_Cache_Miss( const KCacheTeeFile *cse
     }
     return rc;
 }
+#endif
 
-
+#if 0
 static rc_t KCacheTeeFileRead_clustered( const KCacheTeeFile *cself, uint64_t pos,
                                          void *buffer, size_t bsize, size_t *num_read )
 {
@@ -938,8 +985,7 @@ static rc_t KCacheTeeFileRead_clustered( const KCacheTeeFile *cself, uint64_t po
     if ( cself->report )
         OUTMSG(( "\nREQUEST: %,lu .[ %,lu ] ( first_requested_block=%,lu )\n", pos, bsize, first_requested_block ));
 
-    /* "clustered" strategy */
-    if ( IS_CACHE_BIT( cself, first_requested_block ) )
+     if ( IS_CACHE_BIT( cself, first_requested_block ) )
     {
         rc = KCacheTeeFileRead_Starting_with_Cache_Hit( cself, pos, buffer, bsize, &l_num_read, first_requested_block );
     }
@@ -958,7 +1004,7 @@ static rc_t KCacheTeeFileRead_clustered( const KCacheTeeFile *cself, uint64_t po
     }
     return rc;
 }
-
+#endif
 
 static uint64_t calc_req_blocks( uint64_t pos, uint64_t first_req_block, size_t bsize, uint32_t block_size )
 {
@@ -1094,11 +1140,17 @@ static rc_t KCacheTeeFileRead_simple_not_cached( const KCacheTeeFile *cself, uin
 
             /* how much we can copy depends on how much was not in cache,
                and how much was requested in the first place... */
-            l_num_read -= offset;
-            if ( l_num_read > bsize )
-                l_num_read = bsize;
-
-            memmove ( buffer, &( cself->scratch_buffer[ offset ] ), l_num_read );
+            if ( l_num_read >= offset )
+            {
+                l_num_read -= offset;
+                if ( l_num_read > bsize )
+                    l_num_read = bsize;
+                memmove ( buffer, &( cself->scratch_buffer[ offset ] ), l_num_read );
+            }
+            else
+            {
+                l_num_read = 0;
+            }
             *num_read = l_num_read;
         }
     }
@@ -1215,13 +1267,13 @@ static rc_t make_cache_tee( struct KDirectory *self, struct KFile const **tee,
 {
     rc_t rc;
     size_t path_size = string_size ( path );
-    KCacheTeeFile * cf = malloc ( sizeof * cf + path_size );
+    KCacheTeeFile * cf = malloc ( sizeof * cf + path_size + 1 );
     if ( cf == NULL )
         rc = RC ( rcFS, rcFile, rcConstructing, rcMemory, rcExhausted );
     else
     {
         cf -> dir = self;
-        strcpy ( cf -> local_path, path );
+        string_copy( cf -> local_path, path_size + 1, path, path_size );
         cf -> remote = remote;     /* store the file-objects but no AddRef()'s yet! */
         cf -> local  = local;
         cf -> logger = logger;
@@ -1276,7 +1328,7 @@ static rc_t make_cache_tee( struct KDirectory *self, struct KFile const **tee,
                     }
                 }
                 else
-                    rc = verify_existing_local_file( cf );
+                    rc = verify_existing_local_file( cf, false );
             }
 
             if ( rc == 0 && cf -> fully_in_cache && ! cf -> local_read_only && cf -> lock != NULL )
@@ -1522,17 +1574,17 @@ LIB_EXPORT rc_t CC GetCacheCompleteness( const struct KFile * self, float * perc
         else
         {
             uint32_t block_size;
-            rc = read_block_size( self, local_size, &block_size );
+            rc = read_block_size( self, local_size, &block_size, false );
             if ( rc == 0 )
             {
                 uint64_t content_size;
-                rc = read_content_size( self, local_size, &content_size );
+                rc = read_content_size( self, local_size, &content_size, false );
                 /* create bitmap buffer */
                 if ( rc == 0 )
                 {
                     uint64_t block_count;
-                    size_t bitmap_bytes;
-                    rc = verify_file_structure( local_size, block_size, content_size, &block_count, &bitmap_bytes );
+                    /* size_t */ uint64_t bitmap_bytes;
+                    rc = verify_file_structure( local_size, block_size, content_size, &block_count, &bitmap_bytes, false );
                     if ( rc == 0 )
                     {
                         uint8_t * bitmap = NULL;
@@ -1579,3 +1631,59 @@ LIB_EXPORT rc_t CC GetCacheCompleteness( const struct KFile * self, float * perc
     return rc;
 }
 
+
+/* -----
+ * examens the file, and reports the size of the original file ( without the cachefile-footer )
+ *
+ */
+LIB_EXPORT rc_t CC GetCacheTruncatedSize( const struct KFile * self, uint64_t * truncated_size, bool silent )
+{
+    rc_t rc;
+    if ( self == NULL )
+        rc = RC( rcFS, rcFile, rcValidating, rcSelf, rcNull );
+    else if ( truncated_size == NULL )
+        rc = RC( rcFS, rcFile, rcValidating, rcParam, rcNull );
+    else
+    {
+        uint64_t local_size;
+        *truncated_size = 0;
+        rc = KFileSize( self, &local_size );
+        if ( rc != 0 )
+        {
+            if ( !silent )
+            {
+                LOGERR( klogErr, rc, "cannot detect filesize when checking if cached file is complete" );
+            }
+        }
+        /* TODO: need to do a better constant tha a magic number */
+        else if (local_size < 13)
+        {
+            rc = RC ( rcFS, rcFile, rcValidating, rcSize, rcInsufficient );
+            if ( !silent )
+            {
+                LOGERR( klogErr, rc, "cannot use filesize of zero when checking if cached file is complete" );
+            }
+        }
+        else
+        {
+            uint32_t block_size;
+            rc = read_block_size( self, local_size, &block_size, true );
+            if ( rc == 0 )
+            {
+                uint64_t content_size;
+                rc = read_content_size( self, local_size, &content_size, true );
+                if ( rc == 0 )
+                {
+                    uint64_t block_count;
+                    /* size_t */ uint64_t bitmap_bytes;
+                    rc = verify_file_structure( local_size, block_size, content_size, &block_count, &bitmap_bytes, true );
+                    if ( rc == 0 )
+                    {
+                        *truncated_size = content_size;
+                    }
+                }
+            }
+        }
+    }
+    return rc;
+}

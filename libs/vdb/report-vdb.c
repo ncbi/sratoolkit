@@ -104,7 +104,8 @@ static rc_t CC ReportRelease ( void )
     return rc;
 }
 
-static rc_t CC ReportObj ( const ReportFuncs *f, uint32_t indent, const char *path );
+static rc_t CC ReportObj(const ReportFuncs *f, uint32_t indent,
+    const char *path, bool *wasDbOrTableSet);
 static rc_t CC ReportSOFTWARE ( const ReportFuncs *f, uint32_t indent, const char *argv_0, const char *date, ver_t tool_ver );
 
 static rc_t ReportGet(Report** self)
@@ -435,7 +436,9 @@ static rc_t ReportDir(const ReportFuncs *f, uint32_t indent, const KTable* tbl) 
     OBJ_P_OPEN(indent, 5, path, type, file_type), "size", 'l', size, \
                                                   "alias", 's', "true")
 
-static rc_t CC ReportObj(const ReportFuncs *f, uint32_t indent, const char *object) {
+static rc_t CC ReportObj(const ReportFuncs *f, uint32_t indent,
+    const char *object, bool *wasDbOrTableSet)
+{
     Report* self = NULL;
     const char* fullpath = NULL;
     const KDatabase* kdb = NULL;
@@ -450,12 +453,16 @@ static rc_t CC ReportObj(const ReportFuncs *f, uint32_t indent, const char *obje
     rc_t rc = ReportGet(&self);
     assert(self);
 
-    if (self->db) {
+    if (wasDbOrTableSet != NULL) {
+        *wasDbOrTableSet = self->db != NULL || self->table != NULL;
+        return 0;
+    }
+
+    if (self->db != NULL) {
         type = kptDatabase;
         db = self->db;
     }
-    else if (self->table)
-    {
+    else if (self->table != NULL) {
         rc_t rc2 = VTableOpenParentRead(self->table, &db);
         if (rc2)
         {
@@ -776,8 +783,7 @@ static rc_t CC ReportSOFTWARE(const ReportFuncs *f, uint32_t indent, const char 
 /* SetVDBManager
  *  remember the manager in use
  */
-LIB_EXPORT rc_t CC ReportSetVDBManager ( const VDBManager *mgr )
-{
+LIB_EXPORT rc_t CC ReportSetVDBManager(const VDBManager *mgr) {
     rc_t rc = 0;
 
     Report* self = NULL;

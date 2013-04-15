@@ -117,7 +117,8 @@ LIB_EXPORT const char ** CC KLogGetParamStrings ( void )
 LIB_EXPORT rc_t CC KLogLevelExplain ( KLogLevel lvl, char *buffer, size_t bsize, size_t *num_writ )
 {
     static const char undefined[] = "undefined";
-    size_t len;
+    size_t size;
+    uint32_t len;
     const char *t;
 
     /* catch unaccounted for or bad changes in log.h
@@ -138,7 +139,7 @@ LIB_EXPORT rc_t CC KLogLevelExplain ( KLogLevel lvl, char *buffer, size_t bsize,
         t = logLevelParamStrings[lvl];
     }
 
-    len = strlen (t);
+    len = string_measure (t, &size);
     if(len > bsize) {
         if (num_writ) {
             *num_writ = 0;
@@ -146,9 +147,9 @@ LIB_EXPORT rc_t CC KLogLevelExplain ( KLogLevel lvl, char *buffer, size_t bsize,
         return RC ( rcRuntime, rcLog, rcLogging, rcBuffer, rcInsufficient );
     }
     if(num_writ) {
-        *num_writ = strlen (t);
+        *num_writ = len;
     }
-    strncpy (buffer, t, bsize);
+    string_copy (buffer, bsize, t, len);
     return 0;
 }
 
@@ -157,7 +158,7 @@ rc_t CC KLogDefaultFormatter( void* self, KWrtHandler* writer,
                               size_t envc, const wrt_nvp_t envs[] )
 {
     rc_t rc = 0;
-    size_t num_writ, nsize;
+    size_t num_writ, nsize, msize;
     uint32_t mlen;
     char buffer[8192], *nbuffer;
     const char* msg, *rc_msg;
@@ -169,7 +170,7 @@ rc_t CC KLogDefaultFormatter( void* self, KWrtHandler* writer,
     msg = wrt_nvp_find_value(envc, envs, "message");
     rc_msg = wrt_nvp_find_value(envc, envs, "reason");
     if( msg != NULL ) {
-        const char* mend = msg + strlen(msg);
+        const char* mend = msg + string_measure(msg, &msize);
         /* strip trailing newlines */
         while( mend != msg && (*mend == '\n' || *mend == '\r') ) {
             --mend;
@@ -338,6 +339,7 @@ rc_t logsubstituteparams ( const char* msg, uint32_t argc, const wrt_nvp_t argv[
         if ( msg [ i ] == '$' && msg [ i + 1 ] == '(' )
         {
             const char *value;
+            size_t size;
 
             /* find param by name */
             const wrt_nvp_t *arg = wrt_nvp_find(argc, argv, &msg[ i + 2 ]);
@@ -357,7 +359,7 @@ rc_t logsubstituteparams ( const char* msg, uint32_t argc, const wrt_nvp_t argv[
             /* compensate for outer loop's increment */
             --sz;
             /* advance past param token */
-            i += strlen(arg->name) + 2;
+            i += string_measure(arg->name, &size) + 2;
             assert( msg[i] == ')' );
         }
     }

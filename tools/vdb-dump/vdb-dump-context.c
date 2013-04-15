@@ -60,7 +60,7 @@ static rc_t vdco_set_str( char **dst, const char *src )
     {
         return RC( rcVDB, rcNoTarg, rcWriting, rcParam, rcNull );
     }
-    len = strlen( src );
+    len = string_size( src );
     if ( len == 0 )
     {
         return RC( rcVDB, rcNoTarg, rcWriting, rcItem, rcEmpty );
@@ -70,7 +70,7 @@ static rc_t vdco_set_str( char **dst, const char *src )
     {
         return RC( rcVDB, rcNoTarg, rcWriting, rcMemory, rcExhausted );
     }
-    strcpy( *dst, src );
+    string_copy( *dst, len+1, src, len );
     return 0;
 }
 

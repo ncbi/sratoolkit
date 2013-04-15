@@ -48,12 +48,13 @@ typedef struct num_gen_node
 } num_gen_node;
 typedef num_gen_node* p_num_gen_node;
 
+
 typedef struct num_gen
 {
     Vector nodes;
     uint32_t node_count;
     uint64_t curr_node;
-    uint32_t curr_node_sub_pos;
+    uint64_t curr_node_sub_pos;
 } num_gen;
 
 rc_t vdn_make( num_gen** generator );

@@ -155,7 +155,8 @@ void bitcpy ( void *dbase, bitsz_t doff, const void *sbase, bitsz_t soff, bitsz_
                 for ( acc <<= WRDSIZE, i = 0; i < scountz; acc <<= WRDSIZE )
                 {
                     dst [ i ] = BSWAP ( reg );
-                    acc |= BSWAP ( src [ ++ i ] );
+                    ++ i;
+                    acc |= BSWAP ( src [ i ] );
                     reg = ( WRD ) ( acc >> shift );
                 }
 

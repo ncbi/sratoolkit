@@ -83,7 +83,10 @@ KLIB_EXTERN rc_t CC ReportFinalize ( rc_t rc );
 
 
 /* ResetObject
- *  what do I do?
+ *  Resets the name of the current object beeing processes(path or accession),
+ *  usually from command line.
+ *  Should be called each time
+ *  when starting next command line argument processing.
  */
 KLIB_EXTERN rc_t CC ReportResetObject ( const char *path );
 

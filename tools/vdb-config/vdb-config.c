@@ -48,11 +48,12 @@
 
 #include <assert.h>
 #include <errno.h>
-#include <limits.h> /* PATH_MAX */
 #include <stdio.h> /* scanf */
 #include <stdlib.h> /* getenv */
 #include <string.h> /* memset */
 /* #include <unistd.h> access */
+
+#include <limits.h> /* PATH_MAX */
 
 #ifndef PATH_MAX
 #define PATH_MAX 4096
@@ -85,6 +86,10 @@ static const char* USAGE_ENV[] = { "print shell variables", NULL };
 #define OPTION_FIL   "files"
 static const char* USAGE_FIL[] = { "print loaded files", NULL };
 
+#define ALIAS_IMP    NULL
+#define OPTION_IMP   "import"
+static const char* USAGE_IMP[] = { "import ngc file", NULL };
+
 #define ALIAS_MOD    "m"
 #define OPTION_MOD   "modules"
 static const char* USAGE_MOD[] = { "print external modules", NULL };
@@ -109,6 +114,7 @@ OptDef Options[] =
     , { OPTION_DIR, ALIAS_DIR, NULL, USAGE_DIR, 1, false, false }
     , { OPTION_ENV, ALIAS_ENV, NULL, USAGE_ENV, 1, false, false }
     , { OPTION_FIL, ALIAS_FIL, NULL, USAGE_FIL, 1, false, false }
+    , { OPTION_IMP, ALIAS_IMP, NULL, USAGE_IMP, 1, true , false }
     , { OPTION_MOD, ALIAS_MOD, NULL, USAGE_MOD, 1, false, false }
     , { OPTION_NEW, ALIAS_NEW, NULL, USAGE_NEW, 1, false, false }
     , { OPTION_OUT, ALIAS_OUT, NULL, USAGE_OUT, 1, true , false }
@@ -148,6 +154,8 @@ rc_t CC Usage(const Args* args) {
     HelpOptionLine (ALIAS_MOD, OPTION_MOD, NULL, USAGE_MOD);
     KOutMsg ("\n");
     HelpOptionLine (ALIAS_SET, OPTION_SET, "name=value", USAGE_SET);
+    KOutMsg ("\n");
+    HelpOptionLine (ALIAS_IMP, OPTION_IMP, "ngc-file", USAGE_IMP);
     KOutMsg ("\n");
     HelpOptionLine (ALIAS_OUT, OPTION_OUT, "x | n", USAGE_OUT);
 
@@ -272,6 +280,8 @@ typedef struct Params {
 
     const char* setValue;
 
+    const char* ngc;
+
     bool modeSetNode;
     bool modeCreate;
     bool modeShowCfg;
@@ -363,6 +373,19 @@ static rc_t ParamsConstruct(int argc, char* argv[], Params* prm) {
             ++count;
         }
 
+        rc = ArgsOptionCount(args, OPTION_IMP, &pcount);
+        if (rc) {
+            LOGERR(klogErr, rc, "Failure to get '" OPTION_IMP "' argument");
+            break;
+        }
+        if (pcount) {
+            rc = ArgsOptionValue(args, OPTION_IMP, 0, &prm->ngc);
+            if (rc) {
+                LOGERR(klogErr, rc, "Failure to get '" OPTION_IMP "' argument");
+                break;
+            }
+        }
+
         rc = ArgsOptionCount(args, OPTION_MOD, &pcount);
         if (rc) {
             LOGERR(klogErr, rc, "Failure to get '" OPTION_MOD "' argument");
@@ -426,7 +449,7 @@ static rc_t ParamsConstruct(int argc, char* argv[], Params* prm) {
             || ( !prm->modeShowCfg && ! prm->modeShowLoadPath
               && !prm->modeShowEnv && !prm->modeShowFiles
               && !prm->modeShowModules && !prm->modeCreate
-              && !prm->modeSetNode ))
+              && !prm->modeSetNode && !prm->ngc))
             /* show all by default */
         {
             prm->modeShowCfg = prm->modeShowEnv = prm->modeShowFiles = true;
@@ -1117,8 +1140,9 @@ rc_t CC KMain(int argc, char* argv[]) {
     Params prm;
     KConfig* cfg = NULL;
 
-    if (rc == 0)
-    {   rc = ParamsConstruct(argc, argv, &prm); }
+    if (rc == 0) {
+        rc = ParamsConstruct(argc, argv, &prm);
+    }
 
     if (rc == 0) {
         rc = KConfigMake(&cfg, NULL);
@@ -1126,29 +1150,50 @@ rc_t CC KMain(int argc, char* argv[]) {
     }
 
     if (rc == 0) {
-        if (prm.modeSetNode)
-        {   rc = SetNode(cfg, &prm); }
-        if (prm.modeShowCfg)
-        {   rc = ShowConfig(cfg, &prm); }
+        if (prm.ngc) {
+            rc = KConfigImportNgc(cfg, prm.ngc, NULL);
+            if (rc == 0) {
+                rc = KConfigCommit(cfg);
+            }
+            if (rc == 0) {
+                OUTMSG(("%s was imported\n", prm.ngc));
+            }
+        }
+        else if (prm.modeSetNode) {
+            rc_t rc3 = SetNode(cfg, &prm);
+            if (rc3 != 0 && rc == 0) {
+                rc = rc3;
+            }
+        }
+        if (prm.modeShowCfg) {
+            rc_t rc3 = ShowConfig(cfg, &prm);
+            if (rc3 != 0 && rc == 0) {
+                rc = rc3;
+            }
+        }
         if (prm.modeShowFiles) {
             rc_t rc3 = ShowFiles(cfg, &prm);
-            if (rc3 != 0 && rc == 0)
-            {   rc = rc3; }
+            if (rc3 != 0 && rc == 0) {
+                rc = rc3;
+            }
         }
         if (prm.modeShowModules) {
             rc_t rc3 = ShowModules(cfg, &prm);
-            if (rc3 != 0 && rc == 0)
-            {   rc = rc3; }
+            if (rc3 != 0 && rc == 0) {
+                rc = rc3;
+            }
         }
         if (prm.modeShowLoadPath) {
             const char* path = NULL;
             rc_t rc3 = KConfigGetLoadPath(cfg, &path);
             if (rc3 == 0) {
-                if (path != NULL && path[0])
-                {   OUTMSG(("%s\n", path)); }
+                if (path != NULL && path[0]) {
+                    OUTMSG(("%s\n", path));
+                }
             }
-            else if (rc == 0)
-            {   rc = rc3; }
+            else if (rc == 0) {
+                rc = rc3;
+            }
         }
     }
 

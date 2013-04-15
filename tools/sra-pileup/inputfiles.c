@@ -280,43 +280,7 @@ static rc_t is_unknown( input_files *self, const char * path )
     return rc;
 }
 
-/*
-static rc_t discover_type_of_path( const KDBManager * kmgr, VFSManager * vmgr, const char *spec, int * path_type )
-{
-    rc_t rc;
-    VPath * path = NULL;
-    const VPath * local_cache = NULL;
-    const KFile * remote_file = NULL;
 
-    *path_type = 0;
-    rc = VFSManagerResolveSpec ( vmgr, spec, &path, &remote_file, &local_cache, true );
-    if ( rc != 0 )
-    {
-        (void)LOGERR( klogErr, rc, "cannot resolve spec via VFSManager" );
-    }
-    else
-    {
-        const String *uri;
-        rc = VPathMakeString ( path, &uri );
-        if ( rc != 0 )
-        {
-            (void)LOGERR( klogErr, rc, "cannot read path from vpath" );
-        }
-        else
-        {
-            *path_type = ( KDBManagerPathType( kmgr, uri->addr ) & ~ kptAlias );
-            free( ( void * )uri );
-        }
-        KFileRelease( remote_file );
-        VPathRelease ( local_cache );
-        VPathRelease ( path );
-    }
-    return rc;
-}
-*/
-
-/* the use of KDBManager/ KDBManagerPathType() has to be replace with VDBManagerPathType
-   as soon as VDBManagerPathType() is working */
 static rc_t split_input_files( input_files *self, const VDBManager *mgr,
                                const VNamelist * src, uint32_t reflist_options )
 {
@@ -341,66 +305,16 @@ static rc_t split_input_files( input_files *self, const VDBManager *mgr,
                     switch( path_type )
                     {
                         case kptDatabase : rc = open_database( self, mgr, path, reflist_options, true ); break;
+
+                        case kptPrereleaseTbl :
                         case kptTable    : rc = open_table( self, mgr, path, true ); break;
+
                         default          : rc = is_unknown( self, path ); break;
                     }
                 }
             }
         }
     }
-
-/*
-    const KDBManager * kmgr;
-    rc_t rc = VDBManagerOpenKDBManagerRead( mgr, &kmgr );
-    if ( rc != 0 )
-    {
-        (void)LOGERR( klogErr, rc, "cannot get kdb-manager from vdb-manager" );
-    }
-    else
-    {
-        VFSManager * vmgr;
-        uint32_t src_count;
-
-        rc =  VFSManagerMake ( &vmgr );
-        if ( rc != 0 )
-        {
-            (void)LOGERR( klogErr, rc, "cannot make vfs-manager" );
-        }
-        else
-        {
-            rc = VNameListCount( src, &src_count );
-            if ( rc != 0 )
-            {
-                (void)LOGERR( klogErr, rc, "VNameListCount failed" );
-            }
-            else
-            {
-                uint32_t src_idx;
-                for ( src_idx = 0; src_idx < src_count && rc == 0 ; ++src_idx )
-                {
-                    const char * path;
-                    rc = VNameListGet( src, src_idx, &path );
-                    if ( rc == 0 && path != NULL )
-                    {
-                        int path_type;
-                        rc = discover_type_of_path( kmgr, vmgr, path, &path_type );
-                        if ( rc == 0 )
-                        {
-                            switch( path_type )
-                            {
-                                case kptDatabase : rc = open_database( self, mgr, path, reflist_options, true ); break;
-                                case kptTable    : rc = open_table( self, mgr, path, true ); break;
-                                default          : rc = is_unknown( self, path ); break;
-                            }
-                        }
-                    }
-                }
-            }
-            VFSManagerRelease ( vmgr );
-        }
-        KDBManagerRelease( kmgr );
-    }
-*/
     return rc;
 }
 

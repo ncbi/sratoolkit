@@ -43,10 +43,6 @@ extern "C" {
 #include <klib/rc.h>
 #endif
 
-#define DISP_RC(rc,err) (void)((rc == 0) ? 0 : LOGERR( klogInt, rc, err ))
-
-#define DISP_RC2(rc,err,succ) \
-    (void)((rc != 0)? 0 : (succ) ? LOGMSG( klogInfo, succ ) : LOGERR( klogInt, rc, err ))
 
 #define DEFAULT_SCHEMA "align/refseq.vschema"
 #define ENTREZ_URL "http://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=nucleotide&rettype=fasta&id="

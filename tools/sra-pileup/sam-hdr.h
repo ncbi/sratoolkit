@@ -36,6 +36,6 @@ extern "C" {
 #include "sam-dump-opts.h"
 #include "inputfiles.h"
 
-rc_t print_headers( samdump_opts * opts, input_files * ifs );
+rc_t print_headers( const samdump_opts * opts, input_files * ifs );
 
 #endif

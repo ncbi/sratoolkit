@@ -30,7 +30,7 @@
 
 #include <vfs/manager.h>
 #include <vfs/path.h>
-#include <kns/kns_mgr.h>
+#include <kns/manager.h>
 #include <kns/curl-file.h>
 #include <kns/KCurlRequest.h>
 #include <kfs/file.h>
@@ -43,6 +43,7 @@
 #include <klib/namelist.h>
 #include <klib/printf.h>
 #include <klib/data-buffer.h>
+#include <klib/log.h>
 #include <klib/rc.h>
 #include <sysalloc.h>
 
@@ -197,18 +198,23 @@ static
 rc_t VResolverAlgMake ( VResolverAlg **algp, const String *root,
      VResolverAppID app_id, VResolverAlgID alg_id, bool protected, bool disabled )
 {
+    rc_t rc;
     VResolverAlg *alg = calloc ( 1, sizeof * alg );
     if ( alg == NULL )
-        return RC ( rcVFS, rcMgr, rcConstructing, rcMemory, rcExhausted );
-    VectorInit ( & alg -> vols, 0, 8 );
-    alg -> root = root;
-    alg -> app_id = app_id;
-    alg -> alg_id = alg_id;
-    alg -> protected = protected;
-    alg -> disabled = disabled;
+        rc = RC ( rcVFS, rcMgr, rcConstructing, rcMemory, rcExhausted );
+    else
+    {
+        VectorInit ( & alg -> vols, 0, 8 );
+        alg -> root = root;
+        alg -> app_id = app_id;
+        alg -> alg_id = alg_id;
+        alg -> protected = protected;
+        alg -> disabled = disabled;
+        rc = 0;
+    }
 
     * algp = alg;
-    return 0;
+    return rc;
 }
 
 /* MakeeLocalWGSRefseqURI
@@ -441,8 +447,10 @@ rc_t VResolverAlgLocalResolve ( const VResolverAlg *self,
  *  <accession>|<download-ticket>|<url>|<result-code>|<message>
  */
 static
-rc_t VResolverAlgParseResolverCGIResponse_1_0 ( const char *start, size_t size, const VPath ** path )
+rc_t VResolverAlgParseResolverCGIResponse_1_0 ( const char *start, size_t size, const VPath ** path, const String *acc )
 {
+    rc_t rc;
+    KLogLevel lvl;
     uint32_t result_code;
     const char *url_start, *url_end;
     const char *ticket_start, *ticket_end;
@@ -494,23 +502,91 @@ rc_t VResolverAlgParseResolverCGIResponse_1_0 ( const char *start, size_t size, 
         -- sep;
     }
 
-    switch ( result_code )
+    switch ( result_code / 100 )
     {
-    case 200:
-        /* detect protected response */
-        if ( ticket_end > ticket_start )
+    case 1:
+        /* informational response
+           not much we can do here */
+        lvl = klogInt;
+        rc = RC ( rcVFS, rcResolver, rcResolving, rcError, rcUnexpected );
+        break;
+
+    case 2:
+        /* successful response
+           but can only handle 200 */
+        if ( result_code == 200 )
         {
-            return VPathMakeFmt ( ( VPath** ) path, "%.*s?tic=%.*s"
-                , ( uint32_t ) ( url_end - url_start ), url_start
-                , ( uint32_t ) ( ticket_end - ticket_start ), ticket_start
-            );
+            /* detect protected response */
+            if ( ticket_end > ticket_start )
+            {
+                return VPathMakeFmt ( ( VPath** ) path, "%.*s?tic=%.*s"
+                    , ( uint32_t ) ( url_end - url_start ), url_start
+                    , ( uint32_t ) ( ticket_end - ticket_start ), ticket_start
+                );
+            }
+            
+            /* normal public response */
+            return VPathMakeFmt ( ( VPath** ) path, "%.*s", ( uint32_t ) ( url_end - url_start ), url_start );
         }
 
-        /* normal public response */
-        return VPathMakeFmt ( ( VPath** ) path, "%.*s", ( uint32_t ) ( url_end - url_start ), url_start );
+        lvl = klogInt;
+        rc = RC ( rcVFS, rcResolver, rcResolving, rcError, rcUnexpected );
+        break;
+
+    case 3:
+        /* redirection
+           currently this is being handled by our request object */
+        lvl = klogInt;
+        rc = RC ( rcVFS, rcResolver, rcResolving, rcError, rcUnexpected );
+        break;
+
+    case 4:
+        /* client error */
+        lvl = klogErr;
+        switch ( result_code )
+        {
+        case 400:
+            rc = RC ( rcVFS, rcResolver, rcResolving, rcMessage, rcInvalid );
+            break;
+        case 401:
+        case 403:
+            rc = RC ( rcVFS, rcResolver, rcResolving, rcQuery, rcUnauthorized );
+            break;
+        case 404:
+            return RC ( rcVFS, rcResolver, rcResolving, rcName, rcNotFound );
+        case 410:
+            rc = RC ( rcVFS, rcResolver, rcResolving, rcName, rcNotFound );
+            break;
+        default:
+            rc = RC ( rcVFS, rcResolver, rcResolving, rcError, rcUnexpected );
+        }
+        break;
+
+    case 5:
+        /* server error */
+        lvl = klogSys;
+        switch ( result_code )
+        {
+        case 503:
+            rc = RC ( rcVFS, rcResolver, rcResolving, rcDatabase, rcNotAvailable );
+            break;
+        case 504:
+            rc = RC ( rcVFS, rcResolver, rcResolving, rcTimeout, rcExhausted );
+            break;
+        default:
+            rc = RC ( rcVFS, rcResolver, rcResolving, rcError, rcUnexpected );
+        }
+        break;
+
+    default:
+        lvl = klogInt;
+        rc = RC ( rcVFS, rcResolver, rcResolving, rcError, rcUnexpected );
     }
 
-    return RC ( rcVFS, rcResolver, rcResolving, rcName, rcNotFound );
+    /* log message to user */
+    PLOGERR ( lvl, ( lvl, rc, "failed to resolve accession '$(acc)' - $(msg) ( $(code) )",
+        "acc=%S,msg=%.*s,code=%u", acc, ( uint32_t ) ( sep - start ), start, result_code ) );
+    return rc;
 }
 
 
@@ -519,7 +595,7 @@ rc_t VResolverAlgParseResolverCGIResponse_1_0 ( const char *start, size_t size, 
  *  but should also be close to the size of result
  */
 static
-rc_t VResolverAlgParseResolverCGIResponse ( const KDataBuffer *result, const VPath ** path )
+rc_t VResolverAlgParseResolverCGIResponse ( const KDataBuffer *result, const VPath ** path, const String *acc )
 {
     /* the textual response */
     const char *start = ( const void* ) result -> base;
@@ -553,7 +629,7 @@ rc_t VResolverAlgParseResolverCGIResponse ( const KDataBuffer *result, const VPa
                 break;
 
             /* parse 1.0 response table */
-            return VResolverAlgParseResolverCGIResponse_1_0 ( & start [ i ], size - i, path );
+            return VResolverAlgParseResolverCGIResponse_1_0 ( & start [ i ], size - i, path, acc );
         }
         while ( false );
     }
@@ -570,7 +646,7 @@ rc_t VResolverAlgRemoteProtectedResolve ( const VResolverAlg *self,
     const KNSManager *kns, const String *acc,
     const VPath ** path, bool legacy_wgs_refseq )
 {
-    KCurlRequest *req;
+    struct KCurlRequest *req;
     rc_t rc = KNSManagerMakeRequest ( kns, & req, self -> root -> addr, false );
     if ( rc == 0 )
     {
@@ -607,7 +683,7 @@ rc_t VResolverAlgRemoteProtectedResolve ( const VResolverAlg *self,
             {
                 /* expect a table as a NUL-terminated string, but
                    having close to the number of bytes in results */
-                rc = VResolverAlgParseResolverCGIResponse ( & result, path );
+                rc = VResolverAlgParseResolverCGIResponse ( & result, path, acc );
                 KDataBufferWhack ( & result );
             }
         }
@@ -648,7 +724,27 @@ rc_t VResolverAlgRemoteResolve ( const VResolverAlg *self,
 #endif
         )
     {
-        return VResolverAlgRemoteProtectedResolve ( self, kns, & tok -> acc, path, legacy_wgs_refseq );
+        rc = VResolverAlgRemoteProtectedResolve ( self,
+            kns, & tok -> acc, path, legacy_wgs_refseq );
+        if (rc == 0 && path != NULL && *path != NULL &&
+            opt_file_rtn != NULL && *opt_file_rtn == NULL)
+        {
+            const String *s = NULL;
+            rc_t rc = VPathMakeString(*path, &s);
+            if (rc != 0) {
+                LOGERR(klogInt, rc,
+                    "failed to make string from remote protected path");
+            }
+            else {
+                rc = KCurlFileMake(opt_file_rtn, s->addr, false);
+                if (rc != 0) {
+                    PLOGERR(klogInt, (klogInt, rc,
+                        "failed to open file for $(path)", "path=%s", s->addr));
+                }
+                free((void*)s);
+            }
+        }
+        return rc;
     }
 
     /* for remote, root can never be NULL */
@@ -1351,7 +1447,7 @@ rc_t VResolverRemoteResolve ( const VResolver *self,
     const String * accession, const VPath ** path,
     const KFile ** opt_file_rtn, bool refseq_ctx )
 {
-    rc_t rc;
+    rc_t rc, try_rc;
     uint32_t i, count;
 
     VResolverAccToken tok;
@@ -1376,6 +1472,9 @@ rc_t VResolverRemoteResolve ( const VResolver *self,
         wildCard = -1;
 #endif
 
+    /* no error recorded yet */
+    rc = 0;
+
     /* test for forced enable, which applies only to main guys
        TBD - limit to main sub-category */
     if ( remote_state == vrAlwaysEnable )
@@ -1385,9 +1484,11 @@ rc_t VResolverRemoteResolve ( const VResolver *self,
             const VResolverAlg *alg = VectorGet ( & self -> remote, i );
             if ( alg -> app_id == app || alg -> app_id == wildCard )
             {
-                rc = VResolverAlgRemoteResolve ( alg, self -> kns, & tok, path, opt_file_rtn, legacy_wgs_refseq );
-                if ( rc == 0 )
+                try_rc = VResolverAlgRemoteResolve ( alg, self -> kns, & tok, path, opt_file_rtn, legacy_wgs_refseq );
+                if ( try_rc == 0 )
                     return 0;
+                if ( rc == 0 )
+                    rc = try_rc;
             }
         }
     }
@@ -1398,12 +1499,17 @@ rc_t VResolverRemoteResolve ( const VResolver *self,
             const VResolverAlg *alg = VectorGet ( & self -> remote, i );
             if ( ( alg -> app_id == app || alg -> app_id == wildCard ) && ! alg -> disabled )
             {
-                rc = VResolverAlgRemoteResolve ( alg, self -> kns, & tok, path, opt_file_rtn, legacy_wgs_refseq );
-                if ( rc == 0 )
+                try_rc = VResolverAlgRemoteResolve ( alg, self -> kns, & tok, path, opt_file_rtn, legacy_wgs_refseq );
+                if ( try_rc == 0 )
                     return 0;
+                if ( rc == 0 )
+                    rc = try_rc;
             }
         }
     }
+
+    if ( rc != 0 )
+        return rc;
 
     return RC ( rcVFS, rcResolver, rcResolving, rcName, rcNotFound );
 }
@@ -1440,6 +1546,9 @@ rc_t CC VResolverRemote ( const VResolver * self,
     else
     {
         * path = NULL;
+
+        if ( opt_file_rtn != NULL )
+            * opt_file_rtn = NULL;
 
         if ( self == NULL )
             rc = RC ( rcVFS, rcResolver, rcResolving, rcSelf, rcNull );

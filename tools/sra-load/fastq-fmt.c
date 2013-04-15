@@ -98,6 +98,7 @@ static
 rc_t file_read_line(FastqFileInfo* file, bool optional)
 {
     rc_t rc = 0;
+static unsigned long lineNo=0;
 
     if( file->line == NULL ) {
         if( (rc = SRALoaderFileReadline(file->file, (const void**)&file->line, &file->line_len)) == 0 ) {
@@ -119,6 +120,7 @@ rc_t file_read_line(FastqFileInfo* file, bool optional)
                 }
             }
         }
+        ++lineNo;
     }
     return rc;
 }
@@ -248,8 +250,8 @@ uint8_t parse_spot_name(const SRALoaderFile* file, FileReadData* spot, const cha
             x++;
         }
         /* find last '=' and use only whatever is to the left of it */
-        if( (x = memrchr(spot->name.data, '=', spot->name.len)) == NULL ) {
-            rc = pstring_assign(&spot->name, x + 1, spot->name.len - (x - spot->name.data));
+        if( (x = memrchr(spot->name.data, '=', spot->name.len)) != NULL ) {
+            rc = pstring_assign(&spot->name, spot->name.data, (x - spot->name.data) );
         }
     }
     return score;

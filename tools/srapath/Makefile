@@ -83,9 +83,9 @@ SRAPATH_OBJ = \
 	$(addsuffix .$(OBJX),$(SRAPATH_SRC))
 
 SRAPATH_LIB += \
-	-ssrapath \
 	-lkapp \
 	-lvfs \
+	-lkurl \
 	-lkrypto \
 	-lkfg \
 	-lkfs \

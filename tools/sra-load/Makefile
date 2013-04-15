@@ -107,23 +107,24 @@ LOADER_OBJ = \
 	$(addsuffix .$(OBJX),$(LOADER_SRC))
 
 LOADER_LIB = \
-	-lwsradb \
-	-dwsraxf \
 	-lkapp \
+	-lload \
+	-dwsraxf \
 	-dwvxf \
+	-lwsradb \
 	-lwvdb \
 	-lwkdb \
 	-lvfs \
+	-lkurl \
 	-lkrypto \
-	-lkfg \
-	-lload \
-	-lkfs \
-	-lksrch \
 	-lkxml \
 	-lkxfs \
-	-lklib \
+	-lkfg \
+	-lkfs \
+	-lksrch \
 	-lkq \
 	-lkproc \
+	-lklib \
 	-lm
 
 ifneq (win,$(OS))

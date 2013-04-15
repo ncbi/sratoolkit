@@ -28,7 +28,7 @@
 #include <sysalloc.h>
 #include <stdlib.h>
 
-void release_matecache( matecache *self )
+void release_matecache( matecache * const self )
 {
     if ( self != NULL )
     {
@@ -144,7 +144,7 @@ static int32_t calc_tlen( uint32_t self_pos, uint32_t mate_pos,
 }
 #endif
 
-static rc_t matecache_check( matecache *self, uint32_t db_idx, matecache_per_file ** mcpf )
+static rc_t matecache_check( const matecache * const self, uint32_t db_idx, matecache_per_file ** mcpf )
 {
     rc_t rc = 0;
     if ( self == NULL )
@@ -165,10 +165,10 @@ static rc_t matecache_check( matecache *self, uint32_t db_idx, matecache_per_fil
 }
 
 
-rc_t matecache_insert_same_ref( matecache *self,
+rc_t matecache_insert_same_ref( matecache * const self,
         uint32_t db_idx, int64_t key, INSDC_coord_zero ref_pos, uint32_t flags, INSDC_coord_len tlen )
 {
-    matecache_per_file * mcpf=NULL;
+    matecache_per_file * mcpf = NULL;
     rc_t rc = matecache_check( self, db_idx, &mcpf );
     if ( rc == 0 )
     {
@@ -196,10 +196,10 @@ rc_t matecache_insert_same_ref( matecache *self,
 }
 
 
-rc_t matecache_lookup_same_ref( matecache *self, uint32_t db_idx, int64_t key,
+rc_t matecache_lookup_same_ref( const matecache * const self, uint32_t db_idx, int64_t key,
                        INSDC_coord_zero *ref_pos, uint32_t *flags, INSDC_coord_len *tlen )
 {
-    matecache_per_file * mcpf=NULL;
+    matecache_per_file * mcpf = NULL;
     rc_t rc = matecache_check( self, db_idx, &mcpf );
     if ( rc == 0 )
     {
@@ -233,9 +233,9 @@ rc_t matecache_lookup_same_ref( matecache *self, uint32_t db_idx, int64_t key,
 }
 
 
-rc_t matecache_remove_same_ref( matecache *self, uint32_t db_idx, int64_t key )
+rc_t matecache_remove_same_ref( matecache * const self, uint32_t db_idx, int64_t key )
 {
-    matecache_per_file * mcpf=NULL;
+    matecache_per_file * mcpf = NULL;
     rc_t rc = matecache_check( self, db_idx, &mcpf );
     if ( rc == 0 )
     {
@@ -255,7 +255,7 @@ rc_t matecache_remove_same_ref( matecache *self, uint32_t db_idx, int64_t key )
 }
 
 
-static rc_t matecache_clear_same_ref_per_file( matecache_per_file * mcpf )
+static rc_t matecache_clear_same_ref_per_file( matecache_per_file * const mcpf )
 {
     rc_t rc = KVectorRelease( mcpf->same_ref_64 );
     if ( rc != 0 )
@@ -282,7 +282,7 @@ static rc_t matecache_clear_same_ref_per_file( matecache_per_file * mcpf )
 }
 
 
-rc_t matecache_clear_same_ref( matecache *self )
+rc_t matecache_clear_same_ref( matecache * const self )
 {
     rc_t rc = 0;
     if ( self == NULL )
@@ -303,7 +303,7 @@ rc_t matecache_clear_same_ref( matecache *self )
 }
 
 
-rc_t matecache_report( matecache *self )
+rc_t matecache_report( const matecache * const self )
 {
     rc_t rc = 0;
     if ( self == NULL )
@@ -341,7 +341,7 @@ rc_t matecache_report( matecache *self )
 }
 
 
-rc_t matecache_insert_unaligned( matecache *self,
+rc_t matecache_insert_unaligned( matecache * const self,
         uint32_t db_idx, int64_t key, INSDC_coord_zero ref_pos, uint32_t ref_idx, int64_t seq_id )
 {
     matecache_per_file * mcpf = NULL;
@@ -370,8 +370,8 @@ rc_t matecache_insert_unaligned( matecache *self,
 }
 
 
-rc_t matecache_lookup_unaligned( matecache *self,
-        uint32_t db_idx, int64_t key, INSDC_coord_zero *ref_pos, uint32_t *ref_idx, int64_t *seq_id )
+rc_t matecache_lookup_unaligned( const matecache * const self, uint32_t db_idx, int64_t key,
+                                 INSDC_coord_zero * const ref_pos, uint32_t * const ref_idx, int64_t * const seq_id )
 {
     matecache_per_file * mcpf = NULL;
     rc_t rc = matecache_check( self, db_idx, &mcpf );
@@ -421,7 +421,7 @@ static rc_t CC on_seq_id( uint64_t key, int64_t value, void *user_data )
 }
 
 
-rc_t foreach_unaligned_entry( matecache *self,
+rc_t foreach_unaligned_entry( const matecache * const self,
                               uint32_t db_idx,
                               rc_t ( CC * f ) ( int64_t seq_id, int64_t al_id, void * user_data ),
                               void * user_data )

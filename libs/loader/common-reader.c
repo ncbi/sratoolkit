@@ -26,6 +26,8 @@
 
 #include <loader/common-reader-priv.h>
 
+#include <sysalloc.h>
+
 #include <assert.h>
 #include <stdlib.h>
 

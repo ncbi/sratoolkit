@@ -81,7 +81,7 @@ typedef uint32_t KEncFileVersion;
 typedef struct KEncFileHeader KEncFileHeader;
 struct KEncFileHeader
 {
-    KEncFileSig     file_sig;   /* "NCBInenc" */
+    KEncFileSig     file_sig;   /* "NCBInenc" or "NCBIkenc" */
     Endian_t        byte_order; /* do we byte swap on read? */
     KEncFileVersion version;    /* simple incrementation starting at 1 */
 };

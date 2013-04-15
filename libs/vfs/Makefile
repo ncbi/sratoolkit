@@ -38,7 +38,6 @@ ALL_LIBS = \
 	$(EXT_LIBS)
 
 TEST_TOOLS = \
-	wb-test-srapath
 
 include $(TOP)/build/Makefile.env
 
@@ -123,11 +122,11 @@ VFS_OBJ = \
 	$(addsuffix .$(LOBX),$(VFS_SRC))
 
 VFS_LIB = \
-	-skurl \
-	-dkrypto \
-	-dkfg \
-	-dkfs \
-	-dklib
+	-lkurl \
+	-lkrypto \
+	-lkfg \
+	-lkfs \
+	-lklib
 
 $(LIBDIR)/libvfs.$(SHLX): $(VFS_OBJ)
 	$(LD) --dlib --vers $(SRCDIR) -o $@ $^ -ssrapath $(VFS_LIB)
@@ -137,31 +136,4 @@ $(LIBDIR)/libvfs.$(LIBX): $(VFS_OBJ)
 
 libvfs_tag:
 	@ $(TOP)/build/tag-module.sh $(MODULE) libvfs $(VFS_OBJ)
-
-#-------------------------------------------------------------------------------
-# white-box test
-#
-TEST_SRC = \
-	$(VFS_SRC) \
-	srapath-stub \
-	wb-test-srapath
-
-TEST_OBJ = \
-	$(addsuffix .$(OBJX),$(TEST_SRC)) 
-
-TEST_LIB = \
-    -skapp \
-    -svdb \
-    -skdb \
-	-skfs \
-	-skurl \
-	-skrypto \
-	-skfg \
-	-skproc \
-	-sktst \
-	-sklib 
-
-$(TEST_BINDIR)/wb-test-srapath: $(TEST_OBJ)
-	$(LP) --exe -o $@ $^ $(TEST_LIB) 
-
 

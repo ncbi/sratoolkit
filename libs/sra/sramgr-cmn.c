@@ -64,7 +64,8 @@ rc_t SRAMgrWhack ( const SRAMgr *that )
 
     VSchemaRelease ( self -> schema );
     VDBManagerRelease ( self -> vmgr );
-
+    SRACacheWhack ( self -> cache );
+    
     /* must check here for NULL because
        SRAPathRelease is weak-linked */
     if ( self -> _pmgr != NULL )
@@ -207,13 +208,17 @@ rc_t SRAMgrMake ( SRAMgr **mgrp,
             rc = SRAMgrInitPath ( mgr, wd );
             if ( rc == 0 )
             {
-                KRefcountInit ( & mgr -> refcount, 1, "SRAMgr", "SRAMgrMake", "sramgr" );
-                mgr -> vmgr = vmgr;
-                mgr -> schema = schema;
-                mgr -> mode = kcmCreate; /* TBD - should this include parents? */
-                mgr -> read_only = true;
-                * mgrp = mgr;
-                return 0;
+                rc = SRACacheInit ( & mgr -> cache );
+                if ( rc == 0 )
+                {
+                    KRefcountInit ( & mgr -> refcount, 1, "SRAMgr", "SRAMgrMake", "sramgr" );
+                    mgr -> vmgr = vmgr;
+                    mgr -> schema = schema;
+                    mgr -> mode = kcmCreate; /* TBD - should this include parents? */
+                    mgr -> read_only = true;
+                    * mgrp = mgr;
+                    return 0;
+                }
             }
 
             VSchemaRelease ( schema );
@@ -284,7 +289,7 @@ SRAPath *SRAMgrAccessSRAPath ( const SRAMgr *cself )
 LIB_EXPORT rc_t CC SRAMgrGetSRAPath ( const SRAMgr *self,
         SRAPath **path )
 {
-    rc_t rc;
+    rc_t rc = 0;
 
     if ( path == NULL )
         rc = RC ( rcSRA, rcMgr, rcAccessing, rcParam, rcNull );
@@ -542,7 +547,14 @@ LIB_EXPORT rc_t CC SRAMgrFlushRun ( const SRAMgr *self, const char *accession )
 
 LIB_EXPORT rc_t CC SRAMgrRunBGTasks ( const SRAMgr *self )
 {
-    return 0;
+    rc_t rc;
+
+    if( self == NULL  )
+        rc = RC(rcSRA, rcFile, rcProcessing, rcSelf, rcNull);
+        
+    rc = SRACacheFlush(self->cache);
+    
+    return rc;
 }
 
 

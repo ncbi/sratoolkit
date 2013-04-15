@@ -46,6 +46,8 @@
 #include <vfs/manager.h>
 #include <vfs/path.h>
 
+#include <sysalloc.h>
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -238,6 +240,7 @@ rc_t XTocEntryResolvePath (const XTocEntry * self, const char * path_, bool foll
     const char * path;
     const char * limit;
     XTocEntry * node;
+    size_t size;
 
     assert (self);
     assert (path_);
@@ -254,7 +257,7 @@ rc_t XTocEntryResolvePath (const XTocEntry * self, const char * path_, bool foll
     /* this was causing a seg fault for some reason */
     limit = path + string_size (path);
 #else
-    limit = path + strlen (path);
+    limit = path + string_measure(path, &size);
 #endif
 
     do
@@ -1889,6 +1892,7 @@ rc_t KXTocDirRelativePath (const KXTocDir *self, enum RCContext ctx,
 #else
     int backup;
     size_t bsize, psize;
+    size_t size;
 
     const char *r = root + self -> root;
     const char *p = path + self -> root;
@@ -1919,7 +1923,7 @@ rc_t KXTocDirRelativePath (const KXTocDir *self, enum RCContext ctx,
     while (p [ -1 ] != '/') -- p;
 
     /* the size of the remaining relative path */
-    psize = strlen (p);
+    psize = string_measure(p, &size);
 
     /* open up space if needed */
     if ( (size_t)(p - path) < bsize )
@@ -1937,7 +1941,8 @@ rc_t KXTocDirRelativePath (const KXTocDir *self, enum RCContext ctx,
     /* close gap */
     if ( (size_t)( p - path ) > bsize )
 	{
-		strcpy (& path [ bsize ], p);
+        size_t size;
+		string_copy (& path [ bsize ], path_max - bsize, p, measure_string(p, &size));
 	}
 
 	return 0;
@@ -2030,13 +2035,14 @@ rc_t CC KXTocDirVisit (const KXTocDir *self,
 
             if (rc == 0)
             {
+                size_t size;
 		KXTocDir * full_dir;
 		uint32_t path_size;
 
 		/* -----
 		 * make a locally accessible private KDirectory/KXTocDir
 		 */
-		for ( path_size = (uint32_t)strlen ( full_path );
+		for ( path_size = (uint32_t)string_measure( full_path, &size );
 		      ( path_size > self->root ) && ( full_path[ path_size - 1 ] == '/' );
 		      -- path_size )
 		{}
@@ -2168,7 +2174,7 @@ static rc_t CC KXTocDirResolvePath (const KXTocDir *self,
             if (rsize < (path_sz - 1))
                 rc = RC(rcFS, rcDirectory, rcResolving, rcBuffer, rcInsufficient);
             else
-                strncpy (resolved, path, rsize);
+                string_copy(resolved, rsize, path, rsize);
         }
         if (path)
             free ((void*)path);
@@ -2902,6 +2908,7 @@ rc_t CC KXTocDirOpenDirRead	(const KXTocDir *self,
 #else
     char * full;
     rc_t rc;
+    size_t size;
 
     assert (self != NULL);
     assert (subp != NULL);
@@ -2912,7 +2919,7 @@ rc_t CC KXTocDirOpenDirRead	(const KXTocDir *self,
     {
 	const KTocEntry *	pnode;
 	KTocEntryType		type;
-	size_t path_size = strlen (full);
+	size_t path_size = string_measure (full, &size);
 
 	/* -----
 	 * get rid of any extra '/' characters at the end of path

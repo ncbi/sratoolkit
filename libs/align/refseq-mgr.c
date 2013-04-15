@@ -425,7 +425,7 @@ bool FindTable(char const server[], char const volume[], void *data)
         else VTableRelease(tbl);
     }
     if( ctx->found && ctx->path != NULL ) {
-        size_t path_sz = strlen(server) + strlen(vol_sep) + strlen(volume) + 1 + ctx->name_sz + 1;
+        size_t path_sz = string_size( server ) + string_size( vol_sep ) + string_size( volume ) + 1 + ctx->name_sz + 1;
         char* path = malloc(path_sz);
         if( path == NULL ) {
             ctx->rc = RC(rcAlign, rcPath, rcConstructing, rcMemory, rcExhausted);

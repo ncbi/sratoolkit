@@ -116,8 +116,8 @@ XML_OBJ = \
 	$(addsuffix .$(LOBX),$(XML_SRC))
 
 XML_LIB = \
-	-dklib \
-	-dkfs
+	-dkfs \
+	-dklib 
 
 ifdef LIBXML_LPATH
 XML_LIB += \

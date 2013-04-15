@@ -156,7 +156,7 @@ char const * min_mapq_usage[] =
 static
 char const * qcomp_usage[] = 
 {
-    "Quality scores quantization level, can be a number (0: none, 1: 2bit, 2: 1bit), or a string like '1:10,10:20,20:30,30:-' (which is equivalent to 1).",
+    "Quality scores quantization level, can be a number (0: none, 1: 2bit, 2: 1bit), or a string like '1:10,10:20,20:30,30:-' (which is equivalent to 1) (nb. the endpoint is exclusive).",
     NULL
 };
 
@@ -452,7 +452,11 @@ uint32_t CC KAppVersion (void)
     return BAM_LOAD_VERS;
 }
 
+#ifdef _WIN32
+#include <process.h>
+#else
 #include <unistd.h>
+#endif
 static void set_pid(void)
 {
     G.pid = getpid();

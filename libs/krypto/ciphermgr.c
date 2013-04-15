@@ -38,6 +38,8 @@
 #include <klib/refcount.h>
 #include <klib/debug.h>
 
+#include <sysalloc.h>
+
 #include <atomic.h>
 
 #include <stdlib.h>

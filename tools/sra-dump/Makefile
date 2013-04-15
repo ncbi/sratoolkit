@@ -102,6 +102,7 @@ SRADUMP_LIB = \
 	-lvdb \
 	-lkdb \
 	-lvfs \
+	-lkurl \
 	-lkrypto \
 	-lkfg \
 	-lkfs \
@@ -125,16 +126,17 @@ DUMP_COMMON_SRC = \
 	core
 
 DUMP_COMMON_LIB = \
+	-lkapp \
+	-dsraxf \
+	-daxf \
+	-dvxf \
 	-lsradb \
 	-lsrareader \
-	-dsraxf \
 	-lalign-reader \
-	-daxf \
-	-lkapp \
-	-dvxf \
 	-lvdb \
 	-lkdb \
 	-lvfs \
+	-lkurl \
 	-lkrypto \
 	-lkfg \
 	-lkfs \

@@ -341,7 +341,7 @@ static rc_t print_spotgroups( VNamelist * spotgroups )
 }
 
 
-static rc_t print_headers_by_recalculating( samdump_opts * opts, input_files * ifs )
+static rc_t print_headers_by_recalculating( const samdump_opts * opts, input_files * ifs )
 {
     BSTree tree;
     rc_t rc = KOutMsg( "@HD\tVN:1.3\n" );
@@ -379,7 +379,7 @@ static rc_t print_headers_by_recalculating( samdump_opts * opts, input_files * i
 }
 
 
-rc_t print_headers( samdump_opts * opts, input_files * ifs )
+rc_t print_headers( const samdump_opts * opts, input_files * ifs )
 {
     rc_t rc = 0;
     if ( ifs->database_count > 1 )

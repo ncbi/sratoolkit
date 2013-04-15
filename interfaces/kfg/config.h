@@ -164,10 +164,21 @@ KFG_EXTERN rc_t CC KConfigReadString ( const KConfig* self, const char* path, st
 
 
 /* Print
- * print configuration to output handler (using OUTMSG)
+ *  print configuration to output handler (using OUTMSG)
  */
-KFG_EXTERN rc_t CC KConfigPrint ( const KConfig * self );
+KFG_EXTERN rc_t CC KConfigPrint ( const KConfig * self, int indent );
 
+
+/* ImportNgc
+ *  import ngc file into current configuration
+ *
+ * self [ IN ] - KConfig object
+ * path [ IN ] - path to the ngc file
+ * pathToProtectedRepository [ IN, NULL OKAY ] - optional - the
+ *  special value NULL is interpreted as ${HOME}/ncbi/dbGap-$(Project #)
+ */
+KFG_EXTERN rc_t CC KConfigImportNgc(KConfig *self,
+    const char *ngcPath, const char *pathToProtectedRepository);
 
 /* DisableUserSettings
  *  for testing purposes

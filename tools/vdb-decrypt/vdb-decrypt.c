@@ -32,6 +32,7 @@
 #include <krypto/wgaencrypt.h>
 #include <krypto/encfile.h>
 #include <kfs/file.h>
+#include <kfs/cacheteefile.h>
 #include <klib/rc.h>
 #include <klib/defs.h>
 #include <klib/log.h>
@@ -97,10 +98,18 @@ bool DoThisFile (const KFile * infile, EncScheme enc, ArcScheme * parc)
         return false;
 
     case encEncFile:
+        /*
+         * this will apply to KEncFiles versions 1 and 2, maybe not 3
+         * but will hopefully become obsolete eventually.
+         */
         rc = KEncFileMakeRead (&Infile, infile, &Key);
         if (rc)
             return false;
         break;
+
+    case encSraEncFile:
+        /* these are NCBIsenc instead of NCBInenc */
+        goto sra_enc_file;
 
     case encWGAEncFile:
         rc = KFileMakeWGAEncRead (&Infile, infile, Password, PasswordSize);
@@ -117,11 +126,13 @@ bool DoThisFile (const KFile * infile, EncScheme enc, ArcScheme * parc)
     case arcNone:
         return true;
     case arcSRAFile:
-        *parc = arcSRAFile;
-        STSMSG (1, ("encrypted sra archive\ndecryption%s requested",
-                    DecryptSraFlag ? "" : " not"));
-        return DecryptSraFlag;
+        break;
     }
+sra_enc_file:
+    *parc = arcSRAFile;
+    STSMSG (1, ("encrypted sra archive\ndecryption%s requested",
+                DecryptSraFlag ? "" : " not"));
+    return DecryptSraFlag;
 }
 
 bool NameFixUp (char * name)
@@ -236,6 +247,8 @@ rc_t CC KMain ( int argc, char *argv [] )
 {
     Args * args;
     rc_t rc;
+
+    KStsLevelSet (1);
 
     rc = ArgsMakeAndHandle (&args, argc, argv, 1, Options,
                             sizeof (Options) / sizeof (Options[0]));

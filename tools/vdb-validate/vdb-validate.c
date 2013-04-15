@@ -36,6 +36,7 @@
 #include <klib/rc.h>
 #include <klib/namelist.h>
 #include <klib/container.h>
+#include <klib/text.h> /* String */
 #include <klib/debug.h>
 #include <klib/data-buffer.h>
 #include <klib/sort.h>
@@ -57,6 +58,7 @@
 #include <vdb/vdb-priv.h> /* VTableOpenKTableRead */
 
 #include <krypto/encfile.h> /* KEncFileValidate */
+#include <krypto/wgaencrypt.h> /* KEncFileValidate */
 
 #include <kfs/kfs-priv.h>
 #include <kfs/sra.h>
@@ -494,8 +496,9 @@ static rc_t EncFileReadAll(const char *name,
     const KFile *f = NULL;
 
     rc = VFSManagerMake(&mgr);
-    if (rc != 0)
-    {   (void)LOGERR(klogErr, rc, "Failed to VFSManagerMake()"); }
+    if (rc != 0) {
+        LOGERR(klogErr, rc, "Failed to VFSManagerMake()");
+    }
 
     if (rc == 0) {
         rc = VPathMake(&path, name);
@@ -529,6 +532,7 @@ static rc_t EncFileReadAll(const char *name,
     return rc;
 }
 
+
 #if 0
 static rc_t verify_encryption(const KDirectory *dir, const char *name,
     bool *enc, bool *sra)
@@ -543,8 +547,9 @@ static rc_t verify_encryption(const KDirectory *dir, const char *name,
     *sra = true;
 
     rc = KDirectoryOpenFileRead(dir, &f, name);
-    if (rc == 0)
-    {   rc = KFileReadAll(f, 0, &buffer, sizeof buffer, &num_read); }
+    if (rc == 0) {
+        rc = KFileReadAll(f, 0, &buffer, sizeof buffer, &num_read);
+    }
 
     if (rc == 0) {
         size_t sz = num_read < 8 ? num_read : 8;
@@ -1563,42 +1568,72 @@ rc_t vdb_validate_file ( const vdb_validate_params *pb, const KDirectory *dir, c
     else
     {
         bool is_sra = false;
-        bool encrypted = false;
+        enum EEncrypted {
+            eNo,
+            eEncrypted,
+            eWGA
+        } encrypted = eNo;
 
         size_t num_read;
         char buffer [ 4096 ];
         rc = KFileReadAll ( f, 0, buffer, sizeof buffer, & num_read );
         if ( rc != 0 )
             PLOGERR ( klogErr, ( klogErr, rc, "File '$(fname)' could not be read", "fname=%s", relpath ) );
-        else
-        {
+        else {
             /* special kludge to prevent code from looking too far at header */
             size_t hdr_bytes = num_read;
             if ( num_read > 8 )
                 hdr_bytes = 8;
 
             /* check for encrypted file */
-            if ( KFileIsEnc ( buffer, hdr_bytes ) == 0 )
-            {
-                encrypted = true;
+            if ( KFileIsEnc ( buffer, hdr_bytes ) == 0 ) {
+                encrypted = eEncrypted;
+            }
+            else if ( KFileIsWGAEnc ( buffer, hdr_bytes ) == 0 ) {
+                encrypted = eWGA;
+            }
 
-                PLOGMSG ( klogInfo, ( klogInfo, "Validating encrypted file '$(fname)'...", "fname=%s", relpath ) );
-                rc = KEncFileValidate ( f );
-                if ( rc != 0 )
-                {
-                    PLOGERR ( klogErr, ( klogErr, rc, "Encrypted file '$(fname)' could not be validated", "fname=%s", relpath ) );
+            if (encrypted != eNo) {
+                PLOGMSG ( klogInfo, ( klogInfo,
+                    "Validating $(type)encrypted file '$(fname)'...",
+                    "type=%s,fname=%s",
+                    encrypted == eWGA ? "WGA " : " ", relpath ) );
+                switch (encrypted) {
+                    case eEncrypted:
+                        rc = KEncFileValidate(f);
+                        break;
+                    case eWGA: {
+                        VFSManager *mgr = NULL;
+                        rc = VFSManagerMake(&mgr);
+                        if (rc != 0) {
+                            LOGERR(klogInt, rc, "Cannot VFSManagerMake");
+                        }
+                        else {
+                            rc = VFSManagerWGAValidateHack(mgr, f, relpath);
+                        }
+                        VFSManagerRelease(mgr);
+                        break;
+                    }
+                    default:
+                        assert(0);
                 }
-                else
-                {
-                    PLOGMSG ( klogInfo, ( klogInfo, "Encrypted file '$(fname)' appears valid", "fname=%s", relpath ) );
+                if ( rc != 0 ) {
+                    PLOGERR ( klogErr, ( klogErr, rc,
+                        "Encrypted file '$(fname)' could not be validated",
+                        "fname=%s", relpath ) );
+                }
+                else {
+                    PLOGMSG ( klogInfo, ( klogInfo,
+                        "Encrypted file '$(fname)' appears valid",
+                        "fname=%s", relpath ) );
 
-                    rc = EncFileReadAll ( relpath, buffer, sizeof buffer, & num_read );
+                    rc = EncFileReadAll ( relpath, buffer, sizeof buffer,
+                        & num_read );
                     if ( rc == 0 && KFileIsSRA ( buffer, num_read ) == 0 )
                         is_sra = true;
                 }
             }
-            else if ( KFileIsSRA ( buffer, num_read ) == 0 )
-            {
+            else if ( KFileIsSRA ( buffer, num_read ) == 0 ) {
                 is_sra = true;
             }
         }
@@ -1668,13 +1703,15 @@ rc_t CC vdb_validate_dir ( const KDirectory *dir, uint32_t type, const char *nam
     return 0;
 }
 
-static rc_t disableRemoteResolution() {
-    rc_t rc = 0;
-
+static rc_t vdb_validate(const vdb_validate_params *pb, const char *aPath) {
+    bool bad = false;
+    const String *local = NULL;
     VFSManager *mgr = NULL;
     VResolver *resolver = NULL;
+    const char *path = aPath;
+    KPathType pt = kptNotFound;
 
-    rc = VFSManagerMake(&mgr);
+    rc_t rc = VFSManagerMake(&mgr);
     if (rc != 0) {
         LOGERR(klogInt, rc, "Cannot VFSManagerMake");
         return rc;
@@ -1688,60 +1725,92 @@ static rc_t disableRemoteResolution() {
         VResolverRemoteEnable(resolver, vrAlwaysDisable);
     }
 
-    RELEASE(VResolver, resolver);
     RELEASE(VFSManager, mgr);
 
-    return rc;
-}
-
-static
-rc_t vdb_validate ( const vdb_validate_params *pb, const char *path )
-{
-    KPathType pt = kptNotFound;
-
-    rc_t rc = disableRemoteResolution();
-    if (rc != 0) {
-        return rc;
-    }
-
     /* what type of thing is this path? */
-    pt = KDirectoryPathType ( pb -> wd, path );
-    switch ( pt & ~ kptAlias )
-    {
-    case kptNotFound:
-        rc = RC ( rcExe, rcPath, rcValidating, rcPath, rcNotFound );
-        break;
-    case kptBadPath:
-        rc = RC ( rcExe, rcPath, rcValidating, rcPath, rcInvalid );
-        break;
-    case kptFile:
-        return vdb_validate_file ( pb, pb -> wd, path );
-    case kptDir:
-        switch ( KDBManagerPathType ( pb -> kmgr, path ) )
-        {
-        case kptDatabase:
-            return vdb_validate_database ( pb, pb -> wd, path );
-        case kptTable:
-        case kptPrereleaseTbl:
-            return vdb_validate_table ( pb, pb -> wd, path );
-        case kptIndex:
-        case kptColumn:
-            rc = RC ( rcExe, rcPath, rcValidating, rcType, rcUnsupported );
-            break;
-        default:
-            return KDirectoryVisit ( pb -> wd, false,
-                vdb_validate_dir, ( void* ) pb, path );
-        }
-        break;
+    pt = KDirectoryPathType(pb->wd, path);
 
-    default:
-        return 0;
+    if ((pt & ~kptAlias) == kptNotFound) {
+        const VPath *pLocal = NULL;
+        VPath *acc = NULL;
+        bad = true;
+        rc = VPathMake(&acc, path);
+        if (rc != 0) {
+            PLOGERR(klogErr, (klogErr, rc,
+                "VPathMake($(path)) failed", PLOG_S(path), path));
+        }
+        else {
+            rc = VResolverLocal(resolver, acc, &pLocal);
+        }
+
+        if (rc == 0) {
+            rc = VPathMakeString(pLocal, &local);
+            if (rc != 0) {
+                PLOGERR(klogErr, (klogErr, rc,
+                    "VPathMake(local $(path)) failed", PLOG_S(path), path));
+            }
+        }
+
+        if (rc == 0) {
+            path = local->addr;
+            PLOGMSG(klogInfo, (klogInfo,
+                "Validating '$(path)'...", PLOG_S(path), path));
+            pt = KDirectoryPathType(pb -> wd, path);
+            bad = false;
+        }
+
+        RELEASE(VPath, acc);
+        RELEASE(VPath, pLocal);
+    }
+    RELEASE(VResolver, resolver);
+
+    if (rc == 0) {
+        switch (pt & ~kptAlias) {
+            case kptNotFound:
+                rc = RC(rcExe, rcPath, rcValidating, rcPath, rcNotFound);
+                bad = true;
+                break;
+            case kptBadPath:
+                rc = RC(rcExe, rcPath, rcValidating, rcPath, rcInvalid);
+                bad = true;
+                break;
+            case kptFile:
+                rc = vdb_validate_file(pb, pb->wd, path);
+                break;
+            case kptDir:
+                switch(KDBManagerPathType (pb->kmgr, path)) {
+                    case kptDatabase:
+                        rc = vdb_validate_database(pb, pb->wd, path);
+                        break;
+                    case kptTable:
+                    case kptPrereleaseTbl:
+                        rc = vdb_validate_table(pb, pb->wd, path);
+                        break;
+                    case kptIndex:
+                    case kptColumn:
+                        rc = RC(rcExe, rcPath, rcValidating,
+                            rcType, rcUnsupported);
+                        bad = true;
+                        break;
+                    default:
+                        rc = KDirectoryVisit(pb -> wd, false,
+                            vdb_validate_dir, (void*)pb, path);
+                        break;
+                }
+                break;
+            default:
+                break;
+        }
     }
 
-    PLOGMSG ( klogWarn, ( klogWarn,
-        "Path '$(fname)' could not be validated", "fname=%s", path ) );
+    free((void*)local);
 
-    return 0;
+    if (bad) {
+        PLOGMSG ( klogWarn, ( klogWarn,
+            "Path '$(fname)' could not be validated", "fname=%s", path ) );
+    }
+
+    return rc;
 }
 
 static char const* const defaultLogLevel = 
@@ -2042,8 +2111,8 @@ rc_t CC KMain ( int argc, char *argv [] )
                 char const *value;
                 
                 rc = ArgsParamValue (args, 0, &value); if (rc) break;
-                src_dir_path = strdup(value);
-                src_path = strdup(value);
+                src_dir_path = string_dup_measure(value, NULL);
+                src_path = string_dup_measure(value, NULL);
                 obj_name = strrchr(src_dir_path, '/');
                 if ( obj_name != NULL && obj_name [ 1 ] == 0 )
                 {
@@ -2072,9 +2141,10 @@ rc_t CC KMain ( int argc, char *argv [] )
                         {
                             /* use mapped path */
                             free(src_path);
-                            src_path = strdup(path_buffer);
+                            src_path = string_dup_measure(path_buffer, NULL);
                             free(src_dir_path);
-                            src_dir_path = strdup(path_buffer);
+                            src_dir_path
+                                = string_dup_measure(path_buffer, NULL);
                             obj_name = strrchr(src_dir_path, '/');
                             if ( obj_name == NULL )
                                 obj_name = src_dir_path;
@@ -2094,7 +2164,7 @@ rc_t CC KMain ( int argc, char *argv [] )
                     if ( rc != 0 )
                     {
                         /* appears to be a simple name */
-                        obj_name = strdup(src_dir_path);
+                        obj_name = string_dup_measure(src_dir_path, NULL);
                         src_dir_path[0] = '.';
                         src_dir_path[1] = '\0';
                     }

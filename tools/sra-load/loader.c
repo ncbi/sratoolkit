@@ -105,7 +105,7 @@ OptDef TArgsDef[] =
     {"output-path", "o", NULL, usage_text[targs_Target], 1, true, true},
     {"force", "f", NULL, usage_text[targs_ForceTarget], 1, false, false},
     {"spots-number", "n", NULL, usage_text[targs_SpotsNumber], 1, true, false},
-    {"bad-spot-number", "b", NULL, usage_text[targs_BadSpotsNumber], 1, true, false},
+    {"bad-spot-number", "bE", NULL, usage_text[targs_BadSpotsNumber], 1, true, false},
     {"bad-spot-percentage", "p", NULL, usage_text[targs_BadSpotPercentage], 1, true, false},
     {"expected", "x", NULL, usage_text[targs_ExpectedXML], 1, true, false},
     {"intensities", "s", NULL, usage_text[targs_Intensities], 1, true, false}
@@ -1116,8 +1116,8 @@ rc_t KMain(int argc, char *argv[])
 
     /* make sure the error was reported */
     if( rc != 0 &&
-        rc != RC(rcExe, rcProcess, rcExecuting, rcProcess, rcCanceled) &&
-        rc != RC(rcExe, rcProcess, rcExecuting, rcTransfer, rcDone)) {
+        rc != SILENT_RC(rcExe, rcProcess, rcExecuting, rcProcess, rcCanceled) &&
+        rc != SILENT_RC(rcExe, rcProcess, rcExecuting, rcTransfer, rcDone)) {
         if (lastRc == 0) {
             lastRc = KLogLastErrorCode();
         }

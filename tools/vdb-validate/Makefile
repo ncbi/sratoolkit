@@ -99,6 +99,7 @@ VDB_VALIDATE_LIB = \
 	-lkdb \
 	-lkapp \
 	-lvfs \
+	-lkurl \
 	-lkrypto \
 	-lkfg \
 	-lkfs \

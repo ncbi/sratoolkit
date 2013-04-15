@@ -171,8 +171,8 @@ Q_OBJ = \
 	$(addsuffix .$(LOBX),$(Q_SRC))
 
 Q_LIB = \
-	-dklib \
-	-dkproc
+	-dkproc \
+	-dklib
 
 $(LIBDIR)/libkq.$(SHLX): $(Q_OBJ)
 	$(LD) --dlib --vers $(SRCDIR) -o $@ $^ $(Q_LIB)

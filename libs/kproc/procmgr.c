@@ -34,6 +34,8 @@
 
 #define rcTask rcCmd
 
+#include <sysalloc.h>
+
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
@@ -373,7 +375,7 @@ LIB_EXPORT rc_t CC KProcMgrRemoveCleanupTask ( KProcMgr *self, const KTaskTicket
     else
     {
         /* recover task* and idx */
-        KTask *task = ( KTask* ) ( ticket -> info [ 1 ] ^ ( size_t ) self );
+        KTask *task = ( KTask* ) ( ( size_t ) ticket -> info [ 1 ] ^ ( size_t ) self );
         uint64_t idx = ticket -> info [ 0 ] ^ ( size_t ) task;
         idx ^= ( size_t ) self;
 

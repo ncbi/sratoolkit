@@ -341,11 +341,11 @@ rc_t CC build_scaffold_impl(void *const data, VXformInfo const *const info,
     return rc;
 }
 
-VTRANSFACT_IMPL(NCBI_WGS_build_scaffold_read, 1, 0, 0)(void const *const Self,
-                                                       VXfactInfo const *const info,
-                                                       VFuncDesc *const rslt,
-                                                       VFactoryParams const *const cp,
-                                                       VFunctionParams const *const dp)
+VTRANSFACT_IMPL(NCBI_WGS_build_scaffold_read, 1, 0, 0)(void const * Self,
+                                                       VXfactInfo const * info,
+                                                       VFuncDesc * rslt,
+                                                       VFactoryParams const * cp,
+                                                       VFunctionParams const * dp)
 {
     self_t *self = calloc(1, sizeof(*self));
     if (self) {
@@ -364,11 +364,11 @@ VTRANSFACT_IMPL(NCBI_WGS_build_scaffold_read, 1, 0, 0)(void const *const Self,
     return RC(rcXF, rcFunction, rcConstructing, rcMemory, rcExhausted);
 }
 
-VTRANSFACT_IMPL(NCBI_WGS_build_scaffold_qual, 1, 0, 0)(void const *const Self,
-                                                       VXfactInfo const *const info,
-                                                       VFuncDesc *const rslt,
-                                                       VFactoryParams const *const cp,
-                                                       VFunctionParams const *const dp)
+VTRANSFACT_IMPL(NCBI_WGS_build_scaffold_qual, 1, 0, 0)(void const * Self,
+                                                       VXfactInfo const * info,
+                                                       VFuncDesc * rslt,
+                                                       VFactoryParams const * cp,
+                                                       VFunctionParams const * dp)
 {
     self_t *self = calloc(1, sizeof(*self));
     if (self) {

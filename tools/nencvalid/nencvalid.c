@@ -58,16 +58,12 @@ ver_t CC KAppVersion ( void )
     return NENCVALID_VERS;
 }
 
-#define OPTION_QUIET                     "quiet"
-#define ALIAS_QUIET                      "q"
-const char * quiet_usage[] = { "no text output overriding log and status levels", NULL };
 #define OPTION_DECRYPT_BIN_COMPATIBILITY "compatibility-mode"
 /* "decrypt.bin" */
 
 static
 OptDef Options[] = 
 {
-    { OPTION_QUIET,                     ALIAS_QUIET, NULL, quiet_usage, 0, false, false },
     /* private option for decrypt.bin script */
     { OPTION_DECRYPT_BIN_COMPATIBILITY, NULL,        NULL, NULL,        0, false, false }
 };
@@ -136,8 +132,6 @@ rc_t CC Usage (const Args * args)
     HelpParamLine ("file-path", param_usage);
 
     KOutMsg ("\nOptions:\n");
-
-    HelpOptionLine (ALIAS_QUIET, OPTION_QUIET, NULL, quiet_usage);
 
     HelpOptionsStandard ();
 

@@ -295,7 +295,7 @@ unsigned str_weight(char const str[], char const qry[], unsigned const qry_len)
     unsigned wt = no_match;
     
     if (fnd) {
-        unsigned const fnd_len = strlen(fnd);
+        unsigned const fnd_len = string_size( fnd );
         unsigned const fndlen = (fnd_len > qry_len && fnd[qry_len] == '|') ? qry_len : fnd_len;
         
         if (fndlen == qry_len && (fnd == str || fnd[-1] == '|')) {
@@ -874,8 +874,8 @@ rc_t ReferenceSeq_GetRefSeqInfo(ReferenceSeq *const self)
 static
 rc_t ReferenceSeq_Attach(ReferenceMgr *const self, ReferenceSeq *const rs)
 {
-    unsigned const seqid_len = rs->seqId ? strlen(rs->seqId) : 0;
-    unsigned const id_len = rs->id ? strlen(rs->id) : 0;
+    unsigned const seqid_len = rs->seqId ? string_size( rs->seqId ) : 0;
+    unsigned const id_len = rs->id ? string_size( rs->id ) : 0;
     rc_t rc = 0;
     KFile const *kf = NULL;
     
@@ -933,7 +933,7 @@ rc_t ReferenceMgr_OpenSeq(ReferenceMgr *const self, ReferenceSeq **const rslt,
                           unsigned const seq_len,
                           uint8_t const md5[16])
 {
-    unsigned const idLen = strlen(id);
+    unsigned const idLen = string_size( id );
     key_id_t const *const fnd = ReferenceMgr_FindId(self, id);
     
     assert(rslt != NULL);
@@ -1029,7 +1029,7 @@ rc_t ReferenceMgr_OpenSeq(ReferenceMgr *const self, ReferenceSeq **const rslt,
             
             if (seq->type == rst_unattached && seq->seqId != NULL) {
                 /* attach didn't work for id; try to find seqId within fasta seqIds */
-                unsigned const seqIdLen = strlen(seq->seqId);
+                unsigned const seqIdLen = string_size( seq->seqId );
                 unsigned best_wt = 0;
                 unsigned best = n;
                 
@@ -1806,10 +1806,10 @@ rc_t ReferenceMgr_LoadSeq(ReferenceMgr *const self, ReferenceSeq *obj)
         
         obj->start_rowid = self->ref_rowid + 1;
         data.name.buffer = id;
-        data.name.elements = strlen(id);
+        data.name.elements = string_size( id );
         data.read.buffer = readBuf.base;
         data.seq_id.buffer = seqId;
-        data.seq_id.elements = strlen(seqId);
+        data.seq_id.elements = string_size( seqId );
         data.force_READ_write = obj->type == rst_local || (self->options & ewrefmgr_co_allREADs);
         data.circular = obj->circular;
         
@@ -1910,7 +1910,7 @@ LIB_EXPORT rc_t CC ReferenceMgr_Verify(const ReferenceMgr* cself, const char* id
             const uint8_t* o_md5;
 
             if( tmp == NULL ) {
-                if( (rc = RefSeqMgr_GetSeq(cself->rmgr, &tmp, rseq->accession, strlen(rseq->accession))) != 0 ||
+                if( (rc = RefSeqMgr_GetSeq(cself->rmgr, &tmp, rseq->accession, string_size( rseq->accession ))) != 0 ||
                     (rc = RefSeq_SeqLength(tmp, &o_len)) != 0 ) {
                     ALIGN_DBGERRP("%s->%s verification", rc, id, rseq->accession);
                 }

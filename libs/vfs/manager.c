@@ -329,6 +329,194 @@ LIB_EXPORT rc_t CC VFSManagerGetConfigPWFile (const VFSManager * self,
 }
 
 
+/*
+ * This is still hack - must match VFSManagerResolvePathRelativeDir()
+ */
+LIB_EXPORT rc_t CC VFSManagerWGAValidateHack (const VFSManager * self, 
+                                              const KFile * file,
+                                              const char * path) /* we'll move this to a vpath */
+{
+    VPath * vpath;
+    rc_t rc = 0;
+
+    rc = VPathMake (&vpath, path);
+    if (rc == 0)
+    {
+        size_t z;
+        char obuff [4096 + 2]; /* 1 for over-read and 1 for NUL */
+        const KFile * pwfile;
+        bool is_fd = false;
+        bool have_pwd = false;
+/*      char tbuff [4096 + 2]; */
+
+        /* -----
+         * get the path to and open the pwfile
+         *
+         * first check the insecure password on the command line hack 
+         * then check the option for pwfile in the VPath
+         * then check the option for pwfd
+         * then check the environment
+         * then check the configuration
+         *
+         * some odd jumping around due to ordering of where
+         * to look
+         */
+        /* obviously not used yet */
+        if (VPathOption (vpath, vpopt_temporary_pw_hack, obuff, sizeof obuff, &z) == 0)
+        {
+            if (z < 1)
+                rc = RC (rcVFS, rcPath, rcConstructing, rcParam, rcInvalid);
+            else
+            {
+                size_t x = 0;
+                size_t y = 0;
+                int ch, h, l;
+
+                while (x < z)
+                {
+                    h = tolower(obuff[x++]);
+                    l = tolower(obuff[x++]);
+
+                    if (!isxdigit(h) || !isxdigit(l))
+                        rc = RC (rcVFS, rcPath, rcConstructing, rcParam, rcInvalid);
+
+                    if (isdigit(h))
+                        ch = (h - '0') << 4;
+                    else
+                        ch = (h + 10 - 'a') << 4;
+                    if (isdigit(l))
+                        ch |= (l - '0');
+                    else
+                        ch |= (l + 10 - 'a');
+
+                    /* added for compatibility with other passwords */
+                    if ((ch == '\r') || (ch == '\r'))
+                        break;
+                    obuff[y++] = (char)ch;
+                }
+                obuff[y] = '\0';
+                assert (z == x);
+                assert (z/2 == y);
+                z = y;
+            }
+        }
+        else
+        {
+            /* also not used yet */
+            if (VPathOption (vpath, vpopt_pwpath, obuff,
+                             sizeof obuff - 1, &z) == 0)
+                have_pwd = true;
+
+            /* also not used yet */
+            else if (VPathOption (vpath, vpopt_pwfd, obuff,
+                                  sizeof obuff - 1, &z) == 0)
+                have_pwd = is_fd = true;
+
+            /* This is used */
+            else if (VFSManagerGetConfigPWFile(self, obuff,
+                                               sizeof obuff-1,
+                                               &z) == 0)
+            have_pwd = true;
+
+            else
+                rc = RC (rcVFS, rcEncryptionKey, rcOpening, rcFile, rcUnknown);
+
+            if (have_pwd)
+            {
+                /* force a NUL terminator that is probably already
+                 * there */
+                obuff [z] = '\0';
+
+                /* -----
+                 * pwfd is not fully a VPath at this point: we 
+                 * should obsolete it
+                 */
+                if (is_fd)
+                    rc = KFileMakeFDFileRead (&pwfile, atoi (obuff));
+
+                else
+                {
+                    VPath * pwp;
+
+                    rc = VPathMakeSysPath (&pwp, obuff);
+                    if (rc == 0)
+                    {
+                        rc = VFSManagerOpenFileRead (self, &pwfile, pwp);
+                        if (rc)
+                        {
+                            rc = RC (rcVFS, rcEncryptionKey, rcOpening, rcFile, rcNotFound);
+                            /* log? */
+                        }
+                        VPathRelease (pwp);
+                    }
+                }
+
+                /* if rc is 0 then we have opened a password file */
+                if (rc == 0)
+                {
+                    /* at this point we are only getting the password from a 
+                     * file but in the future if we can get it from a pipe of
+                     * some sort we can't count on the ReadAll to really know
+                     * if we hit end of file and not just a pause in the
+                     * streaming.  VDB 3 / VFS/KFS 2 will have to fix this somehow
+                     */
+
+                    /* 2 is one for overread and one ful NUL */
+                    assert (VFS_KRYPTO_PASSWORD_MAX_SIZE <= sizeof obuff - 2);
+
+                    /* read the password into obuff */
+                    rc = KFileReadAll (pwfile, 0, obuff, sizeof obuff - 1, &z);
+
+                    /* we're done with the password file (or fd) now */
+                    KFileRelease (pwfile);
+            
+                    if (rc == 0)
+                    {
+                        char * pc;
+
+                        /* -----
+                         * trim back the contents of the file to
+                         * a single ASCII/UTF-8 text line
+                         * We actually only check for the two normal
+                         * end of line characters so it could have other
+                         * control characters...
+                         */
+                        assert (z < sizeof (obuff));
+
+                        obuff[z] = '\0';
+
+                        pc = string_chr (obuff, z, '\r');
+                        if (pc)
+                        {
+                            *pc = '\0';
+                            z = pc - obuff;
+                        }
+                        pc = string_chr (obuff, z, '\n');
+                        if (pc)
+                        {
+                            *pc = '\0';
+                            z = pc - obuff;
+                        }
+
+                        if (z == 0)
+                            rc = RC (rcVFS, rcMgr, rcOpening, rcEncryptionKey, rcTooShort);
+
+                        else if  (VFS_KRYPTO_PASSWORD_MAX_SIZE < z) /* pwz came in as greater than 4096 */
+                            rc = RC (rcVFS, rcMgr, rcOpening, rcEncryptionKey, rcTooLong);
+                    }
+                }
+            }
+        }
+        if (rc == 0)
+        {
+            rc = WGAEncValidate (file, obuff, z);
+        }
+    }
+    return rc;
+}
+
+
+
 /* ResolvePath
  *
  * take a VPath and resolve to a final form apropriate for KDB
@@ -535,6 +723,10 @@ LIB_EXPORT rc_t CC VFSManagerResolvePathRelative (const VFSManager * self,
     return rc;
 }
 
+/*
+ * This is still hack - must match VFSManagerGetEncryptionKey()
+ */
+
 LIB_EXPORT rc_t CC VFSManagerResolvePathRelativeDir (const VFSManager * self,
                                                      uint32_t flags,
                                                      const KDirectory * base_dir,
@@ -603,7 +795,7 @@ rc_t VFSManagerOpenFileReadDecryption (const VFSManager *self,
         const KFile * pwfile;
         bool is_fd = false;
         bool have_pwd = false;
-        char tbuff [4096 + 2];
+        char tbuff [4096];
 
         /* -----
          * get the path to and open the pwfile
@@ -1536,7 +1728,6 @@ rc_t VFSManagerOpenDirectoryReadHttp (const VFSManager *self,
     rc_t rc;
 
     {
-        const KFile * file = NULL;
         char urlbuffer[ 4096 ];
         size_t num_writ;
 
@@ -1556,11 +1747,13 @@ rc_t VFSManagerOpenDirectoryReadHttp (const VFSManager *self,
                                urlbuffer,&path->path));
         else
         {
+            const KFile * file = NULL;
+
             rc = VFSManagerOpenCurlFile ( self, &file, path );
 /*            rc = VFSManagerMakeCurlFile( self, &file, urlbuffer, NULL ); */
             if ( rc != 0 )
                 PLOGERR ( klogErr, ( klogErr, rc, "error with curl open '$(U)'",
-                                     "U=%s,P=%S", urlbuffer ) );
+                                     "U=%s", urlbuffer ) );
             else
             {
                 const char mountpointpath[] = "/";
@@ -1575,12 +1768,17 @@ rc_t VFSManagerOpenDirectoryReadHttp (const VFSManager *self,
                                        mountpointpath, &path->path));
                 else
                 {
+                    const KFile * f;
                     bool was_encrypted = false;
 
-                    /* handle encryption here */
+                    rc = VFSManagerOpenFileReadDecryption (self, mountpoint, &f,
+                                                           file, path,
+                                                           force_decrypt,
+                                                           &was_encrypted);
+                    if (rc == 0)
                     {
 
-                        rc = TransformFileToDirectory (mountpoint, file, d, 
+                        rc = TransformFileToDirectory (mountpoint, f, d, 
                                                        path->path.addr,
                                                        was_encrypted);
                         /* hacking in the fragment bit */
@@ -1594,9 +1792,11 @@ rc_t VFSManagerOpenDirectoryReadHttp (const VFSManager *self,
                 
                             KDirectoryRelease (tempd);
                         }
+                        KFileRelease (f);
                     }
                     KDirectoryRelease (mountpoint);
                 }
+                KFileRelease (file);
             }
         }
     }
@@ -1687,6 +1887,9 @@ rc_t VFSManagerOpenDirectoryReadKfs (const VFSManager *self,
 
         }
     }
+
+    KFileRelease(file);
+
     return rc;
 }
 
@@ -2405,7 +2608,6 @@ LIB_EXPORT rc_t CC VFSManagerRemove ( const VFSManager *self, bool force,
     return rc;
 }
 
-
 static
 rc_t VFSManagerCaptureCurrentEncryptionKey ( VFSManager * self )
 {
@@ -2436,7 +2638,7 @@ rc_t VFSManagerCaptureCurrentEncryptionKey ( VFSManager * self )
                 const size_t env_key_size = sizeof "VDB_PWFILE=" - 1;
                 memcpy ( path, "VDB_PWFILE=", env_key_size );
                 rc = KRepositoryEncryptionKeyFile ( protected, & path [ env_key_size ], sizeof path - env_key_size, NULL );
-                if ( rc == 0 && path [ 0 ] != 0 )
+                if ( rc == 0 && path [ env_key_size ] != 0 )
                 {
                     size_t env_size = string_size ( path );
                     self -> pw_env = malloc ( env_size + 1 );
@@ -2444,7 +2646,9 @@ rc_t VFSManagerCaptureCurrentEncryptionKey ( VFSManager * self )
                         rc = RC ( rcVFS, rcMgr, rcConstructing, rcMemory, rcExhausted );
                     else
                     {
-                        int status = putenv ( self -> pw_env );
+                        int status;
+                        memcpy ( self -> pw_env, path, env_size + 1 );
+                        status = putenv ( self -> pw_env );
                         if ( status != 0 )
                         {
                             rc = RC ( rcVFS, rcMgr, rcConstructing, rcPath, rcCorrupt );

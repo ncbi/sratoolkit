@@ -30,6 +30,8 @@
 #include <klib/rc.h>
 #include <klib/printf.h>
 
+#include <sysalloc.h>
+
 #include <string.h>
 #include <stdlib.h>
 #include <assert.h>
@@ -954,6 +956,7 @@ KFS_EXTERN rc_t KQuickMountDirMake (const KDirectory * self,
             }
             KQuickMountDirDestroy (newdir);
         }
+        KFileRelease (file);
     }
     return rc;
 }

@@ -27,6 +27,7 @@
 #include <klib/container.h>
 #include <klib/log.h>
 #include <klib/out.h>
+#include <klib/text.h>
 #include <klib/status.h>
 #include <klib/rc.h>
 #include <klib/vector.h>
@@ -623,7 +624,7 @@ static void Cache_Unpack( uint64_t val, int64_t mate_id, SCurs const *curs, SCol
         ReferenceObj_Name( curs->cache->ref, &cols[ alg_MATE_REF_NAME ].base.str );
     }
 
-    cols[ alg_MATE_REF_NAME ].len = strlen( cols[ alg_MATE_REF_NAME ].base.str );
+    cols[ alg_MATE_REF_NAME ].len = string_size( cols[ alg_MATE_REF_NAME ].base.str );
 
     if ( ref_proj == 0 )
     {
@@ -993,7 +994,7 @@ static rc_t CC DumpReadGroupsScan( STable const *tbl )
                         else
                         {
                             last_len = cols[ 0 ].len;
-                            strncpy( node->name, cols[ 0 ].base.str, last_len );
+                            string_copy( node->name, ( sizeof node->name ) - 1, cols[ 0 ].base.str, last_len );
                             node->name[ last_len ] = '\0';
                             rc = BSTreeInsertUnique( &tree, &node->node, NULL, ReadGroup_sort );
                             if ( GetRCState( rc ) == rcExists )
@@ -1422,7 +1423,7 @@ rc_t DumpUnalignedSAM( const SCol cols[], uint32_t flags, INSDC_coord_zero readS
         {
             rc = BufferedWriter( NULL, "\tRG:Z:", 6, NULL );
             if ( rc == 0 )
-                rc = BufferedWriter( NULL, readGroup, strlen( readGroup ), NULL );
+                rc = BufferedWriter( NULL, readGroup, string_size( readGroup ), NULL );
         }
         else if ( cols[ seq_SPOT_GROUP ].len > 0 )
         {
@@ -1614,7 +1615,7 @@ rc_t DumpAlignedSAM( SAM_dump_ctx_t *const ctx,
             {
                 rc = BufferedWriter( NULL, "\tRG:Z:", 6, NULL );
                 if ( rc == 0 )
-                    rc = BufferedWriter( NULL, readGroup, strlen( readGroup ), NULL );
+                    rc = BufferedWriter( NULL, readGroup, string_size( readGroup ), NULL );
             }
             else if ( cols[ alg_SPOT_GROUP ].len > 0 )
             {
@@ -3050,7 +3051,7 @@ static rc_t ForEachAlignedRegion( SAM_dump_ctx_t *const ctx, enum e_IDS_opts con
                 
                 for ( include = false, r = 0; r < param->region_qty; ++r )
                 {
-                    if ( sz == strlen( param->region[ r ].name ) &&
+                    if ( sz == string_size( param->region[ r ].name ) &&
                          memcmp( param->region[ r ].name, refname, sz ) == 0 )
                     {
                         include = true;
@@ -3758,13 +3759,13 @@ rc_t ResolvePath( char const *accession, char const ** path )
                 if ( rc == 0 )
                     break;
             }
-            if ( strlen( accession ) >= sizeof( tblpath ) )
+            if ( string_size( accession ) >= sizeof( tblpath ) )
             {
                 rc = RC( rcExe, rcPath, rcResolving, rcBuffer, rcInsufficient );
             }
             else
             {
-                strcpy( tblpath, accession );
+                string_copy( tblpath, ( sizeof tblpath ) - 1, accession, string_size( accession ) );
                 rc = 0;
             }
         } while( false );
@@ -3773,7 +3774,7 @@ rc_t ResolvePath( char const *accession, char const ** path )
     if ( accession != NULL && path != NULL )
     {
         *path = tblpath;
-        strcpy( tblpath, accession );
+        string_copy( tblpath, ( sizeof tblpath ) - 1, accession, string_size( accession ) );
     }
 #endif
 
@@ -3785,7 +3786,7 @@ rc_t ResolvePath( char const *accession, char const ** path )
 static rc_t ProcessPath( VDBManager const *mgr, char const Path[] )
 {
 #if 0
-    unsigned pathlen = strlen( Path );
+    unsigned pathlen = string_size( Path );
     char *readGroup = NULL;
     char *path = NULL;
     unsigned i;
@@ -3879,7 +3880,7 @@ static rc_t ProcessPath( VDBManager const *mgr, char const Path[] )
         unsigned i;
 
     old:
-        pathlen = strlen( Path );
+        pathlen = string_size( Path );
         readGroup = NULL;
         path = NULL;
     
@@ -4212,7 +4213,8 @@ OptDef DumpArgs[] =
     { "CG-ev-dnb"  , NULL, NULL, CG_ev_dnb  , 0, false, false },            /* CG-ev-dnb */
     { "CG-mappings", NULL, NULL, CG_mappings, 0, false, false },            /* CG-mappings */
     { "CG-SAM", NULL, NULL, CG_SAM, 0, false, false },                      /* CG-SAM */
-    { "CG-names", NULL, NULL, CG_names, 0, false, false }                   /* CG-names */
+    { "CG-names", NULL, NULL, CG_names, 0, false, false },                  /* CG-names */
+    { "legacy", NULL, NULL, NULL, 0, false, false }
 };
 
 
@@ -4392,7 +4394,7 @@ static rc_t GetComments( Args const *const args, struct params_s *const parms, u
             rc_t const rc = ArgsOptionValue( args, DumpArgs[ earg_comment ].name, i, &parms->comments[ i ] );
             if ( rc != 0 )
             {
-                free( parms->comments );
+                free( ( void * )parms->comments );
                 parms->comments = NULL;
                 return rc;
             }
@@ -4532,7 +4534,7 @@ static rc_t GetRegion( Args const *const args, struct params_s *const parms, uns
             if ( sep != NULL )
                 namelen = sep - valstr;
             else
-                namelen = strlen( valstr );
+                namelen = string_size( valstr );
             
             if ( namelen >= sizeof( r.name ) )
                 return RC( rcExe, rcArgv, rcProcessing, rcParam, rcTooLong );

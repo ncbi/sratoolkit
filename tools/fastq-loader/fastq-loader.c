@@ -59,6 +59,7 @@ static char const option_max_rec_count[] = "max-rec-count";
 static char const option_platform[] = "platform";
 static char const option_quality[] = "quality";
 static char const option_read[] = "read";
+static char const option_max_err_pct[] = "max-err-pct";
 
 #define OPTION_INPUT option_input
 #define OPTION_OUTPUT option_output
@@ -70,6 +71,7 @@ static char const option_read[] = "read";
 #define OPTION_PLATFORM option_platform
 #define OPTION_QUALITY option_quality
 #define OPTION_READ option_read
+#define OPTION_MAX_ERR_PCT option_max_err_pct
 
 #define ALIAS_INPUT  "i"
 #define ALIAS_OUTPUT "o"
@@ -77,8 +79,9 @@ static char const option_read[] = "read";
 #define ALIAS_QCOMP "Q"
 #define ALIAS_MAX_ERR_COUNT "E"
 #define ALIAS_PLATFORM "p"
-#define ALIAS_QUALITY "q"
 #define ALIAS_READ "r"
+/* this alias is deprecated (conflicts with -q for --quiet): */
+#define ALIAS_QUALITY "q"
 
 static
 char const * output_usage[] = 
@@ -136,10 +139,17 @@ char const * use_quality[] =
     NULL
 };
 
-static
+/*static
 char const * use_read[] = 
 {
     "Default read number (1 or 2)",
+    NULL
+};*/
+
+static
+char const * use_max_err_pct[] = 
+{
+    "acceptable percentage of spots creation errors, default is 5",
     NULL
 };
 
@@ -154,6 +164,7 @@ OptDef Options[] =
     { OPTION_MAX_ERR_COUNT, ALIAS_MAX_ERR_COUNT,    NULL, mec_usage,        1,  true,        false },
     { OPTION_PLATFORM,      ALIAS_PLATFORM,         NULL, use_platform,     1,  true,        false },
     { OPTION_QUALITY,       ALIAS_QUALITY,          NULL, use_quality,      1,  true,        true },
+    { OPTION_MAX_ERR_PCT,   NULL,                   NULL, use_max_err_pct,  1,  true,        false },
 /*    { OPTION_READ,          ALIAS_READ,             NULL, use_read,         0,  true,        false },*/
 };
 
@@ -234,7 +245,9 @@ uint32_t CC KAppVersion (void)
     return LATF_LOAD_VERS;
 }
 
-#if UNIX
+#ifdef _WIN32
+#include <process.h>
+#else
 #include <unistd.h>
 #endif
 static void set_pid(void)
@@ -292,6 +305,7 @@ rc_t CC KMain (int argc, char * argv[])
     G.cache_size = ( size_t ) 10 << 30;
 #endif
     G.maxErrCount = 1000;
+    G.maxErrPct = 5;
     G.acceptNoMatch = true; 
     G.minMatchCount = 0; 
     G.QualQuantizer="0";
@@ -397,6 +411,17 @@ rc_t CC KMain (int argc, char * argv[])
             if (rc)
                 break;
             G.maxErrCount = strtoul(value, &dummy, 0);
+        }
+        
+        rc = ArgsOptionCount (args, OPTION_MAX_ERR_PCT, &pcount);
+        if (rc)
+            break;
+        if (pcount == 1)
+        {
+            rc = ArgsOptionValue (args, OPTION_MAX_ERR_PCT, 0, &value);
+            if (rc)
+                break;
+            G.maxErrPct = strtoul(value, &dummy, 0);
         }
         
         rc = ArgsOptionCount (args, OPTION_PLATFORM, &pcount);

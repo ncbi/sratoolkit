@@ -24,6 +24,14 @@
 *
 */
 
+/*
+ * This needs to be changed to true in about the middle of summer 2013
+ *
+ * When re-enabling this feature also fix test/kreypto/Makefile
+ */
+#define SENC_IS_NENC_FOR_WRITER 0
+
+
 #ifndef _h_krypto_encfile_
 #define _h_krypto_encfile_
 
@@ -108,7 +116,14 @@ KRYPTO_EXTERN rc_t CC KEncFileValidate (const struct KFile * encrypted);
  * RC (rcFS, rcFile, rcIdentifying, rcBuffer, rcInsufficient)
  *      not a large enough buffer to make an identification
  */
+
+/* requires NCBInenc or NCBIsenc or signature but if available
+ * checks the byte order and version fields
+ */
 KRYPTO_EXTERN rc_t CC KFileIsEnc (const char * buffer, size_t buffer_size);
+
+/* same as above but requires NCBIsenc signature only */
+KRYPTO_EXTERN rc_t CC KFileIsSraEnc (const char * buffer, size_t buffer_size);
 
 
 

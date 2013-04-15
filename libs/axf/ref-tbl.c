@@ -73,7 +73,9 @@ rc_t AlignRefTableCursor(const VTable* table, const VCursor *native_curs, const 
                 if(rc != 0) return rc;
                 rc = VCursorOpen( curs );
                 if(rc != 0) return rc;
-                rc = VCursorLinkedCursorSet(native_curs,ref_tbl_name,curs);
+                if(native_curs)
+                    rc = VCursorLinkedCursorSet(native_curs,ref_tbl_name,curs);
+                
                 if(rc != 0) return rc;
 	} else {
 		VCursorAddRef(curs);

@@ -171,8 +171,8 @@ rc_t VTableCreateCursorWriteInt ( VTable *self, VCursor **cursp, KCreateMode mod
                         rc = KThreadMake ( & curs -> flush_thread, run_flush_thread, curs );
                 }
 #endif
-		if(rc == 0)
-			rc = VCursorLaunchPagemapThread(curs);
+                if(rc == 0)
+                    rc = VCursorLaunchPagemapThread(curs);
                 if ( rc == 0 )
                 {
                     * cursp = curs;

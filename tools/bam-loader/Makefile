@@ -108,23 +108,24 @@ BAMLOAD_OBJ = \
 	$(addsuffix .$(OBJX),$(BAMLOAD_SRC))
 
 BAMLOAD_LIB = \
-	-lload \
 	-lkapp \
+	-dwaxf \
+	-dwsraxf \
+	-dwvxf \
+	-lload \
 	-lncbi-bam \
 	-lalign-writer \
 	-lwvdb \
 	-lwkdb \
-	-dwaxf \
-	-dwsraxf \
-	-dwvxf \
-	-lksrch \
 	-lvfs \
+	-lkurl \
 	-lkrypto \
 	-lkfg \
 	-lkfs \
-	-lklib \
-	-lkq \
+	-lksrch \
 	-lkproc \
+	-lkq \
+	-lklib \
 	-lm \
 	-lz
 

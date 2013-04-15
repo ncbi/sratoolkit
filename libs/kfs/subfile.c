@@ -316,22 +316,21 @@ rc_t CC KSubFileWrite (KSubFile *self, uint64_t pos,
 		       const void *buffer, size_t bsize,
 		       size_t *num_writ)
 {
-    rc_t	rc;
+    size_t to_write;
 
     assert (self != NULL);
     assert (buffer != NULL);
     assert (num_writ != NULL);
 
     *num_writ = 0;
-    if (pos > self->size)
-    {
-	return 0;
-    }
+    if (pos >= ( uint64_t ) self->size)
+        return 0;
+
+    to_write = bsize;
     if ((pos + bsize) > self->size)
-	rc = RC (rcFS, rcFile, rcWriting, rcOffset, rcTooBig);
-    else
-	rc = KFileWrite (self->original, self->start + pos, buffer, bsize, num_writ);
-    return rc;
+        to_write = ( uint64_t ) self -> size - pos;
+
+    return KFileWrite (self->original, self->start + pos, buffer, to_write, num_writ);
 }
 
 /* end of file subfile.c */

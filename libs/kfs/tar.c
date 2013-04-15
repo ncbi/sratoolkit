@@ -1023,7 +1023,7 @@ static tar_header_type	what_header_type(const tar_header* header)
 	 */
 	char temp_str	[9];
 	memset(temp_str,0,sizeof(temp_str));
-	strncpy(temp_str,header->posix.magic,8);
+	string_copy(temp_str, sizeof(temp_str), header->posix.magic, 8);
         TAR_DEBUG(("%s: unknown header type magic [%s]\n",
                    __func__, temp_str));
 	type = TAR_UNDEFINED;
@@ -1396,13 +1396,14 @@ static rc_t  pax_xhdr_set_general_string (char ** str, const char * val)
     }
     else
     {
-	len = strlen (val) + 1;
+        size_t size;
+        len = string_measure(val, &size) + 1;
     }
     *str = malloc (len);
     if (*str)
     {
-	strncpy (*str, val, len-1);
-	(*str)[len-1] = '\0'; /* if it was a '\n' terminated value this is needed not worth the check if needed */
+        string_copy(*str, len, val, len-1);
+        (*str)[len-1] = '\0'; /* if it was a '\n' terminated value this is needed not worth the check if needed */
     }
     else
     {
@@ -1445,11 +1446,12 @@ LIB_EXPORT rc_t CC pax_xhdr_set_gname(pax_xheader * self, char * new_name)
 
 LIB_EXPORT bool CC pax_xhdr_get_general_string (char**src, char**dst, size_t max)
 {
-    if (strlen(*src) > max-1)	/* fail if too big for target */
+    size_t size;
+    if (string_measure(*src, &size) > max-1)	/* fail if too big for target */
     {
-	return false;
+        return false;
     }
-    strcpy(*dst,*src);
+    string_copy(*dst, max, *src, size);
     return true;
 }
 
@@ -1885,7 +1887,7 @@ uint64_t process_one_entry (KTarState * self, uint64_t offset, uint64_t hard_lim
 	 */
 	if (full_path[0] == 0) /* if full_path wasn't filled in by an 'L' long name */
 	{
-            size_t len;
+            size_t len, size;
 	    /* -----
 	     * if there is a prefix (POSIX style) use it
 	     * copy the prefix and then concatenate the name field
@@ -1899,12 +1901,12 @@ uint64_t process_one_entry (KTarState * self, uint64_t offset, uint64_t hard_lim
 		/* -----
 		 * copy in the prefix, force a NUL just in case. then add a directory divider 
 		 */
-		strncpy(full_path,current_header.h->posix.prefix,TAR_PREFIX_LEN);
+            string_copy(full_path, sizeof(full_path), current_header.h->posix.prefix, TAR_PREFIX_LEN);
 		full_path[TAR_PREFIX_LEN] = 0x00;
 		strcat(full_path,"/");
 	    }
 	    strncat(full_path,current_header.h->tar.name,TAR_NAME_LEN);
-            len = strlen (full_path);
+            len = string_measure(full_path, &size);
             while (len > 1)
             {
                 if (full_path[len-1] == '/')
@@ -1977,10 +1979,13 @@ uint64_t process_one_entry (KTarState * self, uint64_t offset, uint64_t hard_lim
 	     * If the type is file but the last character in the path is "/"
 	     * treat it as a directory instead
 	     */
-	    if (full_path[strlen(full_path)-1] == '/')
-	    {
-		link = LINK_DIRECTORY;
-	    }
+        {
+            size_t size;
+            if (full_path[string_measure(full_path, &size)-1] == '/')
+            {
+                link = LINK_DIRECTORY;
+            }
+        }
 	    /* fall through */
 	case LINK_NORMAL_FILE:
 	case LINK_CONTIGUOUS_FILE:
@@ -1995,7 +2000,7 @@ uint64_t process_one_entry (KTarState * self, uint64_t offset, uint64_t hard_lim
 	case LINK_SYMBOLIC_LINK:
 	    if (full_link[0] == 0)
 	    {
-		strncpy(full_link,current_header.h->tar.linkname,TAR_NAME_LEN);
+            string_copy(full_link, sizeof(full_link), current_header.h->tar.linkname, TAR_NAME_LEN);
 	    }
 	    done = true;
 	    break;
@@ -2072,7 +2077,7 @@ uint64_t process_one_entry (KTarState * self, uint64_t offset, uint64_t hard_lim
 	    if ( (uint64_t)( offset + sizeof( tar_header ) + data_size ) > hard_limit )
 		return 0;
 
-	    strncpy(full_link, (char*)(current_header.b + sizeof(tar_header)), data_size);
+	    string_copy(full_link, sizeof(full_link), (char*)(current_header.b + sizeof(tar_header)), data_size);
 	    break;
 	case LINK_NEXT_LONG_NAME:	/* long path name */
 	    /* -----
@@ -2084,7 +2089,7 @@ uint64_t process_one_entry (KTarState * self, uint64_t offset, uint64_t hard_lim
 		return 0;
 	    }
 
-	    strncpy(full_path, (char*)(current_header.b + sizeof(tar_header)), data_size);
+	    string_copy(full_path, sizeof(full_path), (char*)(current_header.b + sizeof(tar_header)), data_size);
 	    break;
 	}
 	

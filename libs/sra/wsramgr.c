@@ -41,6 +41,7 @@
 #include <klib/refcount.h>
 #include <klib/log.h>
 #include <klib/rc.h>
+#include <klib/text.h>
 
 #include <stdlib.h>
 #include <sysalloc.h>

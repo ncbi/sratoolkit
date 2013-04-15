@@ -32,10 +32,13 @@ MOD_LIBS = \
 	libvxf \
 	libwvxf
 
-ALL_LIBS = \
-	$(MOD_LIBS)
+TEST_TOOLS = \
+	wb-test-vxf
 
 include $(TOP)/build/Makefile.env
+
+ALL_LIBS = \
+	$(MOD_LIBS)
 
 #-------------------------------------------------------------------------------
 # outer targets
@@ -46,7 +49,10 @@ all std: makedirs
 $(MOD_LIBS): makedirs
 	@ $(MAKE_CMD) $(TARGDIR)/$@
 
-.PHONY: vers-includes all std $(ALL_LIBS)
+$(TEST_TOOLS): makedirs
+	@ $(MAKE_CMD) $(TEST_BINDIR)/$@
+
+.PHONY: all std $(ALL_LIBS) $(TEST_TOOLS)
 
 #-------------------------------------------------------------------------------
 # std
@@ -171,3 +177,31 @@ libwvxf.vers.h:
 	@ true
 
 .PHONY: $(TARGDIR)/libwvxf $(TARGDIR)/libwvxf.$(SHLX) $(TARGDIR)/libwvxf.$(LIBX)
+
+#-------------------------------------------------------------------------------
+# white-box test
+#
+TEST_SRC = \
+	wb-test-vxf \
+	wb-irzip-impl
+
+TEST_OBJ = \
+	$(addsuffix .$(OBJX),$(TEST_SRC))
+
+TEST_LIBS = \
+    -skapp \
+    -svdb \
+    -skdb \
+	-svfs \
+	-skurl \
+	-skrypto \
+    -skfg \
+	-skfs \
+	-skproc \
+    -sktst \
+	-sklib 
+
+$(TEST_BINDIR)/wb-test-vxf: $(TEST_OBJ)
+	$(LP) --exe -o $@ $^ $(TEST_LIBS)
+
+

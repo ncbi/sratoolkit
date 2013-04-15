@@ -26,13 +26,12 @@
 
 #include <align/manager.h>
 #include <align/iterator.h>
+#include <kapp/main.h>
 #include <sysalloc.h>
 
 #include "read_fkt.h"
 #include "cg_tools.h"
 #include "sam-aligned.h"
-
-rc_t CC Quitting( void );
 
 /* -------------------------------------------------------------------------------------------
     column                      PRIM    SEC     EV_INT      EV_ALIGN ( outside of iterator )
@@ -56,6 +55,7 @@ rc_t CC Quitting( void );
     SEQ_SPOT_GROUP              X       X       -           X
     SEQ_READ_ID                 X       X       -           X
     RAW_READ                    X       X       X           X
+    READ_FILTER                 X       X       X           X
     EVIDENCE_ALIGNMENT_IDS      -       -       X           -
     REF_POS                                                 o
     REF_PLOIDY                                              o
@@ -86,6 +86,7 @@ rc_t CC Quitting( void );
 #define COL_EV_ALIGNMENTS "(I64)EVIDENCE_ALIGNMENT_IDS"
 #define COL_REF_POS "(INSDC:coord:zero)REF_POS"
 #define COL_REF_PLOIDY "(U32)REF_PLOIDY"
+#define COL_READ_FILTER "(INSDC:SRA:read_filter)READ_FILTER"
 
 
 enum align_table_type
@@ -112,6 +113,7 @@ typedef struct align_cmn_context
     uint32_t raw_read_idx;
     uint32_t sam_quality_idx;
     uint32_t ref_orientation_idx;
+    uint32_t read_filter_idx;
 } align_cmn_context;
 
 
@@ -149,7 +151,7 @@ typedef struct align_table_context
 } align_table_context;
 
 
-static void invalidate_all_cmn_column_idx( align_cmn_context * actx )
+static void invalidate_all_cmn_column_idx( align_cmn_context * const actx )
 {
     actx->seq_spot_id_idx       = COL_NOT_AVAILABLE;
     actx->cigar_idx             = COL_NOT_AVAILABLE;    
@@ -162,9 +164,10 @@ static void invalidate_all_cmn_column_idx( align_cmn_context * actx )
     actx->raw_read_idx          = COL_NOT_AVAILABLE;
     actx->sam_quality_idx       = COL_NOT_AVAILABLE;
     actx->ref_orientation_idx   = COL_NOT_AVAILABLE;
+    actx->read_filter_idx       = COL_NOT_AVAILABLE;
 }
 
-static void invalidate_all_column_idx( align_table_context * atx )
+static void invalidate_all_column_idx( align_table_context * const atx )
 {
     atx->sam_flags_idx      = COL_NOT_AVAILABLE;
     atx->mate_align_id_idx  = COL_NOT_AVAILABLE;
@@ -180,7 +183,7 @@ static void invalidate_all_column_idx( align_table_context * atx )
 }
 
 
-static rc_t prepare_cmn_table_rows( samdump_opts * opts, align_cmn_context * cmn, bool prim_sec )
+static rc_t prepare_cmn_table_rows( const samdump_opts * const opts, align_cmn_context * const cmn, bool prim_sec )
 {
     const VCursor * cursor = cmn->cursor;
     rc_t rc = 0;
@@ -233,12 +236,15 @@ static rc_t prepare_cmn_table_rows( samdump_opts * opts, align_cmn_context * cmn
     if ( rc == 0 )
         rc = add_column( cursor, COL_RAW_READ, &cmn->raw_read_idx );
 
+    if ( rc == 0 )
+        rc = add_column( cursor, COL_READ_FILTER, &cmn->read_filter_idx );
+
     return rc;
 }
 
 
-static rc_t prepare_prim_sec_table_cursor( samdump_opts * opts, const VDatabase *db,
-                                           const char * table_name, align_table_context * atx )
+static rc_t prepare_prim_sec_table_cursor( const samdump_opts * const opts, const VDatabase * db,
+                                           const char * table_name, align_table_context * const atx )
 {
     const VTable *tbl;
     rc_t rc = VDatabaseOpenTableRead( db, &tbl, table_name );
@@ -288,8 +294,8 @@ static rc_t prepare_prim_sec_table_cursor( samdump_opts * opts, const VDatabase 
 }
 
 
-static rc_t prepare_evidence_table_cursor( samdump_opts * opts, const VDatabase *db,
-                                           const char * table_name, align_table_context * atx )
+static rc_t prepare_evidence_table_cursor( const samdump_opts * const opts, const VDatabase * db,
+                                           const char * table_name, align_table_context * const atx )
 {
     const VTable *evidence_interval_tbl;
     rc_t rc = VDatabaseOpenTableRead( db, &evidence_interval_tbl, table_name );
@@ -362,9 +368,10 @@ static rc_t prepare_evidence_table_cursor( samdump_opts * opts, const VDatabase 
 }
 
 
-static rc_t add_table_pl_iter( samdump_opts * opts, PlacementSetIterator * set_iter, const ReferenceObj* ref_obj,
-    input_database * ids, INSDC_coord_zero ref_pos, INSDC_coord_len ref_len,
-    const char * spot_group, const char * table_name, align_id_src id_src_selector, Vector * context_list )
+static rc_t add_table_pl_iter( const samdump_opts * const opts, PlacementSetIterator * const set_iter,
+                               const ReferenceObj * const ref_obj, const input_database * const ids,
+                               INSDC_coord_zero ref_pos, INSDC_coord_len ref_len, const char * spot_group,
+                               const char * table_name, align_id_src id_src_selector, Vector * const context_list )
 {
     rc_t rc = 0;
     align_table_context * atx;
@@ -445,9 +452,10 @@ static rc_t add_table_pl_iter( samdump_opts * opts, PlacementSetIterator * set_i
 }
 
 
-static rc_t add_pl_iter( samdump_opts * opts, PlacementSetIterator * set_iter, const ReferenceObj* ref_obj,
-    input_database * ids, INSDC_coord_zero ref_pos, INSDC_coord_len ref_len,
-    const char * spot_group, Vector * context_list )
+static rc_t add_pl_iter( const samdump_opts * const opts, PlacementSetIterator * const set_iter,
+                         const ReferenceObj * const ref_obj, const input_database * const ids,
+                         INSDC_coord_zero ref_pos, INSDC_coord_len ref_len,
+                         const char * spot_group, Vector * const context_list )
 {
     KNamelist *tables;
     rc_t rc = VDatabaseListTbl( ids->db, &tables );
@@ -482,15 +490,15 @@ static rc_t add_pl_iter( samdump_opts * opts, PlacementSetIterator * set_iter, c
 
 /* the user did not specify ranges on the reference, that means the whole file has to be dumped...
    the reflist is iterated over all ref-objects it contains ... */
-static rc_t prepare_whole_files( samdump_opts * opts, input_files * ifs,
-                                 PlacementSetIterator * set_iter, Vector * context_list )
+static rc_t prepare_whole_files( const samdump_opts * const opts, const input_files * const ifs,
+                                 PlacementSetIterator * const set_iter, Vector * const context_list )
 {
     rc_t rc = 0;
     uint32_t db_idx;
     /* we now loop through all input-databases... */
     for ( db_idx = 0; db_idx < ifs->database_count && rc == 0; ++db_idx )
     {
-        input_database * ids = VectorGet( &ifs->dbs, db_idx );
+        const input_database * ids = VectorGet( &ifs->dbs, db_idx );
         if ( ids != NULL )
         {
             uint32_t refobj_count;
@@ -529,7 +537,7 @@ static rc_t prepare_whole_files( samdump_opts * opts, input_files * ifs,
 typedef struct on_region_ctx
 {
     rc_t rc;
-    samdump_opts * opts;
+    const samdump_opts * opts;
     input_database * ids;
     PlacementSetIterator * set_iter;
     Vector *context_list;
@@ -585,8 +593,8 @@ static void CC on_region( BSTNode *n, void *data )
 }
 
 
-static rc_t prepare_regions( samdump_opts * opts, input_files * ifs,
-                             PlacementSetIterator * set_iter, Vector *context_list )
+static rc_t prepare_regions( const samdump_opts * const opts, const input_files * const ifs,
+                             PlacementSetIterator * const set_iter, Vector * const context_list )
 {
     uint32_t db_idx;
     on_region_ctx rctx;
@@ -600,7 +608,7 @@ static rc_t prepare_regions( samdump_opts * opts, input_files * ifs,
     {
         rctx.ids = VectorGet( &ifs->dbs, db_idx );
         if ( rctx.ids != NULL )
-            BSTreeForEach( &opts->regions, false, on_region, &rctx );
+            BSTreeForEach( ( BSTree * ) &opts->regions, false, on_region, &rctx );
     }
     return rctx.rc;
 }
@@ -646,7 +654,7 @@ static rc_t print_slice( const char * source, uint32_t source_str_len, uint32_t 
 }
 
 
-static rc_t print_qslice( samdump_opts * opts, bool reverse, const char * source, uint32_t source_str_len,
+static rc_t print_qslice( const samdump_opts * const opts, bool reverse, const char * source, uint32_t source_str_len,
                           uint32_t *source_offset, uint32_t *source_len_vector,
                           uint32_t source_len_vector_len, uint32_t slice_nr )
 {
@@ -674,7 +682,7 @@ static rc_t print_qslice( samdump_opts * opts, bool reverse, const char * source
 }
 
 
-static rc_t print_allel_name( samdump_opts * opts, const PlacementRecord *rec, uint32_t ploidy_idx )
+static rc_t print_allel_name( const PlacementRecord * const rec, uint32_t ploidy_idx )
 {
     rc_t rc = KOutMsg( "ALLELE_%li.%u\t", rec->id, ploidy_idx + 1 );
     return rc;
@@ -721,8 +729,8 @@ static rc_t modify_and_print_cigar( int64_t row_id, const VCursor * cursor, uint
 }
 
 
-static rc_t print_evidence_alignment( samdump_opts * opts, const PlacementRecord *rec,
-                                      align_table_context * atx, int64_t align_id, uint32_t ploidy_idx )
+static rc_t print_evidence_alignment( const samdump_opts * const opts, const PlacementRecord * const rec,
+                                      const align_table_context * const atx, int64_t align_id, uint32_t ploidy_idx )
 {
     uint32_t ref_ploidy;
     const VCursor * cursor = atx->eval.cursor;
@@ -784,8 +792,8 @@ static rc_t print_evidence_alignment( samdump_opts * opts, const PlacementRecord
 }
 
 
-static rc_t print_evidence_alignments( samdump_opts * opts, const PlacementRecord *rec,
-                                    align_table_context * atx, uint32_t ploidy_idx )
+static rc_t print_evidence_alignments( const samdump_opts * const opts, const PlacementRecord * const rec,
+                                       const align_table_context * const atx, uint32_t ploidy_idx )
 {
     int64_t *ev_al_ids;
     uint32_t ev_al_ids_count;
@@ -803,9 +811,10 @@ static rc_t print_evidence_alignments( samdump_opts * opts, const PlacementRecor
 
 
 /* print minimal one alignment from the EVIDENCE-INTERVAL / EVIDENCE-ALIGNMENT - table(s) */
-static rc_t print_alignment_sam_ev( samdump_opts * opts, const char * ref_name,
+static rc_t print_alignment_sam_ev( const samdump_opts * const opts, const char * ref_name,
                                     INSDC_coord_zero pos,
-                                    const PlacementRecord *rec, align_table_context * atx )
+                                    const PlacementRecord * const rec, const align_table_context * const atx,
+                                    uint64_t * const rows_so_far )
 {
     uint32_t ploidy;
     const VCursor * cursor = atx->cmn.cursor;
@@ -840,7 +849,7 @@ static rc_t print_alignment_sam_ev( samdump_opts * opts, const char * ref_name,
         for ( ploidy_idx = 0; ploidy_idx < ploidy && rc == 0; ++ploidy_idx )
         {
             /* SAM-FIELD: QNAME     SRA-column: eventually prefixed row-id into EVIDENCE_INTERVAL - table */
-            rc = print_allel_name( opts, rec, ploidy_idx );
+            rc = print_allel_name( rec, ploidy_idx );
 
             /* SAM-FIELD: FLAG      SRA-column: SAM_FLAGS ( uint32 ) */
             /* SAM-FIELD: RNAME     SRA-column: REF_NAME / REF_SEQ_ID ( char * ) */
@@ -881,7 +890,7 @@ static rc_t print_alignment_sam_ev( samdump_opts * opts, const char * ref_name,
             if ( rc == 0 )
                 rc = KOutMsg( "\n" );
 
-            opts->rows_so_far++;
+            (*rows_so_far)++;
 
             /* we do that here per ALLEL-READ, not at the end per ALLEL, because we have to test which alignments
                fit the ploidy_idx */
@@ -893,9 +902,10 @@ static rc_t print_alignment_sam_ev( samdump_opts * opts, const char * ref_name,
 }
 
 
-static rc_t print_alignment_sam_ps( samdump_opts * opts, const char * ref_name,
-                                    INSDC_coord_zero pos, matecache * mc,
-                                    const PlacementRecord *rec, align_table_context * atx )
+static rc_t print_alignment_sam_ps( const samdump_opts * const opts, const char * ref_name,
+                                    INSDC_coord_zero pos, matecache * const mc,
+                                    const PlacementRecord * const rec, const align_table_context * const atx,
+                                    uint64_t * const rows_so_far )
 {
     uint32_t sam_flags = 0;
     INSDC_coord_zero mate_ref_pos = 0;
@@ -920,24 +930,49 @@ static rc_t print_alignment_sam_ps( samdump_opts * opts, const char * ref_name,
     {
         if ( mate_align_id != 0 )
         {
-            rc = matecache_lookup_same_ref( mc, atx->db_idx, mate_align_id, &mate_ref_pos, &sam_flags, &tlen );
-            if ( rc == 0 )
+            if ( opts->use_mate_cache && mc != NULL )
             {
-                /* cache entry-found! (on the same reference) -> that means we have now mate_ref_pos, flags and tlen */
-                rc = matecache_remove_same_ref( mc, atx->db_idx, mate_align_id );
-                mate_ref_name = equal_sign;
-                mate_ref_name_len = 1;
-                mate_ref_pos_len = 1;
+                rc = matecache_lookup_same_ref( mc, atx->db_idx, mate_align_id, &mate_ref_pos, &sam_flags, &tlen );
+                if ( rc == 0 )
+                {
+                    const INSDC_read_filter * read_filter;
+                    uint32_t read_filter_len;
+
+                    /* cache entry-found! (on the same reference) -> that means we have now mate_ref_pos, flags and tlen */
+                    rc = matecache_remove_same_ref( mc, atx->db_idx, mate_align_id );
+                    mate_ref_name = equal_sign;
+                    mate_ref_name_len = 1;
+                    mate_ref_pos_len = 1;
+
+                    /* read the read-filter column and adjust the sam-flags value to reflect the presense
+                       of the flag SRA_READ_FILTER_REJECT, if it is there switch 0x200 on, of not switch 0x200 off */
+                    rc = read_INSDC_read_filter_ptr( rec->id, cursor, atx->cmn.read_filter_idx, &read_filter, &read_filter_len );
+                    if ( rc == 0 && read_filter_len > 0 )
+                    {
+                        if ( ( read_filter[ 0 ] & READ_FILTER_REJECT ) == READ_FILTER_REJECT )
+                            sam_flags |= 0x200;
+                        else
+                            sam_flags &= ~0x200;
+
+                        if ( ( read_filter[ 0 ] & READ_FILTER_CRITERIA ) == READ_FILTER_CRITERIA )
+                            sam_flags |= 0x400;
+                        else
+                            sam_flags &= ~0x400;
+                    }
+                }
+            }
+            else
+            {
+                rc = RC( rcApp, rcNoTarg, rcAccessing, rcItem, rcNotFound );
             }
         }
 
         if ( ( mate_align_id != 0 && GetRCState( rc ) == rcNotFound )||( mate_align_id == 0 ) )
         {
-            /* no cache entry-found ... */
+            /* no cache entry-found OR do not use mate-cache
+               ---> that means we have to read it from the table... */
 
-            /* that means we have to read it from the table... */
             rc = read_char_ptr_and_size( rec->id, cursor, atx->mate_ref_name_idx, &mate_ref_name, &mate_ref_name_len );
-
             if ( rc == 0 )
                 rc = read_INSDC_coord_zero( rec->id, cursor, atx->mate_ref_pos_idx, &mate_ref_pos, &mate_ref_pos_len );
             if ( rc == 0 )
@@ -955,8 +990,11 @@ static rc_t print_alignment_sam_ps( samdump_opts * opts, const char * ref_name,
                         int cmp = string_cmp( mate_ref_name, mate_ref_name_len, ref_name, string_size( ref_name ), mate_ref_name_len );
                         if ( cmp == 0 )
                         {
-                            rc = matecache_insert_same_ref( mc, atx->db_idx, rec->id, pos/* + 1 */, 
-                                                            calc_mate_flags( sam_flags ), -tlen );
+                            if ( opts->use_mate_cache )
+                            {
+                                uint32_t mate_flags = calc_mate_flags( sam_flags );
+                                rc = matecache_insert_same_ref( mc, atx->db_idx, rec->id, pos, mate_flags, -tlen );
+                            }
                             mate_ref_name = equal_sign;
                             mate_ref_name_len = 1;
                         }
@@ -964,7 +1002,10 @@ static rc_t print_alignment_sam_ps( samdump_opts * opts, const char * ref_name,
                 }
                 else if ( opts->print_half_unaligned_reads )
                 {
-                    rc = matecache_insert_unaligned( mc, atx->db_idx, rec->id, pos, atx->ref_idx, *seq_spot_id );
+                    if ( opts->use_mate_cache )
+                    {
+                        rc = matecache_insert_unaligned( mc, atx->db_idx, rec->id, pos, atx->ref_idx, *seq_spot_id );
+                    }
                 }
             }
         }
@@ -976,7 +1017,7 @@ static rc_t print_alignment_sam_ps( samdump_opts * opts, const char * ref_name,
             return 0;
     }
 
-    opts->rows_so_far++;
+    (*rows_so_far)++;
 
     /* SAM-FIELD: QNAME     SRA-column: SEQ_SPOT_ID ( int64 ) */
     if ( rc == 0 )
@@ -1093,9 +1134,10 @@ static rc_t print_alignment_sam_ps( samdump_opts * opts, const char * ref_name,
 }
 
 
-static rc_t print_alignment_fastx( samdump_opts * opts, const char * ref_name,
-                                   INSDC_coord_zero pos, matecache * mc,
-                                   const PlacementRecord *rec, align_table_context * atx )
+static rc_t print_alignment_fastx( const samdump_opts * const opts, const char * ref_name,
+                                   INSDC_coord_zero pos, matecache * const mc,
+                                   const PlacementRecord * const rec, const align_table_context * const atx,
+                                   uint64_t * const rows_so_far )
 {
     bool orientation;
     const VCursor *cursor = atx->cmn.cursor;
@@ -1109,16 +1151,13 @@ static rc_t print_alignment_fastx( samdump_opts * opts, const char * ref_name,
     if ( rc == 0 && opts->print_half_unaligned_reads )
     {
         rc = read_int64( rec->id, cursor, atx->mate_align_id_idx, &mate_align_id, 0 );
-        if ( rc == 0 && mate_align_id == 0 )
+        if ( rc == 0 && mate_align_id == 0 && mc != NULL && opts->use_mate_cache )
         {
-            uint32_t sam_flags;
-            rc = read_uint32_t( rec->id, cursor, atx->sam_flags_idx, &sam_flags, 0 );
-            if ( rc == 0 )
-                rc = matecache_insert_unaligned( mc, atx->db_idx, rec->id, pos, atx->ref_idx, *seq_spot_id );
+            rc = matecache_insert_unaligned( mc, atx->db_idx, rec->id, pos, atx->ref_idx, *seq_spot_id );
         }
     }
 
-    opts->rows_so_far++;
+    ( *rows_so_far )++;
 
     if ( opts->output_format == of_fastq )
         rc = KOutMsg( "@" );
@@ -1214,40 +1253,45 @@ static rc_t print_alignment_fastx( samdump_opts * opts, const char * ref_name,
 
 
 /* print one record of alignment-information in SAM-format */
-static rc_t walk_position( samdump_opts * opts, PlacementSetIterator * set_iter,
-                           const char * ref_name, INSDC_coord_zero pos, matecache * mc )
+static rc_t walk_position( const samdump_opts * const opts, PlacementSetIterator * const set_iter,
+                           const char * ref_name, INSDC_coord_zero pos,
+                           matecache * const mc, uint64_t * const rows_so_far )
 {
     rc_t rc = 0;
-    while ( rc == 0 && !test_limit_reached( opts ) )
+    while ( rc == 0 && !test_limit_reached( opts, *rows_so_far ) )
     {
-        const PlacementRecord *rec;
-        rc = PlacementSetIteratorNextRecordAt( set_iter, pos, &rec );
-        if ( rc != 0 )
+        rc = Quitting ();
+        if ( rc == 0 )
         {
-            if ( GetRCState( rc ) != rcDone )
+            const PlacementRecord *rec;
+            rc = PlacementSetIteratorNextRecordAt( set_iter, pos, &rec );
+            if ( rc != 0 )
             {
-                LOGERR( klogInt, rc, "PlacementSetIteratorNextRecordAt() failed" );
-            }
-        }
-        else
-        {
-            align_table_context * atx = PlacementRecord_get_ext_data_ptr( rec, placementRecordExtension0 );
-            if ( atx == NULL )
-            {
-                rc = RC( rcExe, rcNoTarg, rcReading, rcParam, rcNull );
-                LOGERR( klogInt, rc, "no placement-record-context available" );
+                if ( GetRCState( rc ) != rcDone )
+                {
+                    LOGERR( klogInt, rc, "PlacementSetIteratorNextRecordAt() failed" );
+                }
             }
             else
             {
-                if ( opts->output_format == of_sam )
+                align_table_context * atx = PlacementRecord_get_ext_data_ptr( rec, placementRecordExtension0 );
+                if ( atx == NULL )
                 {
-                    if ( atx->align_table_type == att_evidence )
-                        rc = print_alignment_sam_ev( opts, ref_name, pos, rec, atx );
-                    else
-                        rc = print_alignment_sam_ps( opts, ref_name, pos, mc, rec, atx );
+                    rc = RC( rcExe, rcNoTarg, rcReading, rcParam, rcNull );
+                    LOGERR( klogInt, rc, "no placement-record-context available" );
                 }
                 else
-                    rc = print_alignment_fastx( opts, ref_name, pos, mc, rec, atx );
+                {
+                    if ( opts->output_format == of_sam )
+                    {
+                        if ( atx->align_table_type == att_evidence )
+                            rc = print_alignment_sam_ev( opts, ref_name, pos, rec, atx, rows_so_far );
+                        else
+                            rc = print_alignment_sam_ps( opts, ref_name, pos, mc, rec, atx, rows_so_far );
+                    }
+                    else
+                        rc = print_alignment_fastx( opts, ref_name, pos, mc, rec, atx, rows_so_far );
+                }
             }
         }
     }
@@ -1256,24 +1300,28 @@ static rc_t walk_position( samdump_opts * opts, PlacementSetIterator * set_iter,
 }
 
 
-static rc_t walk_window( samdump_opts * opts, PlacementSetIterator * set_iter,
-                         const char * ref_name, matecache * mc )
+static rc_t walk_window( const samdump_opts * const opts, PlacementSetIterator * const set_iter,
+                         const char * ref_name, matecache * const mc, uint64_t * const rows_so_far )
 {
     rc_t rc = 0;
-    while ( rc == 0 && !test_limit_reached( opts ) )
+    while ( rc == 0 && !test_limit_reached( opts, *rows_so_far ) )
     {
-        INSDC_coord_zero pos;
-        rc = PlacementSetIteratorNextAvailPos( set_iter, &pos, NULL );
-        if ( rc != 0 )
+        rc = Quitting ();
+        if ( rc == 0 )
         {
-            if ( GetRCState( rc ) != rcDone )
+            INSDC_coord_zero pos;
+            rc = PlacementSetIteratorNextAvailPos( set_iter, &pos, NULL );
+            if ( rc != 0 )
             {
-                LOGERR( klogInt, rc, "PlacementSetIteratorNextAvailPos() failed" );
+                if ( GetRCState( rc ) != rcDone )
+                {
+                    LOGERR( klogInt, rc, "PlacementSetIteratorNextAvailPos() failed" );
+                }
             }
-        }
-        else
-        {
-            rc = walk_position( opts, set_iter, ref_name, pos, mc );
+            else
+            {
+                rc = walk_position( opts, set_iter, ref_name, pos, mc, rows_so_far );
+            }
         }
     }
     if ( GetRCState( rc ) == rcDone ) rc = 0;
@@ -1281,11 +1329,12 @@ static rc_t walk_window( samdump_opts * opts, PlacementSetIterator * set_iter,
 }
 
 
-static rc_t walk_reference( samdump_opts * opts, PlacementSetIterator * set_iter,
-                            struct ReferenceObj const * ref_obj, const char * ref_name, matecache * mc )
+static rc_t walk_reference( const samdump_opts * const opts, PlacementSetIterator * const set_iter,
+                            struct ReferenceObj const * ref_obj, const char * ref_name,
+                            matecache * const mc, uint64_t * const rows_so_far )
 {
     rc_t rc = 0;
-    while ( rc == 0 && !test_limit_reached( opts ) )
+    while ( rc == 0 && !test_limit_reached( opts, *rows_so_far ) )
     {
         rc = Quitting ();
         if ( rc == 0 )
@@ -1301,21 +1350,23 @@ static rc_t walk_reference( samdump_opts * opts, PlacementSetIterator * set_iter
                 }
             }
             else
-                rc = walk_window( opts, set_iter, ref_name, mc );
+                rc = walk_window( opts, set_iter, ref_name, mc, rows_so_far );
         }
     }
     if ( GetRCState( rc ) == rcDone ) rc = 0;
-    if ( rc == 0 )
+
+    if ( rc == 0 && mc != NULL && opts->use_mate_cache )
         rc = matecache_clear_same_ref( mc );
 
     return rc;
 }
 
 
-static rc_t walk_placements( samdump_opts * opts, PlacementSetIterator * set_iter, matecache * mc )
+static rc_t walk_placements( const samdump_opts * const opts, PlacementSetIterator * const set_iter,
+                             matecache * const mc, uint64_t * const rows_so_far )
 {
     rc_t rc = 0;
-    while ( rc == 0 && !test_limit_reached( opts ) )
+    while ( rc == 0 && !test_limit_reached( opts, *rows_so_far ) )
     {
         struct ReferenceObj const * ref_obj;
 
@@ -1331,7 +1382,7 @@ static rc_t walk_placements( samdump_opts * opts, PlacementSetIterator * set_ite
                     rc = ReferenceObj_Name( ref_obj, &ref_name );
 
                 if ( rc == 0 )
-                    rc = walk_reference( opts, set_iter, ref_obj, ref_name, mc );
+                    rc = walk_reference( opts, set_iter, ref_obj, ref_name, mc, rows_so_far );
                 else
                 {
                     if ( opts->use_seqid_as_refname )
@@ -1366,8 +1417,9 @@ static void CC destroy_align_table_context( void *item, void *data )
 }
 
 
-static rc_t print_all_aligned_spots_of_this_reference( samdump_opts * opts, input_database * ids, matecache * mc,
-                                                       const AlignMgr * a_mgr, const ReferenceObj* ref_obj )
+static rc_t print_all_aligned_spots_of_this_reference( const samdump_opts * const opts, const input_database * const ids,
+                                                       matecache * const mc, const AlignMgr * const a_mgr,
+                                                       const ReferenceObj * const ref_obj, uint64_t * const rows_so_far )
 {
     PlacementSetIterator * set_iter;
     /* the we ask the alignment-manager to produce a placement-set-iterator... */
@@ -1394,7 +1446,7 @@ static rc_t print_all_aligned_spots_of_this_reference( samdump_opts * opts, inpu
                 &context_list
                 );
             if ( rc == 0 )
-                rc = walk_placements( opts, set_iter, mc );
+                rc = walk_placements( opts, set_iter, mc, rows_so_far );
         }
 
         /* walk the context_list to free the align_table_context records, close/free the cursors... */
@@ -1411,14 +1463,15 @@ static rc_t print_all_aligned_spots_of_this_reference( samdump_opts * opts, inpu
     + ... less cursors will be open at the same time, more resource efficient
     - ... if more than one input-file, the output will be sorted only within each reference
 */
-static rc_t print_all_aligned_spots_0( samdump_opts * opts, input_files * ifs, matecache * mc, const AlignMgr * a_mgr )
+static rc_t print_all_aligned_spots_0( const samdump_opts * const opts, const input_files * const ifs,
+                                       matecache * const mc, const AlignMgr * const a_mgr, uint64_t * const rows_so_far )
 {
     rc_t rc = 0;
     uint32_t db_idx;
     /* we now loop through all input-databases... */
     for ( db_idx = 0; db_idx < ifs->database_count && rc == 0; ++db_idx )
     {
-        input_database * ids = VectorGet( &ifs->dbs, db_idx );
+        const input_database * ids = VectorGet( &ifs->dbs, db_idx );
         if ( ids != NULL )
         {
             uint32_t refobj_count;
@@ -1428,11 +1481,11 @@ static rc_t print_all_aligned_spots_0( samdump_opts * opts, input_files * ifs, m
                 uint32_t ref_idx;
                 for ( ref_idx = 0; ref_idx < refobj_count && rc == 0; ++ref_idx )
                 {
-                    const ReferenceObj* ref_obj;
+                    const ReferenceObj * ref_obj;
                     rc = ReferenceList_Get( ids->reflist, &ref_obj, ref_idx );
                     if ( rc == 0 && ref_obj != NULL )
                     {
-                        rc = print_all_aligned_spots_of_this_reference( opts, ids, mc, a_mgr, ref_obj );
+                        rc = print_all_aligned_spots_of_this_reference( opts, ids, mc, a_mgr, ref_obj, rows_so_far );
                         ReferenceObj_Release( ref_obj );
                     }
                 }
@@ -1452,7 +1505,8 @@ static rc_t print_all_aligned_spots_0( samdump_opts * opts, input_files * ifs, m
           this can result in not beeing able to perform the functions at all because of running out of resources
     - ... a long delay at start up, before the 1st alignment is printed ( all the cursors have to be opened )
 */
-static rc_t print_all_aligned_spots_1( samdump_opts * opts, input_files * ifs, matecache * mc, const AlignMgr * a_mgr )
+static rc_t print_all_aligned_spots_1( const samdump_opts * const opts, const input_files * const ifs,
+                                       matecache * const mc, const AlignMgr * const a_mgr, uint64_t * const rows_so_far )
 {
     PlacementSetIterator * set_iter;
     /* the we ask the alignment-manager to produce a placement-set-iterator... */
@@ -1470,7 +1524,7 @@ static rc_t print_all_aligned_spots_1( samdump_opts * opts, input_files * ifs, m
         rc = prepare_whole_files( opts, ifs, set_iter, &context_list );
 
         if ( rc == 0 )
-            rc = walk_placements( opts, set_iter, mc );
+            rc = walk_placements( opts, set_iter, mc, rows_so_far );
 
         /* walk the context_list to free the align_table_context records, close/free the cursors... */
         VectorWhack ( &context_list, destroy_align_table_context, NULL );
@@ -1484,7 +1538,8 @@ static rc_t print_all_aligned_spots_1( samdump_opts * opts, input_files * ifs, m
    the user has specified certain regions on the references,
    print only alignments, that start in these regions
 */
-static rc_t print_selected_aligned_spots( samdump_opts * opts, input_files * ifs, matecache * mc, const AlignMgr * a_mgr )
+static rc_t print_selected_aligned_spots( const samdump_opts * const opts, const input_files * const ifs,
+                                          matecache * const mc, const AlignMgr * const a_mgr, uint64_t * const rows_so_far )
 {
     PlacementSetIterator * set_iter;
     /* the we ask the alignment-manager to produce a placement-set-iterator... */
@@ -1502,7 +1557,7 @@ static rc_t print_selected_aligned_spots( samdump_opts * opts, input_files * ifs
         rc = prepare_regions( opts, ifs, set_iter, &context_list );
 
         if ( rc == 0 )
-            rc = walk_placements( opts, set_iter, mc );
+            rc = walk_placements( opts, set_iter, mc, rows_so_far );
 
         /* walk the context_list to free the align_table_context records, close/free the cursors... */
         VectorWhack ( &context_list, destroy_align_table_context, NULL );
@@ -1517,7 +1572,8 @@ static rc_t print_selected_aligned_spots( samdump_opts * opts, input_files * ifs
    this is called from sam-dump3.c, it prepares the iterators and then walks them
    ---> only entry into this module <--- 
 */
-rc_t print_aligned_spots( samdump_opts * opts, input_files * ifs, matecache * mc )
+rc_t print_aligned_spots( const samdump_opts * const opts, const input_files * const ifs,
+                          matecache * const mc, uint64_t * const rows_so_far )
 {
     const AlignMgr * a_mgr;
     /* first we make an alignment-manager */
@@ -1533,14 +1589,14 @@ rc_t print_aligned_spots( samdump_opts * opts, input_files * ifs, matecache * mc
             /* the user did not specify regions to be printed ==> print all alignments */
             switch( opts->dump_mode )
             {
-                case dm_one_ref_at_a_time : rc = print_all_aligned_spots_0( opts, ifs, mc, a_mgr ); break;
-                case dm_prepare_all_refs  : rc = print_all_aligned_spots_1( opts, ifs, mc, a_mgr ); break;
+                case dm_one_ref_at_a_time : rc = print_all_aligned_spots_0( opts, ifs, mc, a_mgr, rows_so_far ); break;
+                case dm_prepare_all_refs  : rc = print_all_aligned_spots_1( opts, ifs, mc, a_mgr, rows_so_far ); break;
             }
         }
         else
         {
             /* the user did specify regions to be printed ==> print only the alignments in these regions */
-            rc = print_selected_aligned_spots( opts, ifs, mc, a_mgr );
+            rc = print_selected_aligned_spots( opts, ifs, mc, a_mgr, rows_so_far );
         }
         AlignMgrRelease( a_mgr );
     }

@@ -80,6 +80,7 @@ extern OptDef StandardOptions [];
 #define OPTION_HELP      "help"
 #define OPTION_VERSION   "version"
 #define OPTION_VERBOSE   "verbose"
+#define OPTION_QUIET     "quiet"
 #if USE_OPTFILE
 #define OPTION_OPTFILE   "option-file"
 #endif
@@ -90,11 +91,12 @@ extern OptDef StandardOptions [];
 #define ALIAS_HELP1     "h"
 #define ALIAS_VERSION   "V"
 #define ALIAS_VERBOSE   "v"
+#define ALIAS_QUIET     "q"
 #if USE_OPTFILE
 #define ALIAS_OPTFILE   ""
 #endif
 
-#define OPTION_REPORT   "report"
+#define OPTION_REPORT   "ncbi_error_report"
 #define ALIAS_REPORT    ""
 
 /*--------------------------------------------------------------------------

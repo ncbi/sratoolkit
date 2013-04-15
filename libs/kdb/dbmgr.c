@@ -376,7 +376,7 @@ LIB_EXPORT int CC KDBManagerVPathType ( const KDBManager * self, const char *pat
         VPath * vp;
         rc_t rc;
 
-        rc = VPathMakeFmt (&vp, path, args);
+        rc = VPathMakeVFmt (&vp, path, args);
         if (rc == 0)
         {
             path_type = KDBManagerPathTypeVP (self, vp);

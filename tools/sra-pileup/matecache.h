@@ -76,22 +76,22 @@ typedef struct matecache
 
 rc_t make_matecache( matecache **self, uint32_t count );
 
-void release_matecache( matecache *self );
+void release_matecache( matecache * const self );
 
-rc_t matecache_clear_same_ref( matecache *self );
+rc_t matecache_clear_same_ref( matecache * const self );
 
-rc_t matecache_report( matecache *self );
+rc_t matecache_report( const matecache * const self );
 
 
 /* cache functions for aligned mates on the same reference */
 
-rc_t matecache_insert_same_ref( matecache *self,
+rc_t matecache_insert_same_ref( matecache * const self,
         uint32_t db_idx, int64_t key, INSDC_coord_zero ref_pos, uint32_t flags, INSDC_coord_len tlen );
 
-rc_t matecache_lookup_same_ref( matecache *self, uint32_t db_idx, int64_t key,
+rc_t matecache_lookup_same_ref( const matecache * const self, uint32_t db_idx, int64_t key,
                        INSDC_coord_zero *ref_pos, uint32_t *flags, INSDC_coord_len *tlen );
 
-rc_t matecache_remove_same_ref( matecache *self, uint32_t db_idx, int64_t key );
+rc_t matecache_remove_same_ref( matecache * const self, uint32_t db_idx, int64_t key );
 
 
 /* cache functions for half aligned mates */
@@ -104,13 +104,13 @@ rc_t matecache_remove_same_ref( matecache *self, uint32_t db_idx, int64_t key );
     ref_idx ... idx of reference the aligned half aligns to
 */
 
-rc_t matecache_insert_unaligned( matecache *self,
+rc_t matecache_insert_unaligned( matecache * const self,
         uint32_t db_idx, int64_t key, INSDC_coord_zero ref_pos, uint32_t ref_idx, int64_t seq_id );
 
-rc_t matecache_lookup_unaligned( matecache *self,
-        uint32_t db_idx, int64_t key, INSDC_coord_zero *ref_pos, uint32_t *ref_idx, int64_t *seq_id );
+rc_t matecache_lookup_unaligned( const matecache * const self, uint32_t db_idx, int64_t key,
+                                 INSDC_coord_zero * const ref_pos, uint32_t * const ref_idx, int64_t * const seq_id );
 
-rc_t foreach_unaligned_entry( matecache *self,
+rc_t foreach_unaligned_entry( const matecache * const self,
                               uint32_t db_idx,
                               rc_t ( CC * f ) ( int64_t seq_id, int64_t al_id, void * user_data ),
                               void * user_data );

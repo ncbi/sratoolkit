@@ -571,8 +571,6 @@ rc_t KDBOpenFileAsDirectory (const KDirectory * dir,
                     }
                     else
                     {
-/* HACK:  This needs to be refactored/redone/repaired */
-                        KFileAddRef (file);
                         rc = KDirectoryOpenTarArchiveRead_silent_preopened (dir, &ldir, false,
                                                                             file, path);
                         if (rc == 0)
@@ -589,6 +587,11 @@ rc_t KDBOpenFileAsDirectory (const KDirectory * dir,
                     }
                     else
                     {
+                        /*
+                         * release our ownership of the KFile that but archive will 
+                         * keep theirs
+                         */
+                        KFileRelease (file);
                         *pdir = ldir;
                         return 0;
                     }

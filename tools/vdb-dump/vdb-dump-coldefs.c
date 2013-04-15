@@ -265,18 +265,26 @@ static dim_trans_fct_t vdcd_get_dim_trans_fct( const VSchema *my_schema, VTypede
 }
 
 
+const char * const_s_Ascii = "Ascii";
+const char * const_s_Unicode = "Unicode";
+const char * const_s_Uint = "Uint";
+const char * const_s_Int = "Int";
+const char * const_s_Float = "Float";
+const char * const_s_Bool = "Bool";
+const char * const_s_Unknown = "unknown";
+
 char *vdcd_make_domain_txt( const uint32_t domain )
 {
     char* res= NULL;
     switch( domain )
     {
-        case vtdAscii   : res = strdup( "Ascii" ); break;
-        case vtdUnicode : res = strdup( "Unicode" ); break;
-        case vtdUint    : res = strdup( "Uint" ); break;
-        case vtdInt     : res = strdup( "Int" ); break;
-        case vtdFloat   : res = strdup( "Float" ); break;
-        case vtdBool    : res = strdup( "Bool" ); break;
-        default : res = strdup( "unknown" ); break;
+        case vtdAscii   : res = string_dup_measure( const_s_Ascii, NULL ); break;
+        case vtdUnicode : res = string_dup_measure( const_s_Unicode, NULL ); break;
+        case vtdUint    : res = string_dup_measure( const_s_Uint, NULL ); break;
+        case vtdInt     : res = string_dup_measure( const_s_Int, NULL ); break;
+        case vtdFloat   : res = string_dup_measure( const_s_Float, NULL ); break;
+        case vtdBool    : res = string_dup_measure( const_s_Bool, NULL ); break;
+        default : res = string_dup_measure( const_s_Unknown, NULL ); break;
     }
     return res;
 }
@@ -339,7 +347,7 @@ static p_col_def vdcd_append_col( col_defs* defs, const char* name )
     {
         if ( VectorAppend( &(defs->cols), NULL, new_col ) == 0 )
         {
-            int len = strlen( name );
+            int len = string_size( name );
             if ( len > defs->max_colname_chars )
                 defs->max_colname_chars = len;
         }

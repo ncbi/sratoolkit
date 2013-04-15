@@ -26,7 +26,6 @@
 
 #include "srapath.vers.h"
 
-#include <sra/srapath.h>
 #include <vfs/resolver.h>
 #include <vfs/path.h>
 #include <vfs/manager.h>
@@ -39,6 +38,7 @@
 #include <klib/text.h>
 #include <klib/log.h>
 #include <klib/out.h>
+#include <klib/status.h> /* STSMSG */
 #include <klib/rc.h>
 #include <sysalloc.h>
 
@@ -47,6 +47,11 @@
 #include <string.h>
 #include <assert.h>
 
+#include <limits.h> /* PATH_MAX */
+
+#ifndef PATH_MAX
+#define PATH_MAX 4096
+#endif
 
 /* Version  EXTERN
  *  return 4-part version code: 0xMMmmrrrr, where
@@ -63,55 +68,52 @@ const char UsageDefaultName[] = "srapath";
 
 rc_t CC UsageSummary (const char * progname)
 {
-    return KOutMsg (
-        "\n"
+    return OUTMSG(("\n"
         "Usage:\n"
-        "  %s [options] <accession> ...\n"
+        "  %s [options] <accession> ...\n\n"
         "Summary:\n"
-        "  Tool to produce a list of full paths to SRA runs from list of\n"
-        "  accessions.\n"
-        "\n", progname);
+        "  Tool to produce a list of full paths to files\n"
+        "  (SRA and WGS runs, refseqs: reference sequences)\n"
+        "  from list of NCBI accessions.\n"
+        "\n", progname));
 }
 
-rc_t CC Usage (const Args * args)
-{
+rc_t CC Usage(const Args *args) {
     const char * progname = UsageDefaultName;
     const char * fullpath = UsageDefaultName;
     rc_t rc;
 
-    if (args == NULL)
-        rc = RC (rcApp, rcArgv, rcAccessing, rcSelf, rcNull);
-    else
-        rc = ArgsProgram (args, &fullpath, &progname);
-    if (rc)
+    if (args == NULL) {
+        rc = RC (rcExe, rcArgv, rcAccessing, rcSelf, rcNull);
+    }
+    else {
+        rc = ArgsProgram(args, &fullpath, &progname);
+    }
+
+    if (rc != 0) {
         progname = fullpath = UsageDefaultName;
+    }
 
-    UsageSummary (progname);
+    UsageSummary(progname);
 
-    OUTMSG (("  Output paths are ordered according to accession list.\n"
-         "  with no path alteration options, the accession search path will be\n"
-         "  determined according to the local installation.\n"
-         "  Server and volume paths may be compound, adhering to the\n"
-             "  Unix path convention of ':' separators, e.g.\n"
-             "    '/server1:/server2/subdir'\n"
-             "\n"));
-    OUTMSG (("  The order of search paths is important: rather than alphabetical,\n"
-             "  specify paths in the preferred order of discovery, usually giving the most\n"
-             "  recently updated volumes first.  If a run appears more than once in the\n"
-             "  matrix, it will be found according to the first 'repserver/volume'\n"
-             "  combination that produces a hit.\n"
-             "\n"));
-    OUTMSG (("  Finally, this tool produces a path that is 'likely' to be a run, in that\n"
-             "  an entry exists in the file system at the location predicted.  It is possible\n"
-             "  that this path will fail to produce success upon opening a run if the path\n"
-             "  does not point to a valid object.\n"
-             "\n"));
+    OUTMSG((
+        "  Output paths are ordered according to accession list.\n"
+        "\n"
+        "  The accession search path will be determined according to the\n"
+        "  configuration. It will attempt to find files in local and site\n"
+        "  repositories, and will also check remote repositories for run\n"
+        "  location.\n"));
+    OUTMSG((
+        "  This tool produces a path that is 'likely' to be a run, in that\n"
+        "  an entry exists in the file system at the location predicted.\n"
+        "  It is possible that this path will fail to produce success upon\n"
+        "  opening a run if the path does not point to a valid object.\n\n"));
 
-    KOutMsg ("Options:\n");
+    OUTMSG(("Options:\n"));
 
     HelpOptionsStandard();
 
-    HelpVersion (fullpath, KAppVersion());
+    HelpVersion(fullpath, KAppVersion());
 
     return rc;
 }
@@ -170,10 +172,33 @@ rc_t CC KMain ( int argc, char *argv [] )
                             if (rc == 0)
                             {
                                 const VPath * rpath;
-                                    
+
                                 rc = VResolverLocal (resolver, upath, &rpath);
-                                if (GetRCState(rc) == rcNotFound)
-                                    rc = VResolverRemote (resolver, upath, &rpath, NULL);
+                                if (rc == 0) {
+                                    STSMSG(1, ("'%s': found locally", pc));
+                                }
+                                else if (GetRCState(rc) == rcNotFound) {
+                                    STSMSG(1, ("'%s': not found locally", pc));
+                                    rc = VResolverRemote(resolver,
+                                        upath, &rpath, NULL);
+                                    if (rc == 0) {
+                                        STSMSG(1, ("'%s': found remotely", pc));
+                                    }
+                                    else if (GetRCState(rc) == rcNotFound) {
+                                        STSMSG(1,
+                                            ("'%s': not found remotely", pc));
+                                    }
+                                    else {
+                                        STSMSG(1, ("'%s': "
+                                            "error resolving remotely: %R",
+                                            pc, rc));
+                                    }
+                                }
+                                else {
+                                    STSMSG(1, (
+                                        "'%s': error resolving locally: %R",
+                                        pc, rc));
+                                }
 
                                 if (rc == 0)
                                 {
@@ -189,26 +214,56 @@ rc_t CC KMain ( int argc, char *argv [] )
                                 else
                                 {
                                     KDirectory * cwd;
-                                    rc_t orc;
-
-                                    orc = VFSManagerGetCWD (mgr, &cwd);
+                                    rc_t orc = VFSManagerGetCWD (mgr, &cwd);
                                     if (orc == 0)
                                     {
-                                        KPathType kpt;
-
-                                        kpt = KDirectoryPathType (cwd, "%s", pc);
-                                        switch (kpt & ~kptAlias)
+                                        KPathType kpt
+                                            = KDirectoryPathType(cwd, "%s", pc);
+                                        switch (kpt &= ~kptAlias)
                                         {
                                         case kptNotFound:
-                                        case kptBadPath:
+                                            STSMSG(1, ("'%s': not found while "
+                                                "searching the file system",
+                                                pc));
                                             break;
-
+                                        case kptBadPath:
+                                            STSMSG(1, ("'%s': bad path while "
+                                                "searching the file system",
+                                                pc));
+                                            break;
                                         default:
-                                            OUTMSG (("./%s\n", pc));
+                                            STSMSG(1, ("'%s': "
+                                                "found in the file system",
+                                                pc));
                                             rc = 0;
                                             break;
                                         }
                                     }
+                                    if (orc == 0 && rc == 0) {
+                                    if (rc != 0) {
+                                        PLOGMSG(klogErr, (klogErr,
+                                            "'$(name)': not found",
+                                            "name=%s", pc));
+                                    }
+                                    else {
+                                        char resolved[PATH_MAX] = "";
+                                        rc = KDirectoryResolvePath(cwd, true,
+                                            resolved, sizeof resolved, pc);
+                                        if (rc == 0) {
+                                            STSMSG(1, ("'%s': found in "
+                                                "the current directory at '%s'",
+                                                pc, resolved));
+                                            OUTMSG (("%s\n", resolved));
+                                        }
+                                        else {
+                                            STSMSG(1, ("'%s': cannot resolve "
+                                                "in the current directory",
+                                                pc));
+                                            OUTMSG (("./%s\n", pc));
+                                        }
+                                    }
+                                    }
+                                    KDirectoryRelease(cwd);
                                 }
                                 VPathRelease (rpath);
                                 VPathRelease (upath);

@@ -205,6 +205,8 @@ rc_t CC KMain ( int argc, char *argv [] )
     Args * args;
     rc_t rc;
 
+    KStsLevelSet (1);
+
     rc = ArgsMakeAndHandle (&args, argc, argv, 1, Options,
                             sizeof (Options) / sizeof (Options[0]));
     if (rc)

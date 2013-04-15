@@ -266,7 +266,8 @@ enum eVPUri_t
     vpuri_invalid = -1,
     vpuri_none, 
     vpuri_not_supported,
-    vpuri_ncbi_vfs,
+    vpuri_ncbi_file,
+    vpuri_ncbi_vfs = vpuri_ncbi_file,
 #if SUPPORT_FILE_URL
     vpuri_file,
 #endif

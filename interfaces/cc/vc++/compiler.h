@@ -37,7 +37,7 @@ extern "C" {
 static __inline
 float roundf( float value_in )
 {
-    return ( value_in < 0 ) ? ceilf ( value_in - 0.5 ) : floorf ( value_in + 0.5 );
+    return ( value_in < 0 ) ? ceilf ( value_in - 0.5F ) : floorf ( value_in + 0.5 );
 }
 
 #define lroundf( x ) (long int)roundf( x )

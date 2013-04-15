@@ -238,12 +238,13 @@ rc_t VSimpleProdSerial2Blob ( VSimpleProd *self, VBlob **rslt, int64_t id, uint3
             /* create a new, fluffy blob having rowmap and headers */
             VBlob *y;
 #if LAUNCH_PAGEMAP_THREAD
-	    if(self->curs->pagemap_thread == NULL){
-		VCursor *curs = (VCursor*) self->curs;
-		if(--curs->launch_cnt<=0){
-			VCursorLaunchPagemapThread(curs);
-		}
-	    }
+            if(self->curs->pagemap_thread == NULL){
+                VCursor *curs = (VCursor*) self->curs;
+                if(--curs->launch_cnt<=0){
+                    /* ignoring errors because we operate with or without thread */
+                    VCursorLaunchPagemapThread(curs);
+                }
+            }
 #endif
 		
             rc = VBlobCreateFromData ( & y, sblob -> start_id, sblob -> stop_id,
@@ -1052,7 +1053,11 @@ rc_t VFunctionProdCallBlobFuncDecoding( VFunctionProd *self, VBlob *rslt,
          * are fixed row-length so we know the data size
          * we are relying on the blob deserialization code
          * to set the page map up correctly */
-        hdr = BlobHeadersCreateDummyHeader(0, 0, 0, BlobRowCount(sblob) * PageMapGetIdxRowInfo(sblob->pm, 0, 0));
+        if (sblob->pm == NULL) {
+            hdr = BlobHeadersCreateDummyHeader(0, 0, 0, (sblob->data.elem_bits * sblob->data.elem_count + 7) >> 3);
+        }
+        else
+            hdr = BlobHeadersCreateDummyHeader(0, 0, 0, BlobRowCount(sblob) * PageMapGetIdxRowInfo(sblob->pm, 0, 0));
         /* leave rslt->headers null so that the next
          * stage will also create a dummy header */
     }
@@ -1171,7 +1176,7 @@ rc_t VFunctionProdCallBlobNFunc( VFunctionProd *self, VBlob **rslt,
     {
 	int i;
 	for(i=0;i<argc;i++){
-		VBlob *vb=argv[i];
+		VBlob const *vb=argv[i];
 		if(vb->pm == NULL){
 			rc=PageMapProcessGetPagemap(&self->curs->pmpr,&vb->pm);
 			if(rc != 0) return rc;

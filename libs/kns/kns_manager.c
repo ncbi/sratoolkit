@@ -231,6 +231,10 @@ static rc_t KNSManagerDestroy( struct KNSManager *self )
 
     free( self );
     kns_mgr_singleton = NULL;
+    
+    KDylibRelease ( lib_curl_handle );
+    lib_curl_handle = NULL;
+    
     return 0;
 }
 

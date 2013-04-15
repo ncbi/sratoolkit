@@ -92,6 +92,9 @@ bool CC QualityQuantizerInitMatrix(uint8_t dst[256], char const quant[])
             st = 0;
             if (i > limit)
                 return false;
+            /* set from dst[i..(limit - 1)] = value
+             * not inclusive of the endpoint
+             */
             memset(dst + i, value, limit - i);
             i = limit;
             limit = value = 0;

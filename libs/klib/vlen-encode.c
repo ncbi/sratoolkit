@@ -31,6 +31,7 @@
 
 #include <byteswap.h>
 #include <endian.h>
+#include <string.h>
 
 LIB_EXPORT rc_t CC vlen_encode1(void *Dst, uint64_t dsize, uint64_t *psize, int64_t X) {
     int sgn = 0;
@@ -324,7 +325,7 @@ LIB_EXPORT rc_t CC vlen_decode ( int64_t *Y, uint64_t ycount,
 #endif
         XTYPE x;
         
-        x = *(const XTYPE *)(src + i);
+        memcpy (& x, src + i, sizeof x); /* may be misaligned */        
 #if __BYTE_ORDER == __BIG_ENDIAN
 #if XTYPE_SIZE == 32
         x = bswap_32(x);

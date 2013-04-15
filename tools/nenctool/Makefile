@@ -25,6 +25,8 @@
 
 default: std
 
+USE_GCC_IF_ICC = 1
+
 TOP ?= $(shell ../../build/abspath.sh ../..)
 MODULE = tools/nenctool
 
@@ -86,6 +88,7 @@ NENCTOOL_OBJ = \
 NENCTOOL_LIB = \
 	-lkapp \
 	-lvfs \
+	-lkurl \
 	-lkrypto \
 	-lkfg \
 	-lkfs \
@@ -109,6 +112,7 @@ NENCTEST_OBJ = \
 NENCTEST_LIB = \
 	-lkapp \
 	-lvfs \
+	-lkurl \
 	-lkryptotest \
 	-lkfg \
 	-lkfs \

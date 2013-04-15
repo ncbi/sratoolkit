@@ -129,8 +129,8 @@ KDB_OBJ = \
 
 KDB_LIB = \
 	-dvfs \
-	-dkfs \
 	-dkrypto \
+	-dkfs \
 	-dklib
 
 $(LIBDIR)/libkdb.$(SHLX): $(KDB_OBJ)
@@ -173,8 +173,8 @@ WKDB_OBJ = \
 
 WKDB_LIB = \
 	-dvfs \
-	-dkfs \
 	-dkrypto \
+	-dkfs \
 	-dklib
 
 $(LIBDIR)/libwkdb.$(SHLX): $(WKDB_OBJ)

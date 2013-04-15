@@ -73,6 +73,7 @@ typedef enum EncScheme
     encError,
     encNone,
     encEncFile,
+    encSraEncFile,
     encWGAEncFile
 } EncScheme;
 

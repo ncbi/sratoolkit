@@ -24,7 +24,7 @@
 
 default: std
 
-TOP ?= $(abspath ../..)
+TOP ?= $(shell ../../build/abspath.sh ../..)
 MODULE = tools/fastq-loader
 
 INT_LIBS = \
@@ -129,10 +129,10 @@ FASTQ_OBJ = \
 	$(addsuffix .$(LOBX),$(FASTQ_SRC))
 
 FASTQ_LIB = \
+    -lload \
+    -lloader \
 	-lkfs \
 	-lklib \
-    -lload \
-    -lloader
 
 ifneq (win,$(OS))
     FASTQ_LIB += -lkq
@@ -161,25 +161,26 @@ ifneq (win, $(OS))
     QLIB = -skq
 endif
 FASTQ_LOADER_LIB = \
+	-skapp \
     -dwvxf \
 	-dwaxf \
 	-dwsraxf \
 	-sfastqloader \
+    -sload \
 	-sloader \
 	-salign-writer \
-	-skapp \
-    -sload \
-    -svfs \
     -swvdb \
     -swkdb \
-    -skfg \
+    -svfs \
+	-skurl \
     -skrypto \
+    -skfg \
+    -skfs \
 	-lksrch \
-	-lz    \
     $(QLIB) \
     -skproc \
-    -skfs \
 	-sklib \
+	-lz    \
     -lm
 
 
@@ -198,21 +199,23 @@ FASTQ_TEST_OBJ = \
 ifneq (win, $(OS))
     QLIB = -skq
 endif
+
 FASTQ_TEST_LIB = \
-	-sfastqloader \
-	-sloader \
-	-salign-writer \
 	-sktst \
 	-skapp \
+	-sfastqloader \
     -sload \
+	-sloader \
+	-salign-writer \
     -swvdb \
     -swkdb \
     -svfs \
-    -skfg \
+	-skurl \
     -skrypto \
+    -skfg \
+    -skfs \
     $(QLIB) \
     -skproc \
-    -skfs \
 	-sklib
 
 $(TEST_BINDIR)/wb-test-fastq: $(FASTQ_TEST_OBJ)

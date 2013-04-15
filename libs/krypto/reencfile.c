@@ -39,6 +39,8 @@
 #include <kfs/file.h>
 #include <kfs/ramfile.h>
 
+#include <sysalloc.h>
+
 #include <byteswap.h>
 
 #include <stdlib.h>
@@ -324,6 +326,13 @@ rc_t KReencFileReadFooterOut (KReencFile * self, size_t offset,
  * the Out function below to take what we write with
  * the Encryptor and copy it to the callers read buffer.
  */
+static
+rc_t KReencFileReadHandleBlock (KReencFile *self,
+                                uint64_t pos,
+                                void *buffer,
+                                size_t bsize,
+                                size_t *num_read);
+
 static __inline__
 rc_t KReencFileReadHandleHeader (KReencFile *self,
                                  uint64_t pos,
@@ -338,6 +347,18 @@ rc_t KReencFileReadHandleHeader (KReencFile *self,
     assert (buffer);
     assert (bsize);
     assert (num_read);
+
+    /* added to support NCBInenc and NCBIsenc variants of KEncFile
+     * read the first block of the source file but don't write any of it
+     *
+     * If the source is stream mode only then the next block to be read is the
+     * first and this will not violate by seeking. It will just have already
+     * read the block it will want to read real soon. Likewith within a
+     * single call to KFileReadAll.
+     */
+    rc = KReencFileReadHandleBlock (self, 0, NULL, 0, NULL);
+    if (rc)
+        return rc;
 
     /* use a private function from KEncFile to generate a header */
     rc = KEncFileWriteHeader (self->enc);
@@ -449,7 +470,6 @@ rc_t KReencFileWriteABlock (KReencFile * self, uint64_t block_id)
 /*     if (rc == 0) */
 /*         rc = KFileWriteAll (self->enc, BlockId_to_DecryptedPos (block_id^1), */
 /*                          self->plain_text, self->num_read, &self->num_writ); */
-
 
     return rc;
 }
@@ -619,9 +639,16 @@ rc_t KReencFileReadHandleBlock (KReencFile *self,
      * or framing.
      * This block id is not to a known to exist block. It could be 
      * to the header, the footer or past the end of the file.
+     *
+     * NOTE: This could be a pre-fetch of the first block when
+     * processing the header - it will have some funny values
+     * with just a self and all other parameters 0s.
+     * pos of zero gives block_id of 0 and the bsize of zero
+     * means we never look at the others. Thi sis to allow the 
+     * (at the time this was written) new feature of two
+     * different file-signatures for encrypted files.
      */
     block_id = EncryptedPos_to_BlockId (pos, NULL, NULL);
-    offset = pos - BlockId_to_EncryptedPos (block_id);
 
     if (block_id != self->block_id)
     {
@@ -638,13 +665,14 @@ rc_t KReencFileReadHandleBlock (KReencFile *self,
             }
         }
     }
-    if (rc == 0)
+    if ((rc == 0) && (bsize > 0))
     {
         /* satisfy read request
          *
          * if we are here we decrypted and re-encrypted the
          * expected block
          */
+        offset = pos - BlockId_to_EncryptedPos (block_id);
         rc = KReencFileReadBlockOut (self, offset, buffer, bsize, num_read);
         if (rc)
             LOGERR (klogErr, rc, "re-enc error copying out from block");
@@ -1067,7 +1095,7 @@ LIB_EXPORT rc_t CC KEncryptFileMakeRead (const KFile ** pself,
     KReencFile * self;
     uint64_t rawsize;
     uint64_t size;
-    uint64_t block_count;
+    uint64_t max_block;
     rc_t rc;
 
     rc = KReencFileMakeParamValidate (pself, encrypted, enckey, enckey);
@@ -1121,18 +1149,18 @@ LIB_EXPORT rc_t CC KEncryptFileMakeRead (const KFile ** pself,
         else
         {
             self->encrypted = encrypted;
-            /* dec, enc, ram need to be Make */
+            /* dec, enc, ram need to be made below */
             /* num_read, num_write stay 0 */
             self->block_id = NO_CURRENT_BLOCK;
             /* missing needs to be Made */
             /* next_block stays 0 */
             /* seek_block stays 0 - obsolete */
-            block_count = DecryptedPos_to_BlockId (rawsize, NULL);
-            size = BlockId_to_EncryptedPos (block_count + 1) + sizeof (KEncFileFooter);
-
-            self->footer_block = block_count + 1;
+            max_block = DecryptedPos_to_BlockId (rawsize, NULL);
+            self->footer_block = max_block + 1;
+            size = BlockId_to_EncryptedPos (self->footer_block) + sizeof (KEncFileFooter);
             self->size = size;
             self->known_size = true; /* obsolete */
+
             /* plain_text and block stay 0 */
             self->foot.foot.block_count = self->footer_block;
 

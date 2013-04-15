@@ -36,7 +36,7 @@ struct KCurlFile;
 #include <klib/out.h>
 #include <klib/text.h>
 #include <klib/printf.h>
-#include <kns/kns_mgr.h>
+#include <kns/manager.h>
 
 #include "kns_mgr_priv.h"
 
@@ -71,6 +71,105 @@ typedef struct ReadContext
     size_t num_read;
     bool curl_handle_prepared;
 } ReadContext;
+
+static
+const char *curly_errstr ( CURLcode code )
+{
+    switch ( ( int ) code )
+    {
+#define CURL_CASE( c ) \
+        case c: return # c
+#define CURL_CASE2( c, old ) \
+        case old: return # c "(" #old ")"
+
+        CURL_CASE ( CURLE_OK );
+        CURL_CASE ( CURLE_UNSUPPORTED_PROTOCOL );
+        CURL_CASE ( CURLE_FAILED_INIT );
+        CURL_CASE ( CURLE_URL_MALFORMAT );
+        CURL_CASE2 ( CURLE_OBSOLETE4, CURLE_URL_MALFORMAT_USER );
+        CURL_CASE ( CURLE_COULDNT_RESOLVE_PROXY );
+        CURL_CASE ( CURLE_COULDNT_RESOLVE_HOST );
+        CURL_CASE ( CURLE_COULDNT_CONNECT );
+        CURL_CASE ( CURLE_FTP_WEIRD_SERVER_REPLY );
+        CURL_CASE2 ( CURLE_REMOTE_ACCESS_DENIED, CURLE_FTP_ACCESS_DENIED );
+        CURL_CASE2 ( CURLE_OBSOLETE10, CURLE_FTP_USER_PASSWORD_INCORRECT );
+        CURL_CASE ( CURLE_FTP_WEIRD_PASS_REPLY );
+        CURL_CASE2 ( CURLE_OBSOLETE12, CURLE_FTP_WEIRD_USER_REPLY );
+        CURL_CASE ( CURLE_FTP_WEIRD_PASV_REPLY );
+        CURL_CASE ( CURLE_FTP_WEIRD_227_FORMAT );
+        CURL_CASE ( CURLE_FTP_CANT_GET_HOST );
+        CURL_CASE2 ( CURLE_OBSOLETE16, CURLE_FTP_CANT_RECONNECT );
+        CURL_CASE2 ( CURLE_FTP_COULDNT_SET_TYPE, CURLE_FTP_COULDNT_SET_BINARY );
+        CURL_CASE ( CURLE_PARTIAL_FILE );
+        CURL_CASE ( CURLE_FTP_COULDNT_RETR_FILE );
+        CURL_CASE2 ( CURLE_OBSOLETE20, CURLE_FTP_WRITE_ERROR );
+        CURL_CASE2 ( CURLE_QUOTE_ERROR, CURLE_FTP_QUOTE_ERROR );
+        CURL_CASE ( CURLE_HTTP_RETURNED_ERROR );
+        CURL_CASE ( CURLE_WRITE_ERROR );
+        CURL_CASE2 ( CURLE_OBSOLETE24, CURLE_MALFORMAT_USER );
+        CURL_CASE2 ( CURLE_UPLOAD_FAILED, CURLE_FTP_COULDNT_STOR_FILE );
+        CURL_CASE ( CURLE_READ_ERROR );
+        CURL_CASE ( CURLE_OUT_OF_MEMORY );
+        CURL_CASE ( CURLE_OPERATION_TIMEDOUT );
+        CURL_CASE2 ( CURLE_OBSOLETE29, CURLE_FTP_COULDNT_SET_ASCII );
+        CURL_CASE ( CURLE_FTP_PORT_FAILED );
+        CURL_CASE ( CURLE_FTP_COULDNT_USE_REST );
+        CURL_CASE2 ( CURLE_OBSOLETE32, CURLE_FTP_COULDNT_GET_SIZE );
+        CURL_CASE2 ( CURLE_RANGE_ERROR, CURLE_HTTP_RANGE_ERROR );
+        CURL_CASE ( CURLE_HTTP_POST_ERROR );
+        CURL_CASE ( CURLE_SSL_CONNECT_ERROR );
+        CURL_CASE ( CURLE_BAD_DOWNLOAD_RESUME );
+        CURL_CASE ( CURLE_FILE_COULDNT_READ_FILE );
+        CURL_CASE ( CURLE_LDAP_CANNOT_BIND );
+        CURL_CASE ( CURLE_LDAP_SEARCH_FAILED );
+        CURL_CASE2 ( CURLE_OBSOLETE40, CURLE_LIBRARY_NOT_FOUND );
+        CURL_CASE ( CURLE_FUNCTION_NOT_FOUND );
+        CURL_CASE ( CURLE_ABORTED_BY_CALLBACK );
+        CURL_CASE ( CURLE_BAD_FUNCTION_ARGUMENT );
+        CURL_CASE2 ( CURLE_OBSOLETE44, CURLE_BAD_CALLING_ORDER );
+        CURL_CASE ( CURLE_INTERFACE_FAILED );
+        CURL_CASE2 ( CURLE_OBSOLETE46, CURLE_BAD_PASSWORD_ENTERED );
+        CURL_CASE ( CURLE_TOO_MANY_REDIRECTS );
+        CURL_CASE ( CURLE_UNKNOWN_TELNET_OPTION );
+        CURL_CASE ( CURLE_TELNET_OPTION_SYNTAX );
+        CURL_CASE2 ( CURLE_OBSOLETE50, CURLE_OBSOLETE );
+        CURL_CASE2 ( CURLE_PEER_FAILED_VERIFICATION, CURLE_SSL_PEER_CERTIFICATE );
+        CURL_CASE ( CURLE_GOT_NOTHING );
+        CURL_CASE ( CURLE_SSL_ENGINE_NOTFOUND );
+        CURL_CASE ( CURLE_SSL_ENGINE_SETFAILED );
+        CURL_CASE ( CURLE_SEND_ERROR );
+        CURL_CASE ( CURLE_RECV_ERROR );
+        CURL_CASE2 ( CURLE_OBSOLETE57, CURLE_SHARE_IN_USE );
+        CURL_CASE ( CURLE_SSL_CERTPROBLEM );
+        CURL_CASE ( CURLE_SSL_CIPHER );
+        CURL_CASE ( CURLE_SSL_CACERT );
+        CURL_CASE ( CURLE_BAD_CONTENT_ENCODING );
+        CURL_CASE ( CURLE_LDAP_INVALID_URL );
+        CURL_CASE ( CURLE_FILESIZE_EXCEEDED );
+        CURL_CASE2 ( CURLE_USE_SSL_FAILED, CURLE_FTP_SSL_FAILED );
+        CURL_CASE ( CURLE_SEND_FAIL_REWIND );
+        CURL_CASE ( CURLE_SSL_ENGINE_INITFAILED );
+        CURL_CASE ( CURLE_LOGIN_DENIED );
+        CURL_CASE ( CURLE_TFTP_NOTFOUND );
+        CURL_CASE ( CURLE_TFTP_PERM );
+        CURL_CASE2 ( CURLE_REMOTE_DISK_FULL, CURLE_TFTP_DISKFULL );
+        CURL_CASE ( CURLE_TFTP_ILLEGAL );
+        CURL_CASE ( CURLE_TFTP_UNKNOWNID );
+        CURL_CASE2 ( CURLE_REMOTE_FILE_EXISTS, CURLE_TFTP_EXISTS );
+        CURL_CASE ( CURLE_TFTP_NOSUCHUSER );
+        CURL_CASE ( CURLE_CONV_FAILED );
+        CURL_CASE ( CURLE_CONV_REQD );
+        CURL_CASE2 ( CURLE_SSL_CACERT_BADFILE, 77 );
+        CURL_CASE2 ( CURLE_REMOTE_FILE_NOT_FOUND, 78 );
+        CURL_CASE2 ( CURLE_SSH, 79 );        
+        CURL_CASE2 ( CURLE_SSL_SHUTDOWN_FAILED, 80 );
+        CURL_CASE2 ( CURLE_AGAIN, 81 );
+        CURL_CASE ( CURLE_SSL_CRL_BADFILE );
+        CURL_CASE2 ( CURLE_SSL_ISSUER_ERROR, 83 );
+    }
+
+    return "<UNKNOWN>";
+}
 
 
 /* Destroy
@@ -179,8 +278,8 @@ static rc_t perform( struct KNSManager *kns_mgr, CURL *curl, const char * action
     {
         rc = RC( rcFS, rcFile, rcConstructing, rcFileDesc, rcInvalid );
         (void)PLOGERR( klogErr, ( klogErr, rc, 
-        "curl_easy_perform( $(a), $(b).$(c) ) failed with curl-error $(c)",
-        "a=%s,b=%lu,c=%u,c=%d", action, pos, len, rcc ) );
+        "curl_easy_perform( $(a), $(b).$(c) ) failed with curl-error '$(d)' ($(e))",
+        "a=%s,b=%lu,c=%zu,d=%s,e=%d", action, pos, len, curly_errstr ( rcc ), rcc ) );
     }
     return rc;
 }

@@ -28,6 +28,7 @@
 #include <magic.h>
 #include <klib/rc.h>
 #include <kfs/file.h>
+#include <klib/text.h>
 #include <klib/log.h>
 #include <klib/debug.h>
 #include <klib/container.h>
@@ -733,7 +734,7 @@ rc_t KMagicFileFormatGetTypeBuff (const KMagicFileFormat *self, const void * buf
 		if (c > descr_max)
 		    c = descr_max-1;
 		if (descr)
-		    strncpy (descr, node->kffdescr, c);
+		    string_copy(descr, descr_max, node->kffdescr, c);
 		descr[c] = '\0';
 		if (descr_len)
 		    *descr_len = c;
@@ -755,12 +756,13 @@ rc_t KMagicFileFormatGetTypeBuff (const KMagicFileFormat *self, const void * buf
 
 
 #else
-	size_t l = strlen (b);
-	if (desc != NULL)
+    size_t size;
+	size_t l = string_measure(b, &size);
+	if (descr != NULL)
 	{
-	    strncpy (desc, b, desc_max);
-	    if (desc_max < l)
-		desc[desc_max-1] = 0;
+	    string_copy (descr, descr_max, b, l);
+	    if (descr_max < l)
+		descr[descr_max-1] = 0;
 	}
 	if (descr_len != NULL)
 	    *descr_len = strlen (b);

@@ -500,7 +500,7 @@ static rc_t parse_and_add_matepair_dist( Vector * dist_vector, const char * s )
 }
 
 
-bool filter_by_matepair_dist( samdump_opts * opts, int32_t tlen )
+bool filter_by_matepair_dist( const samdump_opts * opts, int32_t tlen )
 {
     bool res = false;
 
@@ -775,6 +775,15 @@ static rc_t gather_flag_options( Args * args, samdump_opts * opts )
 
     /* do we have to print the spot-group in a special way */
     rc = get_bool_option( args, OPT_CG_NAMES, &opts->print_cg_names );
+    if ( rc != 0 ) return rc;
+
+    /* do we use a mate-cache */
+    rc = get_bool_option( args, OPT_NO_MATE_CACHE, &opts->use_mate_cache );
+    if ( rc != 0 ) return rc;
+    opts->use_mate_cache = !opts->use_mate_cache;
+
+    /* do we use a mate-cache */
+    rc = get_bool_option( args, OPT_LEGACY, &opts->force_legacy );
     if ( rc != 0 ) return rc;
 
     /* do we have to merge cigar ( and read/qual ) for cg-operations in cigar */
@@ -1111,7 +1120,7 @@ static rc_t CC report_reference_cb( const char * name, Vector * ranges, void *da
 }
 
 
-void report_options( samdump_opts * opts )
+void report_options( const samdump_opts * opts )
 {
     rc_t rc;
     uint32_t len;
@@ -1176,7 +1185,7 @@ void report_options( samdump_opts * opts )
 
     KOutMsg( "number of regions     : %u\n",  opts->region_count );
     if ( opts->region_count > 0 )
-        foreach_reference( &opts->regions, report_reference_cb, NULL );
+        foreach_reference( (BSTree *)&opts->regions, report_reference_cb, NULL );
 
     if ( opts->qname_prefix == NULL )
         KOutMsg( "qname-prefix          : NONE\n" );
@@ -1244,6 +1253,8 @@ void report_options( samdump_opts * opts )
     KOutMsg( "outputbuffer-size     : %u\n",  opts->output_buffer_size );
     KOutMsg( "cursor-cache-size     : %u\n",  opts->cursor_cache_size );
 
+    KOutMsg( "use mate-cache        : %s\n",  opts->use_mate_cache ? "YES" : "NO" );
+    KOutMsg( "force legacy code     : %s\n",  opts->force_legacy ? "YES" : "NO" );
     KOutMsg( "use min-mapq          : %s\n",  opts->use_min_mapq ? "YES" : "NO" );
     KOutMsg( "min-mapq              : %i\n",  opts->min_mapq );
 }
@@ -1286,13 +1297,13 @@ rc_t gather_options( Args * args, samdump_opts * opts )
 }
 
 
-bool is_this_alignment_requested( samdump_opts * opts, const char *refname, uint32_t refname_len,
+bool is_this_alignment_requested( const samdump_opts * opts, const char *refname, uint32_t refname_len,
                                   uint64_t start, uint64_t end )
 {
     bool res = false;
     if ( opts != NULL )
     {
-        reference_region *rr = find_reference_region_len( &opts->regions, refname, refname_len );
+        reference_region *rr = find_reference_region_len( ( BSTree * )&opts->regions, refname, refname_len );
         if ( rr != NULL )
         {
             Vector *v = &(rr->ranges);
@@ -1311,16 +1322,16 @@ bool is_this_alignment_requested( samdump_opts * opts, const char *refname, uint
 }
 
 
-bool test_limit_reached( samdump_opts * opts )
+bool test_limit_reached( const samdump_opts * opts, uint64_t rows_so_far )
 {
     bool res = false;
     if ( opts->test_rows > 0 )
-        res = ( opts->rows_so_far >= opts->test_rows );
+        res = ( rows_so_far >= opts->test_rows );
     return res;
 }
 
 
-rc_t dump_name( samdump_opts * opts, int64_t seq_spot_id,
+rc_t dump_name( const samdump_opts * opts, int64_t seq_spot_id,
                 const char * spot_group, uint32_t spot_group_len )
 {
     rc_t rc;
@@ -1357,7 +1368,7 @@ rc_t dump_name( samdump_opts * opts, int64_t seq_spot_id,
 }
 
 
-rc_t dump_name_legacy( samdump_opts * opts, const char * name, size_t name_len,
+rc_t dump_name_legacy( const samdump_opts * opts, const char * name, size_t name_len,
                        const char * spot_group, uint32_t spot_group_len )
 {
     rc_t rc;
@@ -1384,7 +1395,7 @@ rc_t dump_name_legacy( samdump_opts * opts, const char * name, size_t name_len,
 }
 
 
-rc_t dump_quality( samdump_opts * opts, char const *quality, uint32_t qual_len, bool reverse )
+rc_t dump_quality( const samdump_opts * opts, char const *quality, uint32_t qual_len, bool reverse )
 {
     rc_t rc = 0;
     bool quantize = ( opts->qual_quant != NULL );
@@ -1434,7 +1445,7 @@ rc_t dump_quality( samdump_opts * opts, char const *quality, uint32_t qual_len, 
 }
 
 
-rc_t dump_quality_33( samdump_opts * opts, char const *quality, uint32_t qual_len, bool reverse )
+rc_t dump_quality_33( const samdump_opts * opts, char const *quality, uint32_t qual_len, bool reverse )
 {
     rc_t rc = 0;
     bool quantize = ( opts->qual_quant != NULL );
@@ -1478,3 +1489,5 @@ rc_t dump_quality_33( samdump_opts * opts, char const *quality, uint32_t qual_le
     }
     return rc;
 }
+
+

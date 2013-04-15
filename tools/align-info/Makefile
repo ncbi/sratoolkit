@@ -90,6 +90,7 @@ ALIGN_INFO_LIB = \
 	-lvdb \
 	-lkdb \
 	-lvfs \
+	-lkurl \
 	-lkrypto \
 	-lkfg \
 	-lkfs \
