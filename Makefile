@@ -65,7 +65,6 @@ $(SUBDIRS_STD):
 clean: clean_test
 
 clean_test:
-	@ $(MAKE) -s -C test clean
 
 #-------------------------------------------------------------------------------
 # pass-through targets
