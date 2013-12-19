@@ -68,7 +68,7 @@ rc_t VCursorWhack ( VCursor *self )
 
 /* MakeColumn
  */
-rc_t VCursorMakeColumn ( VCursor *self, VColumn **col, const SColumn *scol )
+rc_t VCursorMakeColumn ( VCursor *self, VColumn **col, const SColumn *scol, Vector *cx_bind )
 {
     return VColumnMake ( col, self -> schema, scol );
 }

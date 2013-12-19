@@ -37,11 +37,6 @@ extern "C" {
 
 #include <klib/out.h>
 #include <klib/rc.h>
-#include <klib/log.h>
-
-#include <vdb/manager.h>
-#include <vdb/vdb-priv.h>
-#include <kdb/manager.h>
 
 rc_t report_on_reference( Args * args, bool extended );
 

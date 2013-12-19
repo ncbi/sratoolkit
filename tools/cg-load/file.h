@@ -238,6 +238,7 @@ typedef struct CGFileType_vt_struct {
     rc_t ( CC *mappings ) (const CGFILETYPE_IMPL* cself, TMappingsData* data);
     rc_t ( CC *evidence_intervals )(const CGFILETYPE_IMPL* cself, TEvidenceIntervalsData* data);
     rc_t ( CC *evidence_dnbs )(const CGFILETYPE_IMPL* cself, const char* interval_id, TEvidenceDnbsData* data);
+    rc_t ( CC *tag_lfr )(const CGFILETYPE_IMPL* cself, TReadsData* data);
 
     rc_t ( CC *assembly_id) (const CGFILETYPE_IMPL* self, const CGFIELD_ASSEMBLY_ID_TYPE** assembly_id);
     rc_t ( CC *slide) (const CGFILETYPE_IMPL* self, const CGFIELD_SLIDE_TYPE** slide);
@@ -290,6 +291,8 @@ rc_t CGLoaderFile_GetType(const CGLoaderFile* cself, CG_EFileType* type);
 
 rc_t CGLoaderFile_GetRead(const CGLoaderFile* cself, TReadsData* data);
 rc_t CGLoaderFile_GetStartRow(const CGLoaderFile* cself, int64_t* rowid);
+
+rc_t CGLoaderFile_GetTagLfr(const CGLoaderFile* cself, TReadsData* data);
 
 rc_t CGLoaderFile_GetMapping(const CGLoaderFile* cself, TMappingsData* data);
 

@@ -49,7 +49,6 @@ extern "C" {
  */
 struct KFile;
 struct VPath;
-struct SRAPath;
 struct VResolver;
 struct KDirectory;
 struct VPath;
@@ -147,33 +146,14 @@ VFS_EXTERN rc_t CC VFSManagerRemove (const VFSManager *self, bool force,
  */
 VFS_EXTERN rc_t CC VFSManagerMake ( VFSManager ** pmanager );
 
-
-/* GetConfigPWFile
- */
-VFS_EXTERN rc_t CC VFSManagerGetConfigPWFile (const VFSManager * self, 
-                                              char * b, size_t bz, size_t * pz);
-
-
 /* GetCWD
  */
 VFS_EXTERN rc_t CC VFSManagerGetCWD (const VFSManager * self, struct KDirectory ** cwd);
-
-/* GetSRAPath
- *  why aren't any of these functions properly commented?
- */
-VFS_EXTERN rc_t CC VFSManagerGetSRAPath ( const VFSManager * self, struct SRAPath ** pmgr );
 
 VFS_EXTERN rc_t CC VFSManagerGetResolver ( const VFSManager * self, struct VResolver ** resolver );
 
 
 VFS_EXTERN rc_t CC VFSManagerGetKryptoPassword (const VFSManager * self, char * new_password, size_t max_size, size_t * size);
-
-#if 0 /* obsoleted? */
-VFS_EXTERN rc_t CC VFSManagerSetKryptoPassword (const VFSManager * self, char * new_password, size_t size);
-VFS_EXTERN rc_t CC VFSManagerResetKryptoPassword (const VFSManager * self, 
-                                                  char * new_password, size_t size,
-                                                  char * new_password, size_t size);
-#else
 
 /*
   NULL value for self
@@ -214,8 +194,6 @@ VFS_EXTERN rc_t CC VFSManagerUpdateKryptoPassword (const VFSManager * self,
                                                    char * pwd_dir,
                                                    size_t pwd_dir_size);
 
-#endif
-
 
 VFS_EXTERN rc_t CC VFSManagerResolveSpec ( const VFSManager * self,
                                            const char * spec,
@@ -238,7 +216,6 @@ VFS_EXTERN rc_t CC VFSManagerResolveSpecIntoDir ( const VFSManager * self,
 struct KConfig;
 struct KConfigNode;
 
-
 /* ReadVPath
  *  read a VPath node value
  *
@@ -257,8 +234,6 @@ VFS_EXTERN rc_t CC KConfigReadVPath ( struct KConfig const* self, const char* pa
  *
  */
 VFS_EXTERN rc_t CC KConfigNodeReadVPath ( struct KConfigNode const *self, struct VPath** result );
-
-
 
 /* ResolvePath
  *
@@ -298,7 +273,42 @@ VFS_EXTERN rc_t CC VFSManagerResolvePathRelative (const VFSManager * self,
                                                   const struct  VPath * in_path,
                                                   struct VPath ** out_path);
 
+/*
+ * Registering bindings between dbGaP object Ids and object names
+ */                                                  
 
+/* VFSManagerRegisterObject
+ *  registers a binding between an object Id and an object name (object = accession or dbGaP file) 
+ * 
+ * self [ IN ] - VFSManager object
+ * oid [ IN ] - object id
+ * obj [ IN ] - Vpath representing the object's name (scheme is "ncbi-acc" for accessions, "ncbi-file" for dbGaP files; 
+ *              the name itself is the 'path' component
+ */
+VFS_EXTERN rc_t CC VFSManagerRegisterObject(struct VFSManager* self, uint32_t oid, const struct VPath* obj);
+
+/* VFSManagerGetObjectId
+ *  look up an object id by an object name 
+ * 
+ * self [ IN ] - VFSManager object
+ * obj [ IN ] - Vpath representing the object's name (scheme is "ncbi-acc" for accessions, "ncbi-file" for dbGaP files; 
+ *              the name itself is the 'path' component
+ * oid [ OUT ] - object id
+ */
+VFS_EXTERN rc_t CC VFSManagerGetObjectId(const struct VFSManager* self, const struct VPath* obj, uint32_t* oid);
+
+/* VFSManagerGetObject
+ *  look up an object name by an object id
+ * 
+ * self [ IN ] - VFSManager object
+ * oid [ IN ] - object id
+ * obj [ OUT ] - Vpath representing the object's name (scheme is "ncbi-acc" for accessions, "ncbi-file" for dbGaP files; 
+ *              the name itself is the 'path' component
+ */
+VFS_EXTERN rc_t CC VFSManagerGetObject(const struct VFSManager* self, uint32_t oid, struct VPath** obj);
+
+
+                                                  
 #ifdef __cplusplus
 }
 #endif

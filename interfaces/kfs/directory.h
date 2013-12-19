@@ -125,7 +125,7 @@ KFS_EXTERN rc_t CC KDirectoryVVisitUpdate ( KDirectory *self, bool recurse,
     void *data, const char *path, va_list args );
 
 /* PathType
- *  returns a KPathType
+ *  returns a KPathType ( defined in kfs/defs.h )
  *
  *  "path" [ IN ] - NUL terminated string in directory-native character set
  */
@@ -362,7 +362,7 @@ KFS_EXTERN rc_t CC KDirectoryVFileSize ( const KDirectory *self,
 
 /* FilePhysicalSize
  *  returns physical allocated size in bytes of target file.  It might
- * or might not differ form FileSize
+ * or might not differ from FileSize
  *
  *  "size" [ OUT ] - return parameter for file size
  *
@@ -405,9 +405,11 @@ KFS_EXTERN rc_t CC KDirectoryVFileLocator ( const KDirectory *self,
     uint64_t *locator, const char *path, va_list args );
 
 /* FileContiguous
- *  returns size in bytes of target file
+ *  returns true if the file is "contiguous".  Chunked or sparse files are not
+ *  contiguous while most data files are.  Virtual generated files would likely
+ *  not be contiguous.  
  *
- *  "size" [ OUT ] - return parameter for file size
+ *  "contiguous" [ OUT ] - return parameter for file contiguous
  *
  *  "path" [ IN ] - NUL terminated string in directory-native
  *  character set denoting target file
@@ -465,7 +467,7 @@ KFS_EXTERN rc_t CC KDirectoryVCreateDir ( KDirectory *self,
  *  character set denoting target directory
  */
 KFS_EXTERN rc_t CC KDirectoryCopyPath ( const KDirectory *src_dir,
-    KDirectory *dst_dir, const char *src_path, const char * dst_path );
+    KDirectory *dst_dir, const char *src_path, const char *dst_path );
 
 
 /* CopyPaths
@@ -479,7 +481,7 @@ KFS_EXTERN rc_t CC KDirectoryCopyPath ( const KDirectory *src_dir,
  *      ( will be created if it does not already exist )
  *
  */
-LIB_EXPORT rc_t CC KDirectoryCopyPaths( const KDirectory * src_dir,
+KFS_EXTERN rc_t CC KDirectoryCopyPaths ( const KDirectory * src_dir,
     KDirectory *dst_dir, bool recursive, const char *src, const char *dst );
 
 
@@ -495,7 +497,7 @@ LIB_EXPORT rc_t CC KDirectoryCopyPaths( const KDirectory * src_dir,
  *      ( will be created if it does not already exist )
  *
  */
-LIB_EXPORT rc_t CC KDirectoryCopy( const KDirectory * src_dir,
+KFS_EXTERN rc_t CC KDirectoryCopy ( const KDirectory *src_dir,
     KDirectory *dst_dir, bool recursive, const char *src, const char *dst );
 
 

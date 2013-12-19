@@ -672,7 +672,7 @@ rc_t KReencFileReadHandleBlock (KReencFile *self,
          * if we are here we decrypted and re-encrypted the
          * expected block
          */
-        offset = pos - BlockId_to_EncryptedPos (block_id);
+        offset = (uint32_t) ( pos - BlockId_to_EncryptedPos (block_id) );
         rc = KReencFileReadBlockOut (self, offset, buffer, bsize, num_read);
         if (rc)
             LOGERR (klogErr, rc, "re-enc error copying out from block");

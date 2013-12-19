@@ -83,14 +83,6 @@ clean: stdclean
 .PHONY: clean
 
 #-------------------------------------------------------------------------------
-# tag
-#
-tag: \
-	$(addsuffix _tag,$(ALL_TOOLS))
-
-.PHONY: tag $(addsuffix _tag,$(ALL_TOOLS))
-
-#-------------------------------------------------------------------------------
 # loader
 #
 LOADER_SRC = \
@@ -109,27 +101,10 @@ LOADER_OBJ = \
 LOADER_LIB = \
 	-lkapp \
 	-lload \
-	-dwsraxf \
-	-dwvxf \
-	-lwsradb \
-	-lwvdb \
-	-lwkdb \
-	-lvfs \
-	-lkurl \
-	-lkrypto \
-	-lkxml \
-	-lkxfs \
-	-lkfg \
-	-lkfs \
-	-lksrch \
-	-lkq \
-	-lkproc \
-	-lklib \
+	-lncbi-wvdb \
+	$(LIBXML) \
 	-lm
 
-ifneq (win,$(OS))
-	LOADER_LIB += -lxml2
-endif
 
 #------------------------------------------------------------------------------
 # sff-load

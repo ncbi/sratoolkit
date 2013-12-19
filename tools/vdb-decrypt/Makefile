@@ -92,13 +92,7 @@ VDB_DECRYPT_OBJ = \
 
 VDB_DECRYPT_LIB = \
 	-lkapp \
-	-lvfs \
-	-lkurl \
-	-lkrypto \
-	-lkfg \
-	-lkfs \
-	-lkproc \
-	-lklib
+	-lncbi-vdb
 
 $(BINDIR)/vdb-decrypt: $(VDB_DECRYPT_OBJ)
 	$(LD) --exe --vers $(SRCDIR) -o $@ $^ $(VDB_DECRYPT_LIB)
@@ -117,13 +111,7 @@ VDB_ENCRYPT_OBJ = \
 
 VDB_ENCRYPT_LIB = \
 	-lkapp \
-	-lvfs \
-	-lkurl \
-	-lkrypto \
-	-lkfg \
-	-lkfs \
-	-lkproc \
-	-lklib
+	-lncbi-vdb
 
 $(BINDIR)/vdb-encrypt: $(VDB_ENCRYPT_OBJ)
 	$(LD) --exe --vers $(SRCDIR) -o $@ $^ $(VDB_ENCRYPT_LIB)

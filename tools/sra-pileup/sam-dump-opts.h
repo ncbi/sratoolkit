@@ -90,6 +90,9 @@ extern "C" {
 #define OPT_MIN_MAPQ    "min-mapq"
 #define OPT_NO_MATE_CACHE "no-mate-cache"
 #define OPT_LEGACY      "legacy"
+#define OPT_NEW         "new"
+#define OPT_RNA_SPLICE  "rna-splicing"
+#define OPT_NO_MT       "disable-multithreading"
 
 typedef struct range
 {
@@ -204,6 +207,7 @@ typedef struct samdump_opts
     /* use a mate-cache to dump aligned and half-aligned reads */
     bool use_mate_cache;
     bool force_legacy;
+    bool force_new;
 
     /* which tables have to be processed/dumped */
     bool dump_primary_alignments;
@@ -235,7 +239,11 @@ typedef struct samdump_opts
     bool report_options;
     bool report_cache;
     bool print_cg_names;
+    bool rna_splicing;
 
+    /* option to disable multi-threading */
+    bool no_mt;
+    
     uint8_t qual_quant_matrix[ 256 ];
 } samdump_opts;
 
@@ -253,6 +261,7 @@ rc_t foreach_reference( BSTree * regions,
     rc_t ( CC * on_reference ) ( const char * name, Vector *ranges, void *data ), 
     void *data );
 
+int cmp_pchar( const char * a, const char * b );
 
 rc_t gather_options( Args * args, samdump_opts * opts );
 void report_options( const samdump_opts * opts );

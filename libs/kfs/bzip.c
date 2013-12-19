@@ -231,7 +231,7 @@ rc_t KBZipFileReadInt (KBZipFile * self, void * buffer, size_t bsize, size_t * p
         BZIP_DEBUG (("%s: loop start tot_read %zu\n", __func__, tot_read));
 
         strm->next_out = this_out = (char*)buffer + tot_read;
-        strm->avail_out = bsize - tot_read;
+        strm->avail_out = (unsigned int) (bsize - tot_read);
 
         BZIP_DEBUG(("%s: call Decompress\n", __func__));
 
@@ -348,7 +348,7 @@ rc_t KBZipFileReadInt (KBZipFile * self, void * buffer, size_t bsize, size_t * p
                         rc = RC (rcFS, rcFile, rcReading, rcData, rcInsufficient);
                     goto done;
                 }
-                strm->avail_in = src_read;
+                strm->avail_in = (unsigned int) src_read;
                 self->filePosition += src_read;
                 strm->next_in = self->buff;
 
@@ -620,7 +620,7 @@ rc_t CC KBZipFileWrite (struct KBZipFile *self,
 
             strm = &self->strm;
             strm->next_in  = (char*) buffer;
-            strm->avail_in = bsize;
+            strm->avail_in = (unsigned int) bsize;
 
             rc =  KBZipFileWriteInt (self, BZ_RUN, &num_writ);
             if (rc == 0)

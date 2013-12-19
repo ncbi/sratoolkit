@@ -119,6 +119,34 @@ typedef uint32_t KCreateMode;
 
 
 /*--------------------------------------------------------------------------
+ * stringize
+ *  it is useful to be able to convert PP defines on the command line
+ */
+#define stringize( tok ) tok_to_string ( tok )
+#define tok_to_string( tok ) # tok
+
+
+/*--------------------------------------------------------------------------
+ * __mod__, __file__ and __fext__
+ *  these guys are slightly different from __FILE__
+ *  and they complement __func__
+ */
+#if ! defined __mod__ && defined __mod_name__
+#define __mod__ stringize ( __mod_name__ )
+#endif
+
+#if ! defined __file__ && defined __file_name__
+#define __file__ stringize ( __file_name__ )
+#endif
+
+#if ! defined __fext__ && defined __file_ext__
+#define __fext__ stringize ( __file_ext__ )
+#endif
+
+
+#if 1
+
+/*--------------------------------------------------------------------------
  * LPFX
  * SHLX
  * MODX
@@ -146,6 +174,7 @@ typedef uint32_t KCreateMode;
  #define MODX MODXSTR ( MODIBEXT )
 #endif
 
+#endif
 
 #ifdef __cplusplus
 }

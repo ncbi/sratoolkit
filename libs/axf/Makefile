@@ -28,15 +28,12 @@ default: std
 TOP ?= $(shell ../../build/abspath.sh ../..)
 MODULE = libs/axf
 
-MOD_LIBS = \
-	libaxf
-
-WMOD_LIBS = \
+INT_LIBS = \
+	libaxf \
 	libwaxf
 
 ALL_LIBS = \
-	$(MOD_LIBS) \
-	$(WMOD_LIBS)
+	$(INT_LIBS)
 
 include $(TOP)/build/Makefile.env
 
@@ -69,9 +66,7 @@ clean: stdclean
 #-------------------------------------------------------------------------------
 # alignment transform library
 #
-$(TARGDIR)/libaxf: $(addprefix $(TARGDIR)/libaxf.,$(MODEXT))
-
-$(TARGDIR)/libaxf.$(SHLX): $(MODDIR)/libaxf.$(SHLX)
+$(TARGDIR)/libaxf: $(addprefix $(ILIBDIR)/libaxf.,$(ILIBEXT))
 
 AXF_SRC = \
 	ref-tbl-sub-select \
@@ -109,11 +104,6 @@ AXF_LIB = \
 	-dm \
 	-dz
 
-$(MODDIR)/libaxf.$(SHLX): $(AXF_OBJ)
-	$(LD) --dlib --vers $(SRCDIR) -o $@ $^ $(AXF_LIB)
-
-$(TARGDIR)/libaxf.$(LIBX): $(ILIBDIR)/libaxf.$(LIBX)
-
 $(ILIBDIR)/libaxf.$(LIBX): $(AXF_OBJ)
 	$(LD) --slib -o $@ $^ $(AXF_LIB)
 
@@ -121,9 +111,7 @@ $(ILIBDIR)/libaxf.$(LIBX): $(AXF_OBJ)
 #-------------------------------------------------------------------------------
 # alignment transform update library
 #
-$(TARGDIR)/libwaxf: $(addprefix $(TARGDIR)/libwaxf.,$(MODEXT))
-
-$(TARGDIR)/libwaxf.$(SHLX): $(WMODDIR)/libwaxf.$(SHLX)
+$(TARGDIR)/libwaxf: $(addprefix $(ILIBDIR)/libwaxf.,$(ILIBEXT))
 
 WAXF_SRC = \
 	$(AXF_SRC) \
@@ -140,11 +128,6 @@ WAXF_LIB = \
 	-dklib \
 	-dm \
 	-dz
-
-$(WMODDIR)/libwaxf.$(SHLX): $(WAXF_OBJ)
-	$(LD) --dlib --vers $(SRCDIR) -o $@ $^ $(WAXF_LIB)
-
-$(TARGDIR)/libwaxf.$(LIBX): $(ILIBDIR)/libwaxf.$(LIBX)
 
 $(ILIBDIR)/libwaxf.$(LIBX): $(WAXF_OBJ)
 	$(LD) --slib -o $@ $^ $(WAXF_LIB)

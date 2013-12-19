@@ -289,6 +289,12 @@ struct VSchema
     KRefcount refcount;
 
     uint32_t file_count;
+
+    /* number of indirect expressions
+       these are uniquely identified place-holders
+       for cursor-open binding of
+       type and constant expressions */
+    uint32_t num_indirect;
 };
 
 
@@ -539,9 +545,8 @@ struct SIndirectType
     /* symbolic name */
     struct KSymbol const *name;
 
-    /* MUTABLE substitution typedecl
-       expression. may use indirect types */
-    struct SExpression const *type;
+    /* index into binding vector */
+    uint32_t type_id;
 
     /* formal type id */
     uint32_t id;
@@ -557,10 +562,6 @@ void CC SIndirectTypeWhack ( void *item, void *ignore );
 /* Find
  */
 SIndirectType *VSchemaFindITypeid ( const VSchema *self, uint32_t id );
-
-/* Mark
- */
-void CC SIndirectTypeMark ( void * item, void * data );
 
 /* Dump
  */
@@ -616,15 +617,14 @@ struct SIndirectConst
     /* symbolic name */
     struct KSymbol const *name;
 
-    /* MUTABLE constant value or function */
-    struct SExpression const *expr;
-    struct SFunction const *func;
-
     /* formal typedecl or NULL if function */
     struct SExpression const *td;
 
-    /* formal type id */
-    uint32_t id;
+    /* index into binding vector */
+    uint32_t expr_id;
+
+    /* offset position from # of indirect types */
+    uint32_t pos;
 };
 
 /* Whack
@@ -808,16 +808,16 @@ int CC SFunctionSort ( const void *item, const void *n );
  *  returns prior param values
  */
 rc_t SFunctionBindSchemaParms ( const SFunction *self,
-    Vector *prior, const Vector *subst );
+    Vector *prior, const Vector *subst, Vector *cx_bind );
 rc_t SFunctionBindFactParms ( const SFunction *self,
-    Vector *prior, const Vector *subst );
+    Vector *parms, Vector *prior, const Vector *subst, Vector *cx_bind );
 
 /* Rest-ore
  *  restore schema and factory param substitution
  *  destroys prior param vector
  */
-void SFunctionRestSchemaParms ( const SFunction *self, Vector *prior );
-void SFunctionRestFactParms ( const SFunction *self, Vector *prior );
+void SFunctionRestSchemaParms ( const SFunction *self, Vector *prior, Vector *cx_bind );
+void SFunctionRestFactParms ( const SFunction *self, Vector *prior, Vector *cx_bind );
 
 /* Mark
  */
@@ -884,16 +884,16 @@ int CC SPhysicalSort ( const void *item, const void *n );
  *  returns prior param values
  */
 rc_t SPhysicalBindSchemaParms ( const SPhysical *self,
-    Vector *prior, const Vector *subst );
+    Vector *prior, const Vector *subst, Vector *cx_bind );
 rc_t SPhysicalBindFactParms ( const SPhysical *self,
-    Vector *prior, const Vector *subst );
+     Vector *parms, Vector *prior, const Vector *subst, Vector *cx_bind );
 
 /* Rest-ore
  *  restore schema and factory param substitution
  *  destroys prior param vector
  */
-void SPhysicalRestSchemaParms ( const SPhysical *self, Vector *prior );
-void SPhysicalRestFactParms ( const SPhysical *self, Vector *prior );
+void SPhysicalRestSchemaParms ( const SPhysical *self, Vector *prior, Vector *cx_bind );
+void SPhysicalRestFactParms ( const SPhysical *self, Vector *prior, Vector *cx_bind );
 
 /* Mark
  */

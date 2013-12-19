@@ -66,8 +66,9 @@ KPROC=$(expr $MODE % 2)
 MODE=$(expr $MODE / 2)
 THREADS=$(expr $MODE % 2)
 MODE=$(expr $MODE / 2)
-KRYPTO=$(expr $MODE % 2)
-CRYPTO=$(expr $MODE / 2)
+HAVE_M=$(expr $MODE % 2)
+MODE=$(expr $MODE / 2)
+HAVE_XML=$(expr $MODE % 2)
 
 # decode SCMFLAGS
 CHECKSUM=$(expr $SCMFLAGS % 2)

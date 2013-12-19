@@ -24,92 +24,124 @@
 *
 */
 
-#ifndef _h_vfs_path_priv_libs_
-#define _h_vfs_path_priv_libs_
+#ifndef _h_path_priv_
+#define _h_path_priv_
 
+#ifndef _h_vfs_extern_
 #include <vfs/extern.h>
-#include <klib/defs.h>
-#include <vfs/path.h>
-#include <vfs/path-priv.h>
-#include <klib/text.h>
-#include <klib/refcount.h>
-#include <klib/container.h>
+#endif
 
-#include <stdarg.h>
+#ifndef _h_klib_refcount_
+#include <klib/refcount.h>
+#endif
+
+#ifndef _h_klib_data_buffer_
+#include <klib/data-buffer.h>
+#endif
+
+#ifndef _h_klib_text_
+#include <klib/text.h>
+#endif
+
+#ifndef _h_vfs_path_
+#include <vfs/path.h>
+#endif
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-#ifndef USE_VRESOLVER
-#define USE_VRESOLVER 1
-#endif
-
-#ifndef SUPPORT_FILE_URL
-#define SUPPORT_FILE_URL 1
-#endif
-
-#ifndef USE_EXPERIMENTAL_CODE
-#define USE_EXPERIMENTAL_CODE 1
-#endif
-
-#ifndef USE_VPATH_OPTIONS_STRINGS
-#define USE_VPATH_OPTIONS_STRINGS 0
-#endif
-
-#ifdef _DEBUGGING
-#define PATH_DEBUG(msg) DBGMSG(DBG_VFS,DBG_FLAG(DBG_VFS_PATH), msg)
-#else
-#define PATH_DEBUG(msg)
-#endif
-#define OFF_PATH_DEBUG(msg)
-
-
-typedef struct VPOption VPOption;
-struct VPOption
-{
-    BSTNode node;
-    VPOption_t name;
-    String value;
-/*     const char * value; */
-};
-
+/*--------------------------------------------------------------------------
+ * VPath
+ */
 struct VPath
 {
-#if USE_VPATH_OPTIONS_STRINGS
-    const VPath * root;
-
-    KRefcount refcount;
-
-    String fullpath;
+    KDataBuffer data;
 
     String scheme;
-
-
-#else
-    const VPath * root;
-    KRefcount refcount;
+    String auth;
+    String host;
+    String portname;
     String path;
-    BSTree options;   /* query section of an uri; maybe set other ways as well. */
-    char * query;
-    char * fragment;
-    size_t alloc_size;  /* how much extra space allocated for a path too long for the built in buffer */
-    size_t asciz_size;  /* doubles as allocated size -1 if less than the size of the buffer below */
-    VPUri_t scheme;
-    char * storage;
-#endif
+    String query;
+    String fragment;
+
+    KRefcount refcount;
+
+    uint32_t obj_id;
+    uint32_t acc_code;
+
+    uint32_t ipv4;
+    uint16_t ipv6 [ 8 ];
+    uint16_t portnum;
+
+    uint8_t scheme_type;
+    uint8_t host_type;
+    uint8_t path_type;
+
+    bool from_uri;
+    bool missing_port;
 };
 
+enum VPathVariant
+{
+    vpInvalid,
+    vpOID,
+    vpAccession,
+    vpNameOrOID,
+    vpNameOrAccession,
+    vpName,
+    vpRelPath,
+    vpUNCPath,
+    vpFullPath,
+    vpAuth,
+    vpHostName,
+    vpEndpoint
+};
 
-/* not externally callable */
-rc_t CC VPathTransformSysPath (VPath * self);
-rc_t VPathTransformPathHier (char ** uri_path);
+enum VHostVariant
+{
+    vhDNSName,
+    vhIPv4,
+    vhIPv6
+};
 
-rc_t VPathInitAuthority (VPath * self, char ** next);
+/* legacy support */
+#define VPathMake LegacyVPathMake
+VFS_EXTERN rc_t VPathMake ( VPath ** new_path, const char * posix_path );
+#define VPathMakeFmt LegacyVPathMakeFmt
+rc_t VPathMakeFmt ( VPath ** new_path, const char * fmt, ... );
+#define VPathMakeVFmt LegacyVPathMakeVFmt
+rc_t VPathMakeVFmt ( VPath ** new_path, const char * fmt, va_list args );
+#define VPathMakeSysPath LegacyVPathMakeSysPath
+VFS_EXTERN rc_t VPathMakeSysPath ( VPath ** new_path, const char * sys_path );
+
+typedef enum eVPUri_t
+{
+    vpuri_invalid = -1,
+    vpuri_none, 
+    vpuri_not_supported,
+    vpuri_ncbi_file,
+    vpuri_ncbi_vfs = vpuri_ncbi_file,
+    vpuri_file,
+    vpuri_ncbi_acc,
+    vpuri_http,
+    vpuri_ftp,
+    vpuri_ncbi_legrefseq,
+    vpuri_ncbi_obj,     /* for dbGaP objects */
+    vpuri_fasp,         /* for Aspera downloads */
+    vpuri_count
+} VPUri_t;
+
+#define VPathGetScheme_t LegacyVPathGetScheme_t
+VFS_EXTERN rc_t CC VPathGetScheme_t ( const VPath * self, VPUri_t * uri_type );
+
+#define VPathGetUri_t LegacyVPathGetUri_t
+VPUri_t VPathGetUri_t (const VPath * self);
 
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* _h_vfs_path_priv_ */
+#endif /* _h_path_priv_ */

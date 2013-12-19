@@ -110,6 +110,7 @@ struct KSraHeader
 
 
 #define FS_SRA_CUR_VERSION 1
+KFS_EXTERN size_t CC SraHeaderSize ( const KSraHeader * self );
 
 KFS_EXTERN uint64_t CC SraHeaderGetFileOffset (const KSraHeader * self);
 

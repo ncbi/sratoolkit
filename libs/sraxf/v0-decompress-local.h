@@ -231,7 +231,7 @@ typedef struct SRALocal
         int _nbits = nbits;						\
                                                                         \
         if (_bitpos + _nbits + (_shift << 3) > max_bits) {              \
-            fprintf(stderr, "legacy code trying to read %u bits beyond end of data\n", _bitpos + _nbits + (_shift << 3) - max_bits); \
+            fprintf(stderr, "legacy code trying to read %u bits beyond end of data at %s, line %d.\n", _bitpos + _nbits + (_shift << 3) - max_bits, __FILE__, __LINE__); \
             _nbits = max_bits - (_bitpos + (_shift << 3));              \
         }                                                               \
         while (_nbits > 0) {                                            \

@@ -33,6 +33,11 @@
 #define EXPORT_LATCH 1
 #else
 #define VFS_EXTERN LIB_IMPORT
+#ifdef __cplusplus
+#define VFS_EXTERN_DATA extern /* LIB_IMPORT_DATA */
+#else
+#define VFS_EXTERN_DATA LIB_IMPORT_DATA
+#endif
 #endif
 
 #ifndef _h_klib_extern_

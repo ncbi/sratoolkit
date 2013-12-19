@@ -76,22 +76,24 @@ rc_t SRAReader_ColumnsOpen(SRAReader *self)
     return rc;
 }
 
-static
-rc_t SRAReader_ColumnsRead(SRAReader *self)
+static rc_t SRAReader_ColumnsRead( SRAReader * self )
 {
     rc_t rc = 0;
     int i = 0;
 
-    while(self->cols[i].name != NULL) {
-        bitsz_t x = 0;
-        if(self->cols[i].col != NULL &&
-           ((rc = SRAColumnRead(self->cols[i].col, self->spot, &self->cols[i].base,
-                                &x, &self->cols[i].size)) != 0 || x != 0)) {
-            SRADBG (("%s: read column %s spot %u %R\n",
-                     __func__, self->cols[i].name, self->spot, rc));
-            break;
+    while ( self->cols[ i ].name != NULL )
+    {
+        if ( self->cols[ i ].col != NULL )
+        {
+            bitsz_t bitofs = 0;
+            rc = SRAColumnRead( self->cols[ i ].col, self->spot, &self->cols[ i ].base, &bitofs, &self->cols[ i ].size );
+            if ( rc != 0 || bitofs != 0 )
+            {
+                SRADBG (( "%s: read column %s spot %u %R\n", __func__, self->cols[i].name, self->spot, rc ));
+                break;
+            }
         }
-        self->cols[i].size /= 8;
+        self->cols[ i ].size /= 8;
         i++;
     }
     return rc;

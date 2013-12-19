@@ -195,8 +195,8 @@ KRYPTO_EXTERN rc_t CC KFileIsWGAEnc (const void * buffer, size_t buffer_size)
     const uint8_t * ph;
     const uint8_t * pt;
     const uint8_t * pb;
-    int ix;
-    int lim;
+    size_t ix;
+    size_t lim;
 
     if ((buffer == NULL) || (buffer_size == 0))
         return RC  (rcFS, rcFile, rcIdentifying, rcParam, rcNull); 
@@ -312,7 +312,7 @@ rc_t KWGAEncFileKeyInit (KWGAEncFile * self, const char * key, size_t key_size)
 
     if (key_size < 16) /* even though g_key and some cipher keys are larger than 16 */
     {
-        int jx, ix;
+        size_t jx, ix;
         for ((jx = key_size),(ix = 0); jx < 16; ++jx, ++ix)
         {
             g_key[jx] = self->md51[ix] | g_key[ix%(jx?jx:1)];    /* cringe? */
@@ -460,7 +460,7 @@ rc_t KWGAEncFileReadInt (KWGAEncFile * self, uint64_t pos, size_t bsize)
                        &tot_read);
 #endif
     self->buffer.offset = pos;
-    self->buffer.valid = tot_read;
+    self->buffer.valid = (uint32_t)tot_read;
 
     if (tot_read & 15)
         rc = RC (rcKrypto, rcFile, rcReading, rcSize, rcInsufficient);
@@ -470,7 +470,7 @@ rc_t KWGAEncFileReadInt (KWGAEncFile * self, uint64_t pos, size_t bsize)
 
 #if RETAINED_COMPATIBILTY_WITH_ERROR
         KCipherDecryptECB (self->cipher, self->buffer.data, self->buffer.data,
-                           (tot_read / ECB_BYTES));
+                           (uint32_t)(tot_read / ECB_BYTES));
 #else
 /* Well this is wrong for even being wrong now */
         KCipherDecryptECB (self->cipher, self->buffer.data, self->buffer.data,
@@ -1168,7 +1168,7 @@ KRYPTO_EXTERN rc_t CC WGAEncValidate (const KFile * encrypted,
             if (rc == 0)
             {
                 uint64_t sys_file_size;
-                uint64_t pad_file_size;
+                uint64_t pad_file_size = 0;
                 rc_t orc;
 
                 /* ccheck file size */

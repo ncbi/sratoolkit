@@ -73,7 +73,7 @@ size_t KWrtFmt_error_code ( char * buffer, size_t buffer_size, uint32_t error_co
         {
             if (*pc == '\r')
             {
-                tbuffer_size = pc - tbuffer;
+                tbuffer_size = ( DWORD ) ( pc - tbuffer );
                 break;
             }
         }

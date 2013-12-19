@@ -197,7 +197,7 @@ LIB_EXPORT rc_t CC VTableCreateCursorWrite ( VTable *self, VCursor **cursp, KCre
 
 /* MakeColumn
  */
-rc_t VCursorMakeColumn ( VCursor *self, VColumn **col, const SColumn *scol )
+rc_t VCursorMakeColumn ( VCursor *self, VColumn **col, const SColumn *scol, Vector *cx_bind )
 {
     VTable *vtbl;
 
@@ -205,7 +205,7 @@ rc_t VCursorMakeColumn ( VCursor *self, VColumn **col, const SColumn *scol )
         return VColumnMake ( col, self -> schema, scol );
 
     vtbl = self -> tbl;
-    return WColumnMake ( col, self -> schema, scol, vtbl -> stbl -> limit, vtbl -> mgr );
+    return WColumnMake ( col, self -> schema, scol, vtbl -> stbl -> limit, vtbl -> mgr, cx_bind );
 }
 
 
@@ -293,6 +293,7 @@ LIB_EXPORT rc_t CC VCursorOpen ( const VCursor *cself )
             {
                 if ( ! self -> read_only )
                 {
+                    Vector cx_bind;
                     VProdResolve pr;
                     pr . schema = self -> schema;
                     pr . ld = ld;
@@ -301,14 +302,20 @@ LIB_EXPORT rc_t CC VCursorOpen ( const VCursor *cself )
                     pr . curs = self;
                     pr . cache = & self -> prod;
                     pr . owned = & self -> owned;
+                    pr . cx_bind = & cx_bind;
                     pr . chain = chainEncoding;
                     pr . blobbing = false;
                     pr . ignore_column_errors = false;
                     pr . discover_writable_columns = false;
 
-		    if ( !self -> suspend_triggers )
-			    rc = VProdResolveAddTriggers ( & pr, self -> stbl );
+                    VectorInit ( & cx_bind, 1, self -> schema -> num_indirect );
+
+                    if ( ! self -> suspend_triggers )
+                        rc = VProdResolveAddTriggers ( & pr, self -> stbl );
+
+                    VectorWhack ( & cx_bind, NULL, NULL );
                 }
+
                 if ( rc == 0 )
                 {
                     /* TBD - warn if any input columns are unreferenced by schema */
@@ -441,6 +448,7 @@ rc_t VCursorListSeededWritableColumns ( VCursor *self, BSTree *columns, const KN
     rc_t rc;
     KDlset *libs;
 
+    Vector cx_bind;
     struct resolve_phys_data pb;
     pb . pr . schema = self -> schema;
     pb . pr . ld = self -> tbl -> linker;
@@ -448,6 +456,7 @@ rc_t VCursorListSeededWritableColumns ( VCursor *self, BSTree *columns, const KN
     pb . pr . curs = self;
     pb . pr . cache = & self -> prod;
     pb . pr . owned = & self -> owned;
+    pb . pr . cx_bind = & cx_bind;
     pb . pr . chain = chainEncoding;
     pb . pr . blobbing = false;
     pb . pr . ignore_column_errors = true;
@@ -461,12 +470,16 @@ rc_t VCursorListSeededWritableColumns ( VCursor *self, BSTree *columns, const KN
             return rc;
     }
 
+    VectorInit ( & cx_bind, 1, self -> schema -> num_indirect );
+
     /* open the dynamic linker libraries */
     rc = VLinkerOpen ( pb . pr . ld, & libs );
     if ( rc == 0 )
     {
         pb . pr . libs = libs;
-        VProdResolveWritableColumns ( & pb , self->suspend_triggers );
+        VProdResolveWritableColumns ( & pb , self -> suspend_triggers );
+
+        VectorWhack ( & cx_bind, NULL, NULL );
         KDlsetRelease ( libs );
 
         if ( rc == 0 )

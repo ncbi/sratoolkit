@@ -42,7 +42,7 @@
 #include <ctype.h>
 #include <assert.h>
 
-static const TableWriterColumn TableWriterAlgn_cols[ewalgn_cn_Last + 1] =
+static const TableWriterColumn TableWriterAlgn_cols[ewalgn_cn_Last] =
 {
     /* order is important, see enum in .h !!! */
     {0, "TMP_KEY_ID", sizeof(uint64_t) * 8, ewcol_Temporary | ewcol_Ignore},
@@ -68,11 +68,17 @@ static const TableWriterColumn TableWriterAlgn_cols[ewalgn_cn_Last + 1] =
     {0, "MISMATCH", sizeof(INSDC_dna_text) * 8, ewcol_IsArray},
     {0, "REF_OFFSET", sizeof(int32_t) * 8, ewcol_IsArray},
     {0, "EVIDENCE_ALIGNMENT_IDS", sizeof(int64_t) * 8, ewcol_IsArray | ewcol_Ignore},
-    {0, "ALIGN_GROUP", sizeof(char) * 8, ewcol_IsArray | ewcol_Ignore }
+    {0, "ALIGN_GROUP", sizeof(char) * 8, ewcol_IsArray | ewcol_Ignore },
+    {0, "MISMATCH_QUALITY", sizeof(uint8_t) * 8, ewcol_IsArray | ewcol_Ignore},
+    {0, "MATE_GLOBAL_REF_START", sizeof(uint64_t) * 8, ewcol_Ignore},
+    {0, "MATE_REF_START", sizeof(INSDC_coord_zero) * 8, ewcol_Ignore}
 };
 
 static const TableReaderColumn TableAlgnReadTmpKey_cols[] = {
     {0, "TMP_KEY_ID", {NULL}, 0, 0},
+    {0, "GLOBAL_REF_START", {NULL}, 0, ercol_Skip},
+    {0, "REF_ID", {NULL}, 0, ercol_Skip},
+    {0, "REF_START", {NULL}, 0, ercol_Skip},
     {0, NULL, {NULL}, 0, 0}
 };
 
@@ -81,9 +87,9 @@ struct TableWriterAlgn {
     const TableWriter* base;
     const char* ref_table_name;
     uint8_t cursor_id;
-    TableWriterColumn cols[sizeof(TableWriterAlgn_cols)/sizeof(TableWriterAlgn_cols[0])];
+    TableWriterColumn cols[ewalgn_cn_Last];
     uint8_t spotid_cursor_id;
-    TableWriterColumn cols_spotid[1];
+    TableWriterColumn cols_spotid[5];
     const TableReader* tmpkey_reader;
     TableReaderColumn cols_read_tmpkey[sizeof(TableAlgnReadTmpKey_cols) / sizeof(TableAlgnReadTmpKey_cols[0])];
 };
@@ -108,6 +114,8 @@ LIB_EXPORT rc_t CC TableWriterAlgn_Make(const TableWriterAlgn** cself, VDatabase
             case ewalgn_tabletype_PrimaryAlignment:
                 tbl_nm = "PRIMARY_ALIGNMENT";
                 self->cols[ewalgn_cn_ALIGN_GROUP].flags &= ~ewcol_Ignore;
+                if (options & ewalgn_co_MISMATCH_QUALITY)
+                    self->cols[ewalgn_cn_MISMATCH_QUALITY].flags &= ~ewcol_Ignore;
                 break;
             case ewalgn_tabletype_SecondaryAlignment:
                 tbl_nm = "SECONDARY_ALIGNMENT";
@@ -140,7 +148,7 @@ LIB_EXPORT rc_t CC TableWriterAlgn_Make(const TableWriterAlgn** cself, VDatabase
                 self->cols[ewalgn_cn_HAS_MISMATCH].flags |= ewcol_Ignore;
                 self->cols[ewalgn_cn_MISMATCH].flags |= ewcol_Ignore;
 #else
-		self->cols[ewalgn_cn_MISMATCH].name = "TMP_MISMATCH";
+                self->cols[ewalgn_cn_MISMATCH].name = "TMP_MISMATCH";
                 self->cols[ewalgn_cn_HAS_MISMATCH].name = "TMP_HAS_MISMATCH";
 #endif
                 options |= ewalgn_co_unsorted;
@@ -288,16 +296,50 @@ LIB_EXPORT rc_t CC TableWriterAlgn_TmpKeyStart(const TableWriterAlgn* cself)
     } else if( (rc = TableWriter_CloseCursor(cself->base, cself->cursor_id, NULL)) == 0 ) {
         TableWriterAlgn* self = (TableWriterAlgn*)cself;
         VTable* vtbl = NULL;
+        
         memcpy(&self->cols_read_tmpkey, &TableAlgnReadTmpKey_cols, sizeof(TableAlgnReadTmpKey_cols));
-        if( (rc = TableWriter_GetVTable(cself->base, &vtbl)) == 0 &&
+        if (self->cols[ewalgn_cn_GLOBAL_REF_START].flags & ewcol_Ignore) {
+            self->cols_read_tmpkey[2].flags = 0;
+            self->cols_read_tmpkey[3].flags = 0;
+        }
+        else
+            self->cols_read_tmpkey[1].flags = 0;
+
+        if( (rc = TableWriter_GetVTable(self->base, &vtbl)) == 0 &&
             (rc = TableReader_Make(&self->tmpkey_reader, vtbl, self->cols_read_tmpkey, 50 * 1024 * 1024)) == 0 ) {
             int64_t v = 0;
-            memcpy(self->cols_spotid, &TableWriterAlgn_cols[ewalgn_cn_SEQ_SPOT_ID], sizeof(self->cols_spotid));
+            
+            memcpy(self->cols_spotid + 0, &TableWriterAlgn_cols[ewalgn_cn_SEQ_SPOT_ID], sizeof(self->cols_spotid[0]));
+            memcpy(self->cols_spotid + 1, &TableWriterAlgn_cols[ewalgn_cn_MATE_GLOBAL_REF_START], sizeof(self->cols_spotid[0]));
+            memcpy(self->cols_spotid + 2, &TableWriterAlgn_cols[ewalgn_cn_MATE_REF_ID], sizeof(self->cols_spotid[0]));
+            memcpy(self->cols_spotid + 3, &TableWriterAlgn_cols[ewalgn_cn_MATE_REF_START], sizeof(self->cols_spotid[0]));
+            memcpy(self->cols_spotid + 3, &TableWriterAlgn_cols[ewalgn_cn_MATE_ALIGN_ID], sizeof(self->cols_spotid[0]));
+            
             self->cols_spotid[0].flags &= ~ewcol_Ignore;
+            if (self->options & ewalgn_co_MATE_POSITION) {
+                if (self->cols[ewalgn_cn_GLOBAL_REF_START].flags & ewcol_Ignore) {
+                    self->cols_spotid[2].flags &= ~ewcol_Ignore;
+                    self->cols_spotid[3].flags &= ~ewcol_Ignore;
+                }
+                else
+                    self->cols_spotid[1].flags &= ~ewcol_Ignore;
+                self->cols_spotid[4].flags &= ~ewcol_Ignore;
+            }
+            else {
+                self->cols_spotid[1].flags |= ewcol_Ignore;
+                self->cols_spotid[2].flags |= ewcol_Ignore;
+                self->cols_spotid[3].flags |= ewcol_Ignore;
+                self->cols_spotid[4].flags |= ewcol_Ignore;
+            }
             rc = TableWriter_AddCursor(self->base, self->cols_spotid,
                                        sizeof(self->cols_spotid) / sizeof(self->cols_spotid[0]),
                                        &self->spotid_cursor_id);
+
             TW_COL_WRITE_DEF_VAR(self->base, self->spotid_cursor_id, self->cols_spotid[0], v);
+            TW_COL_WRITE_DEF_VAR(self->base, self->spotid_cursor_id, self->cols_spotid[1], v);
+            TW_COL_WRITE_DEF_VAR(self->base, self->spotid_cursor_id, self->cols_spotid[2], v);
+            TW_COL_WRITE_DEF_VAR(self->base, self->spotid_cursor_id, self->cols_spotid[3], v);
+            TW_COL_WRITE_DEF_VAR(self->base, self->spotid_cursor_id, self->cols_spotid[4], v);
         }
     }
     return rc;
@@ -319,6 +361,27 @@ LIB_EXPORT rc_t CC TableWriterAlgn_TmpKey(const TableWriterAlgn* cself, int64_t 
     return rc;
 }
 
+LIB_EXPORT rc_t CC TableWriterAlgn_RefStart(const TableWriterAlgn* cself, int64_t rowid, ReferenceStart *const rslt)
+{
+    rc_t rc = 0;
+    
+    if( cself == NULL || rowid == 0 || rslt == NULL ) {
+        rc = RC( rcAlign, rcType, rcReading, rcParam, rcNull);
+        ALIGN_DBGERR(rc);
+    } else if( cself->tmpkey_reader == NULL ) {
+        rc = RC( rcAlign, rcType, rcReading, rcMode, rcNotOpen);
+        ALIGN_DBGERR(rc);
+    } else if( (rc = TableReader_ReadRow(cself->tmpkey_reader, rowid)) == 0 ) {
+        if (cself->cols_read_tmpkey[1].flags & ewcol_Ignore) {
+            memcpy(&rslt->local.ref_id, cself->cols_read_tmpkey[2].base.var, sizeof(rslt->local.ref_id));
+            memcpy(&rslt->local.ref_start, cself->cols_read_tmpkey[3].base.var, sizeof(rslt->local.ref_start));
+        }
+        else
+            memcpy(&rslt->global_ref_start, cself->cols_read_tmpkey[1].base.var, sizeof(rslt->global_ref_start));
+    }
+    return rc;
+}
+
 LIB_EXPORT rc_t CC TableWriterAlgn_Write_SpotId(const TableWriterAlgn* cself, int64_t rowid, int64_t spot_id)
 {
     rc_t rc = 0;
@@ -331,6 +394,34 @@ LIB_EXPORT rc_t CC TableWriterAlgn_Write_SpotId(const TableWriterAlgn* cself, in
         ALIGN_DBGERR(rc);
     } else if( (rc = TableWriter_OpenRowId(cself->base, rowid, cself->spotid_cursor_id)) == 0 ) {
         TW_COL_WRITE_VAR(cself->base, cself->cols_spotid[0], spot_id);
+        if( rc == 0 ) {
+            rc = TableWriter_CloseRow(cself->base);
+        }
+    }
+    return rc;
+}
+
+LIB_EXPORT rc_t CC TableWriterAlgn_Write_SpotInfo(const TableWriterAlgn* cself,
+                                                  int64_t rowid,
+                                                  int64_t spot_id,
+                                                  int64_t mate_id,
+                                                  ReferenceStart const *ref_start)
+{
+    rc_t rc = 0;
+    
+    if( cself == NULL || rowid == 0 ) {
+        rc = RC( rcAlign, rcType, rcWriting, rcParam, rcNull);
+        ALIGN_DBGERR(rc);
+    } else if( cself->options & ewalgn_co_SEQ_SPOT_ID ) {
+        rc = RC( rcAlign, rcType, rcWriting, rcParam, rcViolated);
+        ALIGN_DBGERR(rc);
+    } else if( (rc = TableWriter_OpenRowId(cself->base, rowid, cself->spotid_cursor_id)) == 0 ) {
+        TW_COL_WRITE_VAR(cself->base, cself->cols_spotid[0], spot_id);
+        TW_COL_WRITE_VAR(cself->base, cself->cols_spotid[1], ref_start->global_ref_start);
+        TW_COL_WRITE_VAR(cself->base, cself->cols_spotid[2], ref_start->local.ref_id);
+        TW_COL_WRITE_VAR(cself->base, cself->cols_spotid[3], ref_start->local.ref_start);
+        TW_COL_WRITE_VAR(cself->base, cself->cols_spotid[4], mate_id);
+        
         if( rc == 0 ) {
             rc = TableWriter_CloseRow(cself->base);
         }

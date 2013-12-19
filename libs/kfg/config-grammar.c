@@ -74,20 +74,19 @@
 /* Copy the first part of user declarations.  */
 
   
-	#include <sysalloc.h>
-
-	#include "kfg-parse.h"
-	
-	#define YYSTYPE KFGSymbol
-	#include "config-tokens.h"
-		
-	#define KFG_lex KFGScan_yylex
-	
-	/* required parameter to VNamelistMake */
-	#define NAMELIST_ALLOC_BLKSIZE 10
-	
-	static void ReportRc(KFGParseBlock* pb, KFGScanBlock* sb, rc_t rc);
-	static void AppendName(KFGScanBlock* sb, VNamelist*, const KFGParseBlock*);
+    #include "kfg-parse.h"
+    #include <sysalloc.h>
+    
+    #define YYSTYPE KFGSymbol
+    #include "config-tokens.h"
+        
+    #define KFG_lex KFGScan_yylex
+    
+    /* required parameter to VNamelistMake */
+    #define NAMELIST_ALLOC_BLKSIZE 10
+    
+    static void ReportRc(KFGParseBlock* pb, KFGScanBlock* sb, rc_t rc);
+    static void AppendName(KFGScanBlock* sb, VNamelist*, const KFGParseBlock*);
 
 
 
@@ -138,8 +137,8 @@ typedef union YYSTYPE
 {
 
 
-	KFGParseBlock		pb;
-	const VNamelist*	namelist;
+    KFGParseBlock       pb;
+    const VNamelist*    namelist;
 
 
 
@@ -443,8 +442,8 @@ static const yytype_int8 yyrhs[] =
 /* YYRLINE[YYN] -- source line where rule number YYN was defined.  */
 static const yytype_uint8 yyrline[] =
 {
-       0,    82,    82,    83,    87,    88,    92,   101,   102,   106,
-     107,   111,   115,   116,   117,   118,   122,   123
+       0,    81,    81,    82,    86,    87,    91,   100,   101,   105,
+     106,   110,   114,   115,   116,   117,   121,   122
 };
 #endif
 
@@ -1099,7 +1098,7 @@ yydestruct (yymsg, yytype, yyvaluep, pb, sb)
       case 20: /* "value" */
 
 	{
-	VNamelistRelease((yyvaluep->namelist));
+    VNamelistRelease((yyvaluep->namelist));
 };
 
 	break;
@@ -1404,13 +1403,13 @@ yyreduce:
         case 6:
 
     { 
-			rc_t rc=sb->write_nvp(sb->self, (yyvsp[(1) - (4)].pb).tokenText, (yyvsp[(1) - (4)].pb).tokenLength, (yyvsp[(3) - (4)].namelist));
-			if (rc != 0)
-			{
-				ReportRc(pb, sb, rc);
-			}
-			VNamelistRelease((yyvsp[(3) - (4)].namelist));
-		}
+            rc_t rc=sb->write_nvp(sb->self, (yyvsp[(1) - (4)].pb).tokenText, (yyvsp[(1) - (4)].pb).tokenLength, (yyvsp[(3) - (4)].namelist));
+            if (rc != 0)
+            {
+                ReportRc(pb, sb, rc);
+            }
+            VNamelistRelease((yyvsp[(3) - (4)].namelist));
+        }
     break;
 
   case 12:
@@ -1678,48 +1677,48 @@ void KFG_error(KFGParseBlock* pb, KFGScanBlock* sb, const char* msg)
 
 void ReportRc(KFGParseBlock* pb, KFGScanBlock* sb, rc_t rc)
 {
-	char buf[1025];
-	size_t num_writ;
-	RCExplain(rc, buf, 1024, &num_writ);
-	buf[1024]=0;
-	yyerror(0, sb, buf);
+    char buf[1025];
+    size_t num_writ;
+    RCExplain(rc, buf, 1024, &num_writ);
+    buf[1024]=0;
+    yyerror(0, sb, buf);
 }
 
 void AppendName(KFGScanBlock* sb, VNamelist* nl, const KFGParseBlock* pb)
-{	/* pb represents either a kfgSTRING or a kfgESCAPED_STRING with opening and closed quotes clipped */
+{   /* pb represents either a kfgSTRING or a kfgESCAPED_STRING with opening and closed quotes clipped */
     rc_t rc;
     KToken t;
     size_t value_size;
     char* buf;
 
-	if (pb->tokenLength == 0)
-	{
-		return;
-	}
-		    
+    if (pb->tokenLength == 0)
+    {
+        return;
+    }
+            
     t.id= pb->tokenId == kfgESCAPED_STRING ? eEscapedString : eString;
-    StringInit(&t.str, pb->tokenText-1, pb->tokenLength+2, pb->tokenLength+2); /* compensate for clipped quotes in order to use KTokenToString */
+    StringInit(&t.str, pb->tokenText-1, pb->tokenLength+2, (uint32_t) (pb->tokenLength + 2) ); /* compensate for clipped quotes in order to use KTokenToString */
     buf=(char*)malloc(t.str.size);
 
-	/* KTokenToString removes opening and closing quotes and handles escapes if present */
-	rc = KTokenToString (&t, buf, t.str.size, &value_size);
-	if (rc != 0)
-	{
-		ReportRc(0, sb, rc);
-	}
-	else
-	{	
-		assert(value_size < t.str.size);
+    /* KTokenToString removes opening and closing quotes and handles escapes if present */
+    rc = KTokenToString (&t, buf, t.str.size, &value_size);
+    if (rc != 0)
+    {
+        ReportRc(0, sb, rc);
+    }
+    else
+    {   
+        assert(value_size < t.str.size);
         buf[value_size]=0;
-		rc = VNamelistAppend(nl, buf);
-		if (rc != 0)
-		{
-			ReportRc(0, sb, rc);
-		}
-	}		
-	free(buf);
+        rc = VNamelistAppend(nl, buf);
+        if (rc != 0)
+        {
+            ReportRc(0, sb, rc);
+        }
+    }       
+    free(buf);
 }
 
 
-	
+    
 

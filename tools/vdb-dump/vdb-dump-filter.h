@@ -75,4 +75,8 @@ void vdfi_reset( p_filters flts );
 bool vdfi_match( p_filters flts );
 uint16_t vdfi_count( p_filters flts );
 
+#ifdef __cplusplus
+}
+#endif
+
 #endif

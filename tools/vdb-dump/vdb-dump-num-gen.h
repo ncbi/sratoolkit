@@ -71,4 +71,8 @@ bool vdn_start( num_gen* generator );
 bool vdn_next( num_gen* generator, uint64_t* value );
 bool vdn_range_defined( num_gen* generator );
 
+#ifdef __cplusplus
+}
+#endif
+
 #endif

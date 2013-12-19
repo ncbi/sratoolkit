@@ -371,7 +371,8 @@ static void GetCounts(AlignmentRecord const *data, unsigned const seqLen,
 
 rc_t ReferenceRead(Reference *self, AlignmentRecord *data, uint64_t const pos,
                    uint32_t const rawCigar[], uint32_t const cigCount,
-                   char const seqDNA[], uint32_t const seqLen, uint32_t *matches, bool acceptNoMatch, unsigned minMatchCount, uint32_t maxSeqLen)
+                   char const seqDNA[], uint32_t const seqLen, uint32_t *matches,
+                   bool acceptNoMatch, unsigned minMatchCount, uint32_t maxSeqLen)
 {
     *matches = 0;
     BAIL_ON_FAIL(ReferenceSeq_Compress(self->rseq, 
@@ -424,7 +425,9 @@ rc_t ReferenceAddAlignId(Reference *self,
     return IdVecAppend(is_primary ? &self->pri_align : &self->sec_align, align_id);
 }
 
-rc_t ReferenceWhack(Reference *self, bool commit, uint32_t maxSeqLen)
+rc_t ReferenceWhack(Reference *self, bool commit, uint32_t maxSeqLen,
+                    rc_t (*const quitting)(void)
+                    )
 {
     rc_t rc = 0;
     
@@ -449,10 +452,10 @@ rc_t ReferenceWhack(Reference *self, bool commit, uint32_t maxSeqLen)
             rc = ReferenceSeq_Release(self->rseq);
         if (self->out_of_order) {
             (void)LOGMSG(klogInfo, "Starting coverage calculation");
-            rc = ReferenceMgr_Release(self->mgr, commit, NULL, true);
+            rc = ReferenceMgr_Release(self->mgr, commit, NULL, true, quitting);
         }
         else {
-            rc = ReferenceMgr_Release(self->mgr, commit, NULL, false);
+            rc = ReferenceMgr_Release(self->mgr, commit, NULL, false, NULL);
         }
     }
     return rc;

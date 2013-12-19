@@ -54,18 +54,20 @@ STATIC=0
 DYLD=0
 STATICSYSLIBS=0
 CHECKSUM=0
-KPROC=0
+KPROC=4
 THREADS=0
 HAVE_KSPROC=0
-NEED_KPROC=0
+NEED_KPROC=1
 HAVE_GZIP=0
-NEED_GZIP=0
+NEED_GZIP=1
 HAVE_BZIP=0
-NEED_BZIP=0
-HAVE_SRAPATH=0
-NEED_SRAPATH=0
+NEED_BZIP=1
 HAVE_DL=0
-NEED_DL=0
+NEED_DL=1
+HAVE_M=0
+NEED_M=1
+HAVE_XML=0
+NEED_XML=0
 unset BUILD
 unset LDIRS
 unset XDIRS
@@ -83,6 +85,8 @@ unset DEPFILE
 unset RHOME
 unset LHOME
 unset RHOST
+unset LOUTDIR
+unset ROUTDIR
 unset PROXY_TOOL
 
 while [ $# -ne 0 ]
@@ -144,6 +148,16 @@ do
 
     --lhome)
         LHOME="$2"
+        shift
+        ;;
+
+    --loutdir)
+        LOUTDIR="$2"
+        shift
+        ;;
+
+    --routdir)
+        ROUTDIR="$2"
         shift
         ;;
 
@@ -234,42 +248,39 @@ do
         LIBS="$LIBS $1"
         HAVE_GZIP=1
         ;;
-    -lbz2|-sbz2|-dbz2)
+    -[lds]bz2)
         LIBS="$LIBS $1"
         HAVE_BZIP=1
         ;;
-    -ldl|-sdl|-ddl)
+    -[lds]dl)
         LIBS="$LIBS $1"
         HAVE_DL=1
         ;;
 
-    -lsrapath|-ssrapath|-dsrapath)
-        LIBS="$LIBS $1"
-        HAVE_SRAPATH=1
+    -[lds]xml2)
+        HAVE_XML=32
         ;;
+
+    -[lds]m)
+        HAVE_M=16
+        ;;
+
     -lsradb|-ssradb|-dsradb|-lwsradb|-swsradb)
         LIBS="$LIBS $1"
         NEED_DL=1
         DYLD=2
-        if [ $STATIC -ne 0 ]
-        then
-            NEED_SRAPATH=1
-        fi
         ;;
 
     -lkrypto|-dkrypto)
         LIBS="$LIBS $1"
-        if [ $STATIC -ne 0 ]
-        then
-            NEED_KPROC=1
-        fi
+        NEED_KPROC=1
         ;;
     -skrypto)
         LIBS="$LIBS $1"
         NEED_KPROC=1
         ;;
 
-    -lkproc|-dkproc)
+    -[ld]kproc)
         KPROC=4
         LIBS="$LIBS $1"
         ;;
@@ -279,33 +290,39 @@ do
         LIBS="$LIBS $1"
         ;;
 
+    -[lds]ncbi-vdb)
+        KPROC=4
+        HAVE_GZIP=1
+        HAVE_BZIP=1
+        NEED_M=1
+        NEED_XML=1
+        LIBS="$LIBS $1"
+        ;;
+    -[lds]ncbi-wvdb)
+        KPROC=4
+        HAVE_GZIP=1
+        HAVE_BZIP=1
+        NEED_M=16
+        NEED_XML=1
+        LIBS="$LIBS $1"
+        ;;
+
     -[lds]ksproc)
         HAVE_KSPROC=1
         LIBS="$LIBS $1"
         THREADS=0
         ;;
 
-    -lpthread|-spthread|-dpthread)
+    -[lds]pthread)
         THREADS=8
         ;;
 
-    -lkfs)
-        LIBS="$LIBS $1"
-        if [ $STATIC -ne 0 ]
-        then
-            NEED_GZIP=1
-            NEED_BZIP=1
-            NEED_DL=1
-        fi
-        ;;
-
-    -skfs)
+    -[ls]kfs)
         LIBS="$LIBS $1"
         NEED_GZIP=1
         NEED_BZIP=1
         NEED_DL=1
         ;;
-
     -dkfs)
         LIBS="$LIBS $1"
         NEED_GZIP=1
@@ -314,34 +331,30 @@ do
         DYLD=2
         ;;
 
-    -svfs)
+    -[ls]vfs)
         LIBS="$LIBS $1"
-        NEED_SRAPATH=1
         ;;
-
-    -lvfs)
-        LIBS="$LIBS $1"
-        if [ $STATIC -ne 0 ]
-        then
-            NEED_SRAPATH=1
-        fi
-        ;;
-
     -dvfs)
         LIBS="$LIBS $1"
-        if [ $STATIC -ne 0 ]
-        then
-            NEED_SRAPATH=1
-        fi
         DYLD=2
         ;;
 
-    -lncbi-bam|-sncbi-bam|-dncbi-bam)
+    -[ls]kxml)
+        LIBS="$LIBS $1"
+        NEED_XML=1
+        ;;
+    -dkxml)
+        LIBS="$LIBS $1"
+        NEED_XML=1
+        DYLD=2
+        ;;
+
+    -[lds]ncbi-bam)
         LIBS="$LIBS $1"
         #NEED_GZIP=1
         ;;
 
-    -l*|-s*)
+    -[ls]*)
         LIBS="$LIBS $1"
         ;;
 
@@ -459,20 +472,21 @@ then
 fi
 
 # turn on threads for kproc
-[ $STATIC -eq 0 ] && [ "$NAME" = "libkproc" ] && THREADS=8
-[ $STATIC -ne 0 ] && [ $KPROC -ne 0 ] && THREADS=8
+[ $KPROC -ne 0 ] && THREADS=8
 
 # supply missing libraries
 [ $HAVE_GZIP -eq 0 ] && [ $NEED_GZIP -ne 0 ] && LIBS="$LIBS -lz"
 [ $HAVE_BZIP -eq 0 ] && [ $NEED_BZIP -ne 0 ] && LIBS="$LIBS -lbz2"
 [ $HAVE_DL -eq 0 ] && [ $NEED_DL -ne 0 ] && LIBS="$LIBS -ldl"
-[ $HAVE_SRAPATH -eq 0 ] && [ $NEED_SRAPATH -ne 0 ] && [ "$TYPE" = "exe" ] && LIBS="$LIBS -ssrapath"
+[ $HAVE_M -eq 0 ] && [ $NEED_M -ne 0 ] && HAVE_M=16
+[ $HAVE_XML -eq 0 ] && [ $NEED_XML -ne 0 ] && HAVE_XML=32
 
 # overwrite dependencies
 [ -f "$DEPFILE" ] && rm -f "$DEPFILE"
 
 # generate mode
-MODE=$(expr $THREADS + $KPROC + $DYLD + $STATIC)
+MODE=$(expr $HAVE_XML + $HAVE_M + $THREADS + $KPROC + $DYLD + $STATIC)
+#MODE=$(expr $THREADS + $KPROC + $DYLD + 1)
 
 # generate SCM flags
 SCMFLAGS=$(expr $STATICSYSLIBS + $STATICSYSLIBS + $CHECKSUM)
@@ -520,7 +534,7 @@ fi
 # perform link
 "$SCRIPT_BASE.$OS.$TYPE.sh" "$LD" "$ARCH" "$BUILD" "$SRCDIR" "$BINDIR" "$OUTDIR" \
     "$TARG" "$NAME" "$DBGAP" "$VERS" "$VERSFILE" "$DEPFILE" "$MODE" "$SCMFLAGS" \
-    "$LDFLAGS" "$LDIRS" "$XDIRS" "$OBJS" "$LIBS" "$RHOST" "$RPORT" "$RHOME" "$LHOME" "$PROXY_TOOL" || exit $?
+    "$LDFLAGS" "$LDIRS" "$XDIRS" "$OBJS" "$LIBS" "$PROXY_TOOL" "$RHOST" "$RPORT" "$RHOME" "$LHOME" "$(pwd)" "$ROUTDIR" "$LOUTDIR"  || exit $?
 
 # establish links
 if [ "$VERS" != "" ] && [ "$OS" != "win" ] && [ "$OS" != "rwin" ]

@@ -200,7 +200,7 @@ LIB_EXPORT rc_t CC KProcMgrRelease ( const KProcMgr *self )
         {
         case krefWhack:
             return 0;
-        case krefLimit:
+        case krefNegative:
             return RC ( rcPS, rcMgr, rcReleasing, rcRange, rcExcessive );
         }
     }

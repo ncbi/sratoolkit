@@ -214,8 +214,7 @@ rc_t KDatabaseMake ( KDatabase **dbp, const KDirectory *dir,
         return RC ( rcDB, rcDatabase, rcConstructing, rcMemory, rcExhausted );
     }
 
-    db -> mgr = NULL;
-    db -> dad = NULL;
+    memset ( db, 0, sizeof * db );
     db -> dir = ( KDirectory* ) dir;
     db -> md5 = md5;
     rc = KMD5SumFmtAddRef ( md5 );
@@ -227,7 +226,6 @@ rc_t KDatabaseMake ( KDatabase **dbp, const KDirectory *dir,
     strcpy ( db -> path, path );
 
     db->sym.u.obj = db;
-    db->sym.dad = NULL;   /* not strictly needed */
     StringInitCString (&db->sym.name, db->path);
     db->sym.type = kptDatabase;
 

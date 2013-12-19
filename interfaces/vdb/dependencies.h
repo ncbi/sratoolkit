@@ -68,7 +68,9 @@ VDB_EXTERN rc_t CC VDBDependenciesAddRef ( const VDBDependencies *self );
 VDB_EXTERN rc_t CC VDBDependenciesRelease ( const VDBDependencies *self );
 
 /* ListDependencies
- *  create a dependencies object: list all dependencies
+ *  create dependencies object: list dependencies
+ *
+ *  Cache could be updated after the fuction call, if caching is enabled.
  *
  *  "dep" [ OUT ] - return for VDBDependencies object
  *
@@ -77,6 +79,24 @@ VDB_EXTERN rc_t CC VDBDependenciesRelease ( const VDBDependencies *self );
  */
 VDB_EXTERN rc_t CC VDatabaseListDependencies ( struct VDatabase const *self,
     const VDBDependencies **dep, bool missing );
+
+/* ListDependenciesWithCaching
+ *  create dependencies object: list dependencies
+ *
+ *  Allows to control cache update inside the function.
+ *
+ *  "dep" [ OUT ] - return for VDBDependencies object
+ *
+ *  "missing" [ IN ] - if true, list only missing dependencies
+ *  otherwise, list all dependencies
+ *
+ *  "disableCaching" [ IN ] - if true, disable caching inside of the function
+ *  otherwise, do not change the caching state
+ */
+VDB_EXTERN rc_t CC VDatabaseListDependenciesWithCaching (
+    struct VDatabase const *self,
+    const VDBDependencies **dep, bool missing,
+    bool disableCaching );
 
 /* Count
  *  retrieve the number of dependencies

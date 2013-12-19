@@ -78,13 +78,6 @@ rc_t KSysDirMakePath ( const KSysDir* self, enum RCContext ctx, bool canon,
 #endif
 
 
-/* OSPath
- *  returns a real OS path
- */
-rc_t KSysDirOSPath ( const KSysDir *self,
-    wchar_t *real, size_t bsize, const char *path, va_list args );
-
-
 #ifdef __cplusplus
 }
 #endif

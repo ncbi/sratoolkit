@@ -125,7 +125,7 @@ LIB_EXPORT rc_t CC VDBManagerRelease ( const VDBManager *self )
         {
         case krefWhack:
             return VDBManagerWhack ( ( VDBManager* ) self );
-        case krefLimit:
+        case krefNegative:
             return RC ( rcVDB, rcMgr, rcReleasing, rcRange, rcExcessive );
         }
     }
@@ -157,7 +157,7 @@ rc_t VDBManagerSever ( const VDBManager *self )
         {
         case krefWhack:
             return VDBManagerWhack ( ( VDBManager* ) self );
-        case krefLimit:
+        case krefNegative:
             return RC ( rcVDB, rcMgr, rcReleasing, rcRange, rcExcessive );
         }
     }

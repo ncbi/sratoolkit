@@ -303,6 +303,11 @@ struct KArrayFile_vt_v1
         uint64_t *num_writ );
     rc_t ( CC * get_meta ) ( const KARRAYFILE_IMPL *self, const char *key, 
                              const KNamelist **list );
+
+    rc_t ( CC * read_v ) ( const KARRAYFILE_IMPL *self, uint8_t dim,
+        const uint64_t * pos, char * buffer, const uint64_t buffer_size,
+        uint64_t * num_read );
+
     /* end minor version == 0 */
 };
 

@@ -29,8 +29,6 @@ TOP ?= $(shell ../../build/abspath.sh ../..)
 MODULE = libs/sra
 
 INT_LIBS = \
-
-EXT_LIBS = \
 	libsraschema \
 	libwsraschema \
 	libsradb \
@@ -38,8 +36,7 @@ EXT_LIBS = \
 	libsrareader
 
 ALL_LIBS = \
-	$(INT_LIBS) \
-	$(EXT_LIBS)
+	$(INT_LIBS)
 
 include $(TOP)/build/Makefile.env
 
@@ -48,14 +45,11 @@ VPATH += $(OBJDIR)
 #-------------------------------------------------------------------------------
 # outer targets
 #
-all std: vers-includes
+all std: makedirs
 	@ $(MAKE_CMD) $(TARGDIR)/std
 
-$(INT_LIBS): vers-includes
+$(INT_LIBS): makedirs
 	@ $(MAKE_CMD) $(ILIBDIR)/$@
-
-$(EXT_LIBS): vers-includes
-	@ $(MAKE_CMD) $(LIBDIR)/$@
 
 .PHONY: all std $(ALL_LIBS)
 
@@ -63,49 +57,36 @@ $(EXT_LIBS): vers-includes
 # std
 #
 $(TARGDIR)/std: \
-	$(addprefix $(ILIBDIR)/,$(INT_LIBS)) \
-	$(addprefix $(LIBDIR)/,$(EXT_LIBS))
+	$(addprefix $(ILIBDIR)/,$(INT_LIBS))
 
 .PHONY: $(TARGDIR)/all $(TARGDIR)/std
-
-#-------------------------------------------------------------------------------
-# vers-includes
-#
-$(TARGDIR)/vers-includes: $(addsuffix .vers.h,$(EXT_LIBS))
-
-.PHONY: $(TARGDIR)/vers-includes
 
 #-------------------------------------------------------------------------------
 # clean
 #
 clean: stdclean
-	@ rm -f $(LIBDIR)/libsra-schema.* $(LIBDIR)/libwsra-schema.* $(LIBDIR)/sra-dflt-schema*
+	@ rm -f $(ILIBDIR)/libsra-schema.* $(ILIBDIR)/libwsra-schema.* $(ILIBDIR)/sra-dflt-schema*
 	@ rm -f $(BINDIR)/libsra-schema.* $(BINDIR)/libwsra-schema.*
 
 .PHONY: clean
-
-#-------------------------------------------------------------------------------
-# tag
-#
-tag: \
-	$(addsuffix _tag,$(ALL_LIBS))
-
-.PHONY: tag $(addsuffix _tag,$(ALL_LIBS))
 
 
 #-------------------------------------------------------------------------------
 # sradb embedded schema
 #
-$(LIBDIR)/libsraschema: $(LIBDIR)/libsraschema.$(LIBX)
+$(ILIBDIR)/libsraschema: $(ILIBDIR)/libsraschema.$(LIBX)
 
-$(LIBDIR)/libwsraschema: $(LIBDIR)/libwsraschema.$(LIBX)
+$(ILIBDIR)/libwsraschema: $(ILIBDIR)/libwsraschema.$(LIBX)
 
 SRA_DFLT_SCHEMA_LIBS = \
 	-skapp \
 	-svdb \
+	$(ALWAYS_STATIC_SCHEMA_LIBS) \
+	-salign-reader \
 	-skdb \
 	-svfs \
 	-skurl \
+	-sksrch \
 	-skrypto \
 	-skfg \
 	-skfs \
@@ -121,12 +102,13 @@ SRA_DFLT_SCHEMA_OS_LIBS = \
 # set workdir for RUN_REMOTELY in rwin mode 
 RWORKDIR=$(OBJDIR)
 
-$(LIBDIR)/sra-dflt-schema: sra-dflt-schema.$(OBJX)
+$(ILIBDIR)/sra-dflt-schema: sra-dflt-schema.$(OBJX)
 	$(LD) --exe -o $@ $^ $(SRA_DFLT_SCHEMA_LIBS) $(SRA_DFLT_SCHEMA_OS_LIBS)
 
-sra-schema.c: $(LIBDIR)/sra-dflt-schema $(SRCDIR)/built-in.vschema $(TOP)/build/sra-dflt-schema.sh
-	@ $(TOP)/build/sra-dflt-schema.sh $(BUILD_OS) "$(RUN_REMOTELY) $(LIBDIR)/sra-dflt-schema" -o$@ -I$(TOP)/interfaces -T$(OBJDIR)/$@.d $(SRCDIR)/built-in.vschema
-
+sra-schema.c: $(ILIBDIR)/sra-dflt-schema $(SRCDIR)/built-in.vschema $(TOP)/build/sra-dflt-schema.sh
+	@ $(TOP)/build/sra-dflt-schema.sh $(BUILD_OS) "$(RUN_REMOTELY) $(ILIBDIR)/sra-dflt-schema" -o$@ -I$(TOP)/interfaces -T$(OBJDIR)/$@.d $(SRCDIR)/built-in.vschema
+	cp $@ $(SRCDIR)
+    
 SRA_SCHEMA_SRC = \
 	sraschema \
 	sra-schema
@@ -145,14 +127,8 @@ WSRA_SCHEMA_LIB = \
 	-dwvdb \
 	-dklib
 
-$(LIBDIR)/libsra-schema.$(SHLX): $(SRA_SCHEMA_OBJ)
-	$(LD) --dlib --vers $(SRCDIR) -o $@ $^ $(SRA_SCHEMA_LIB)
-
-$(LIBDIR)/libwsra-schema.$(SHLX): $(WSRA_SCHEMA_OBJ)
-	$(LD) --dlib --vers $(SRCDIR) -o $@ $^ $(WSRA_SCHEMA_LIB)
-
 SRASCHEMA_SRC = \
-	sraschema-stub
+	sraschema-stub \
 
 WSRASCHEMA_SRC = \
 	wsraschema-stub
@@ -166,20 +142,17 @@ SRASCHEMA_OBJ = \
 WSRASCHEMA_OBJ = \
 	$(addsuffix .$(LOBX),$(WSRASCHEMA_SRC))
 
-$(LIBDIR)/libsraschema.$(LIBX): $(SRASCHEMA_OBJ) $(SRASCHEMA_DEPS)
+$(ILIBDIR)/libsraschema.$(LIBX): $(SRASCHEMA_OBJ) $(SRASCHEMA_DEPS)
 	$(LD) --slib -o $@ $(SRASCHEMA_OBJ) $(SRA_SCHEMA_LIB)
 
-$(LIBDIR)/libwsraschema.$(LIBX): $(WSRASCHEMA_OBJ) $(WSRASCHEMA_DEPS)
+$(ILIBDIR)/libwsraschema.$(LIBX): $(WSRASCHEMA_OBJ) $(WSRASCHEMA_DEPS)
 	$(LD) --slib -o $@ $(WSRASCHEMA_OBJ) $(WSRA_SCHEMA_LIB)
-
-libsraschema_tag:
-	@ $(TOP)/build/tag-module.sh $(MODULE) libsraschema $(SRASCHEMA_OBJ)
 
 
 #-------------------------------------------------------------------------------
 # sradb library
 #
-$(LIBDIR)/libsradb: $(addprefix $(LIBDIR)/libsradb.,$(LIBEXT))
+$(ILIBDIR)/libsradb: $(addprefix $(ILIBDIR)/libsradb.,$(ILIBEXT))
 
 SRADBCMN_SRC = \
 	sramgr-cmn \
@@ -206,20 +179,14 @@ SRADB_LIB = \
 	-dkproc \
 	-dklib
 
-$(LIBDIR)/libsradb.$(SHLX): $(SRADB_OBJ)
-	$(LD) --dlib --vers $(SRCDIR) -o $@ $^ -ssrapath $(SRADB_LIB)
-
-$(LIBDIR)/libsradb.$(LIBX): $(SRADB_OBJ)
-	$(LD) --slib --vers $(SRCDIR) -o $@ $^ $(SRADB_LIB)
-
-libsradb_tag: $(SRADB_TAGS)
-	@ $(TOP)/build/tag-module.sh $(MODULE) libsradb $(SRADB_OBJ)
+$(ILIBDIR)/libsradb.$(LIBX): $(SRADB_OBJ)
+	$(LD) --slib -o $@ $^ $(SRADB_LIB)
 
 
 #-------------------------------------------------------------------------------
 # update version
 #
-$(LIBDIR)/libwsradb: $(addprefix $(LIBDIR)/libwsradb.,$(LIBEXT))
+$(ILIBDIR)/libwsradb: $(addprefix $(ILIBDIR)/libwsradb.,$(ILIBEXT))
 
 WSRADB_SRC = \
 	$(SRADBCMN_SRC) \
@@ -230,28 +197,23 @@ WSRADB_OBJ = \
 	$(addsuffix .$(LOBX),$(WSRADB_SRC))
 
 WSRADB_LIB = \
-	-ssraschema \
+	-swsraschema \
 	-dwvdb \
 	-dwkdb \
 	-dvfs \
+	-dkfs \
 	-lkfg \
 	-dkproc \
 	-dklib
 
-$(LIBDIR)/libwsradb.$(SHLX): $(WSRADB_OBJ)
-	$(LD) --dlib --vers $(SRCDIR) -o $@ $^ -ssrapath $(WSRADB_LIB)
-
-$(LIBDIR)/libwsradb.$(LIBX): $(WSRADB_OBJ)
-	$(LD) --slib --vers $(SRCDIR) -o $@ $^ $(WSRADB_LIB)
-
-libwsradb_tag: $(WSRADB_TAGS)
-	@ $(TOP)/build/tag-module.sh $(MODULE) libwsradb $(WSRADB_OBJ)
+$(ILIBDIR)/libwsradb.$(LIBX): $(WSRADB_OBJ)
+	$(LD) --slib -o $@ $^ $(WSRADB_LIB)
 
 
 #-------------------------------------------------------------------------------
 # libsrareader
 #
-$(LIBDIR)/libsrareader: $(addprefix $(LIBDIR)/libsrareader.,$(LIBEXT))
+$(ILIBDIR)/libsrareader: $(addprefix $(ILIBDIR)/libsrareader.,$(ILIBEXT))
 
 SRAREADER_SRC = \
 	reader-cmn \
@@ -268,11 +230,5 @@ SRAREADER_LIB = \
 	-dkdb \
 	-dklib
 
-$(LIBDIR)/libsrareader.$(SHLX): $(SRAREADER_OBJ)
-	$(LD) --dlib --vers $(SRCDIR) -o $@ $^ $(SRAREADER_LIB)
-
-$(LIBDIR)/libsrareader.$(LIBX): $(SRAREADER_OBJ)
-	$(LD) --slib --vers $(SRCDIR) -o $@ $^ $(SRAREADER_LIB)
-
-libsrareader_tag:
-	@ $(TOP)/build/tag-module.sh $(MODULE) libsrareader $(SRAREADER_OBJ)
+$(ILIBDIR)/libsrareader.$(LIBX): $(SRAREADER_OBJ)
+	$(LD) --slib -o $@ $^ $(SRAREADER_LIB)

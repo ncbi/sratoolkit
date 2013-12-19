@@ -27,6 +27,11 @@
 #include <sra/extern.h>
 #include <sra/sradb-priv.h>
 
+#include <klib/rc.h>
+#include <kproc/lock.h>
+#include <klib/refcount.h>
+#include <kfg/config.h>
+
 #include <sysalloc.h>
 #include <stdlib.h>
 #include <string.h>
@@ -34,12 +39,12 @@
 
 #include <strtol.h>
 
-#include <klib/rc.h>
-
-#include <kproc/lock.h>
+#include "sra-priv.h"
 
 /* some of the above #defines index on sun */
-#undef index
+#ifdef index
+    #undef index
+#endif
 
 /*================================== SRACacheMetrics ==================================*/
 static
@@ -56,14 +61,21 @@ LIB_EXPORT
 bool CC
 SRACacheMetricsLessThan(const SRACacheMetrics* a, const SRACacheMetrics* b)
 {
-    if (a->bytes > 0 && b->bytes > 0 && a->bytes >= b->bytes)
+    if (a->bytes >= 0 && b->bytes >= 0 && a->bytes > b->bytes)
         return false;
-    if (a->elements > 0 && b->elements > 0 && a->elements >= b->elements)
+    if (a->elements >= 0 && b->elements >= 0 && a->elements > b->elements)
         return false;
-    if (a->threads > 0 && b->threads > 0 && a->threads >= b->threads)
+    if (a->threads >= 0 && b->threads >= 0 && a->threads > b->threads)
         return false;
-    if (a->fds > 0 && b->fds > 0 && a->fds >= b->fds)
+    if (a->fds >= 0 && b->fds >= 0 && a->fds > b->fds)
         return false;
+        
+    if (a->bytes    >= 0 && b->bytes    >= 0 && a->bytes    == b->bytes && 
+        a->elements >= 0 && b->elements >= 0 && a->elements == b->elements &&
+        a->threads  >= 0 && b->threads  >= 0 && a->threads  == b->threads &&
+        a->fds      >= 0 && b->fds      >= 0 && a->fds      == b->fds)
+        return false;
+        
     return true;
 }
 
@@ -107,13 +119,19 @@ LIB_EXPORT rc_t CC SRACacheElementMake(SRACacheElement**        self,
         (*self)->dad.prev = NULL;
         
         (*self)->object = object;
-        SRATableAddRef(object);
+        rc = SRATableAddRef(object);
+        if ( rc != 0 )
+        {
+            free (*self);
+        }
+        else
+        {
+            (*self)->index = index;
         
-        (*self)->index = index;
+            (*self)->key = key;
         
-        (*self)->key = key;
-        
-        memcpy(&(*self)->metrics, metrics, sizeof((*self)->metrics));
+            memcpy(&(*self)->metrics, metrics, sizeof((*self)->metrics));
+        }
     }
         
     return rc;
@@ -176,8 +194,31 @@ LIB_EXPORT rc_t CC SRACacheIndexDestroy(SRACacheIndex* self)
 }
 
 /*================================== SRACache ==================================*/
+static
+rc_t
+ReadValue(struct KConfig* kfg, const char* path, uint64_t* value, uint64_t dflt)
+{
+    rc_t rc = 0;
+    *value = dflt;
+    if ( kfg )
+    {   /* read configuration values */
+        const KConfigNode* node;
+        rc = KConfigOpenNodeRead( kfg, &node, path );
+        if (rc == 0)
+        {
+            uint64_t temp;
+            rc = KConfigNodeReadU64( node, &temp );
+            if (rc == 0)
+                *value = temp;
+            rc = KConfigNodeRelease ( node );
+        }
+        else if (rc == RC ( rcKFG, rcNode, rcOpening, rcPath, rcNotFound ))
+            rc = 0;
+    }
+    return rc;
+}
 
-LIB_EXPORT rc_t CC SRACacheInit(SRACache** self)
+LIB_EXPORT rc_t CC SRACacheInit(SRACache** self, struct KConfig* kfg)
 {
     rc_t rc = 0;
     if (self == NULL)
@@ -188,22 +229,40 @@ LIB_EXPORT rc_t CC SRACacheInit(SRACache** self)
         rc = RC ( rcSRA, rcData, rcConstructing, rcMemory, rcExhausted );
     else
     {
-        BSTreeInit( & (*self)->indexes );
-        DLListInit( & (*self)->lru );
-        
-        (*self)->softThreshold.bytes    = SRACacheThresholdSoftBytesDefault;
-        (*self)->softThreshold.elements = SRACacheThresholdSoftElementsDefault;
-        (*self)->softThreshold.threads  = SRACacheThresholdSoftThreadsDefault;
-        (*self)->softThreshold.fds      = SRACacheThresholdSoftFdsDefault;        
-                                          
-        (*self)->hardThreshold.bytes    = SRACacheThresholdHardBytesDefault;
-        (*self)->hardThreshold.elements = SRACacheThresholdHardElementsDefault;
-        (*self)->hardThreshold.threads  = SRACacheThresholdHardThreadsDefault;
-        (*self)->hardThreshold.fds      = SRACacheThresholdHardFdsDefault;        
-        
-        memset(&(*self)->usage, 0, sizeof(*self)->usage);
-        
-        rc = KLockMake(&(*self)->mutex);
+        uint64_t v;
+#define LOAD_VALUE(target, path, default)                       \
+        if (rc == 0)                                            \
+        {                                                       \
+            rc = ReadValue(kfg, path, &v, default);             \
+            if ( rc == 0 )                                      \
+                target = v;                                    \
+        }
+
+        LOAD_VALUE((*self)->softThreshold.bytes,    "/openserver/thresholds/soft/bytes",    SRACacheThresholdSoftBytesDefault);
+        LOAD_VALUE((*self)->softThreshold.elements, "/openserver/thresholds/soft/elements", SRACacheThresholdSoftElementsDefault);
+        LOAD_VALUE((*self)->softThreshold.threads,  "/openserver/thresholds/soft/threads",  SRACacheThresholdSoftThreadsDefault);
+        LOAD_VALUE((*self)->softThreshold.fds,      "/openserver/thresholds/soft/fds",      SRACacheThresholdSoftFdsDefault);
+            
+        LOAD_VALUE((*self)->hardThreshold.bytes,    "/openserver/thresholds/hard/bytes",    SRACacheThresholdHardBytesDefault);
+        LOAD_VALUE((*self)->hardThreshold.elements, "/openserver/thresholds/hard/elements", SRACacheThresholdHardElementsDefault);
+        LOAD_VALUE((*self)->hardThreshold.threads,  "/openserver/thresholds/hard/threads",  SRACacheThresholdHardThreadsDefault);
+        LOAD_VALUE((*self)->hardThreshold.fds,      "/openserver/thresholds/hard/fds",      SRACacheThresholdHardFdsDefault);
+#undef LOAD_VALUE
+    
+        if (rc == 0)
+        {
+            BSTreeInit( & (*self)->indexes );
+            DLListInit( & (*self)->lru );
+            
+            memset(&(*self)->current, 0, sizeof(*self)->current);
+            
+            (*self)->requests         = 0;
+            (*self)->hits             = 0;
+            (*self)->misses           = 0;
+            (*self)->busy             = 0;
+            
+            rc = KLockMake(&(*self)->mutex);
+        }
     }        
     
     return rc;
@@ -272,13 +331,19 @@ LIB_EXPORT rc_t CC SRACacheWhack(SRACache* self)
     return rc;
 }
 
-LIB_EXPORT rc_t CC SRACacheGetUsage(SRACache* self, SRACacheMetrics* metrics)
+LIB_EXPORT rc_t CC SRACacheGetUsage(SRACache* self, SRACacheUsage* usage)
 {
     if (self == NULL)
         return RC( rcSRA, rcData, rcAccessing, rcSelf, rcNull );
-    if (metrics == NULL)
+    if (usage == NULL)
         return RC( rcSRA, rcData, rcAccessing, rcParam, rcNull );
-    memcpy(metrics, &self->usage, sizeof(self->usage));
+    usage->soft_threshold   = self->softThreshold.elements;
+    usage->hard_threshold   = self->hardThreshold.elements;
+    usage->elements         = self->current.elements;
+    usage->requests         = self->requests;
+    usage->hits             = self->hits;
+    usage->misses           = self->misses;
+    usage->busy             = self->busy;
     return 0;
 }
 
@@ -368,7 +433,7 @@ LIB_EXPORT rc_t CC SRACacheAddTable(SRACache* self, const char* acc, SRATable* t
                             SRACacheElementDestroy(elem);
                         else
                         {   /* success - update global usage and time-sorted list */
-                            MetricsAdd(&self->usage, &metrics);
+                            MetricsAdd(&self->current, &metrics);
                             DLListPushTail( &self->lru, (DLNode*)elem );
                         }
                     }
@@ -402,6 +467,8 @@ LIB_EXPORT rc_t CC SRACacheGetTable(SRACache* self, const char* acc, const SRATa
     rc = ParseAccessionName(acc, &prefix, &key);
     if (rc == 0)
     {
+        ++ self->requests;
+        
         rc = KLockAcquire(self->mutex);
         if (rc == 0)
         {
@@ -411,20 +478,41 @@ LIB_EXPORT rc_t CC SRACacheGetTable(SRACache* self, const char* acc, const SRATa
                 SRACacheElement* elem = NULL;
                 rc = KVectorGetPtr ( index->body, key, (void**)&elem );   
                 if (rc == 0 && elem != NULL) 
-                {   /* move to the least recently used position */
-                    DLListUnlink    ( &self->lru, &elem->dad );
-                    DLListPushTail  ( &self->lru, &elem->dad );
-                    
-                    *object = elem->object;
+                {   
+                    if (atomic32_read(&elem->object->refcount) == 1)    /* owned by cache, not used elsewhere */
+                    {
+                        ++ self->hits;
+                        
+                        /* move to the least recently used position */
+                        DLListUnlink    ( &self->lru, &elem->dad );
+                        DLListPushTail  ( &self->lru, &elem->dad );
+                        
+                        *object = elem->object;
+                        rc = SRATableAddRef(*object);
+                    }
+                    else
+                    {
+                        ++ self->busy;
+                        rc = RC( rcSRA, rcData, rcAccessing, rcParam, rcBusy);
+                    }
                 }
                 else if (GetRCState(rc) == rcNotFound || elem == NULL)
+                {
+                    ++ self->misses;
                     rc = 0;
+                }
             }
+            else
+                ++ self->misses;
                 
             {
                 rc_t rc2 = KLockUnlock(self->mutex);
                 if (rc == 0)
+                {
                     rc = rc2;
+                    if (rc != 0)
+                        SRATableRelease(*object);
+                }
             }
         }
     }
@@ -441,7 +529,12 @@ LIB_EXPORT rc_t CC SRACacheFlush(SRACache* self)
     rc = KLockAcquire(self->mutex);
     if (rc == 0)
     {
-        while ( ! SRACacheMetricsLessThan( &self->usage, &self->softThreshold ) )
+        /* use the lower of the two thresholds */
+        const SRACacheMetrics* thr = &self->softThreshold;
+        if ( SRACacheMetricsLessThan( &self->hardThreshold, thr ) )
+            thr = &self->hardThreshold;
+            
+        while ( ! SRACacheMetricsLessThan( &self->current, thr ) )
         {
             SRACacheElement* toFlush = (SRACacheElement*) DLListPopHead( &self->lru );
             if (toFlush == NULL)
@@ -449,7 +542,7 @@ LIB_EXPORT rc_t CC SRACacheFlush(SRACache* self)
             rc = KVectorUnset( toFlush->index->body, toFlush->key );
             if (rc != 0)
                 break; /* something is badly wrong */
-            MetricsSubtract( &self->usage, &toFlush->metrics );
+            MetricsSubtract( &self->current, &toFlush->metrics );
             rc = SRACacheElementDestroy(toFlush);
             if (rc != 0)
                 break;

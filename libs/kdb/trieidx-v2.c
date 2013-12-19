@@ -372,14 +372,27 @@ rc_t KPTrieIndexInit_v2 ( KPTrieIndex_v2 *self, const KMMap *mm, bool byteswap )
         rc = KMMapAddrRead ( mm, ( const void** ) & hdr );
         if ( rc == 0 )
         {
+            uint16_t id_bits, span_bits;
             /* recheck header size */
             if ( size < sizeof * hdr )
                 return RC ( rcDB, rcIndex, rcConstructing, rcTrie, rcCorrupt );
 
-            self -> first = hdr -> first;
-            self -> last = self -> maxid = hdr -> last;
-            self -> id_bits = ( uint8_t ) hdr -> id_bits;
-            self -> span_bits = ( uint8_t ) hdr -> span_bits;
+            if ( self -> byteswap )
+            {
+                self -> first = bswap_64(hdr -> first);
+                self -> last = self -> maxid = bswap_64(hdr -> last);
+                id_bits = bswap_16(hdr -> id_bits);
+                span_bits = bswap_16(hdr -> span_bits);
+            }
+            else
+            {
+                self -> first = hdr -> first;
+                self -> last = self -> maxid = hdr -> last;
+                id_bits = hdr -> id_bits;
+                span_bits = hdr -> span_bits;
+            }
+            self -> id_bits = ( uint8_t ) id_bits;
+            self -> span_bits = ( uint8_t ) span_bits;
             self -> byteswap = byteswap;
 
             /* try to create the pttree */
@@ -434,14 +447,14 @@ rc_t KPTrieIndexInit_v2 ( KPTrieIndex_v2 *self, const KMMap *mm, bool byteswap )
                             size -= ( size_t ) self -> count << 2;
 
                             /* unpack id map */
-                            if ( hdr -> id_bits <= 8 )
-                                rc = KPTrieIndexInitID2Ord ( self, size, 1, hdr -> span_bits, 8 );
-                            else if ( hdr -> id_bits <= 16 )
-                                rc = KPTrieIndexInitID2Ord ( self, size, 2, hdr -> span_bits, 16 );
-                            else if ( hdr -> id_bits <= 32 )
-                                rc = KPTrieIndexInitID2Ord ( self, size, 3, hdr -> span_bits, 32 );
+                            if ( id_bits <= 8 )
+                                rc = KPTrieIndexInitID2Ord ( self, size, 1, span_bits, 8 );
+                            else if ( id_bits <= 16 )
+                                rc = KPTrieIndexInitID2Ord ( self, size, 2, span_bits, 16 );
+                            else if ( id_bits <= 32 )
+                                rc = KPTrieIndexInitID2Ord ( self, size, 3, span_bits, 32 );
                             else
-                                rc = KPTrieIndexInitID2Ord ( self, size, 4, hdr -> span_bits, 64 );
+                                rc = KPTrieIndexInitID2Ord ( self, size, 4, span_bits, 64 );
 
                             /* done */
                             if ( rc == 0 )
@@ -496,14 +509,27 @@ rc_t KPTrieIndexInit_v3_v4 ( KPTrieIndex_v2 *self, const KMMap *mm, bool byteswa
         rc = KMMapAddrRead ( mm, ( const void** ) & hdr );
         if ( rc == 0 )
         {
+            uint16_t id_bits, span_bits;
             /* recheck header size */
             if ( size < sizeof * hdr )
                 return RC ( rcDB, rcIndex, rcConstructing, rcTrie, rcCorrupt );
 
-            self -> first = hdr -> first;
-            self -> last = self -> maxid = hdr -> last;
-            self -> id_bits = ( uint8_t ) hdr -> id_bits;
-            self -> span_bits = ( uint8_t ) hdr -> span_bits;
+            if ( self -> byteswap )
+            {
+                self -> first = bswap_64(hdr -> first);
+                self -> last = self -> maxid = bswap_64(hdr -> last);
+                id_bits = bswap_16(hdr -> id_bits);
+                span_bits = bswap_16(hdr -> span_bits);
+            }
+            else
+            {
+                self -> first = hdr -> first;
+                self -> last = self -> maxid = hdr -> last;
+                id_bits = hdr -> id_bits;
+                span_bits = hdr -> span_bits;
+            }
+            self -> id_bits = ( uint8_t ) id_bits;
+            self -> span_bits = ( uint8_t ) span_bits;
             self -> byteswap = byteswap;
 
             /* try to create the pttree */
@@ -558,14 +584,14 @@ rc_t KPTrieIndexInit_v3_v4 ( KPTrieIndex_v2 *self, const KMMap *mm, bool byteswa
                             size -= ( size_t ) self -> count << 2;
 
                             /* unpack id map */
-                            if ( hdr -> id_bits <= 8 )
-                                rc = KPTrieIndexInitID2Ord ( self, size, 1, hdr -> span_bits, 8 );
-                            else if ( hdr -> id_bits <= 16 )
-                                rc = KPTrieIndexInitID2Ord ( self, size, 2, hdr -> span_bits, 16 );
-                            else if ( hdr -> id_bits <= 32 )
-                                rc = KPTrieIndexInitID2Ord ( self, size, 3, hdr -> span_bits, 32 );
+                            if ( id_bits <= 8 )
+                                rc = KPTrieIndexInitID2Ord ( self, size, 1, span_bits, 8 );
+                            else if ( id_bits <= 16 )
+                                rc = KPTrieIndexInitID2Ord ( self, size, 2, span_bits, 16 );
+                            else if ( id_bits <= 32 )
+                                rc = KPTrieIndexInitID2Ord ( self, size, 3, span_bits, 32 );
                             else
-                                rc = KPTrieIndexInitID2Ord ( self, size, 4, hdr -> span_bits, 64 );
+                                rc = KPTrieIndexInitID2Ord ( self, size, 4, span_bits, 64 );
 
                             /* done */
                             if ( rc == 0 )

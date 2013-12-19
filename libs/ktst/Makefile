@@ -31,11 +31,8 @@ MODULE = libs/ktst
 INT_LIBS = \
     libktst
 
-EXT_LIBS = \
-
 ALL_LIBS = \
-	$(INT_LIBS) \
-	$(EXT_LIBS)
+	$(INT_LIBS)
 
 include $(TOP)/build/Makefile.env
 
@@ -48,17 +45,13 @@ all std: makedirs
 $(INT_LIBS): makedirs
 	@ $(MAKE_CMD) $(ILIBDIR)/$@
 
-$(EXT_LIBS): makedirs
-	@ $(MAKE_CMD) $(LIBDIR)/$@
-
 .PHONY: all std $(ALL_LIBS)
 
 #-------------------------------------------------------------------------------
 # std
 #
 $(TARGDIR)/std: \
-	$(addprefix $(ILIBDIR)/,$(INT_LIBS)) \
-	$(addprefix $(LIBDIR)/,$(EXT_LIBS))
+	$(addprefix $(ILIBDIR)/,$(INT_LIBS))
 
 .PHONY: $(TARGDIR)/std
 
@@ -82,8 +75,6 @@ TST_SRC = \
 
 TST_OBJ = \
 	$(addsuffix .$(LOBX),$(TST_SRC))
-
-TST_LIB = \
 
 $(ILIBDIR)/libktst.$(LIBX): $(TST_OBJ)
 	$(LP) --slib -o $@ $^ $(TST_LIB)

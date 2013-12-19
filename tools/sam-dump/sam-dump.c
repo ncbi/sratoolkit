@@ -3975,7 +3975,7 @@ static rc_t ProcessPath( VDBManager const *mgr, char const Path[] )
                         ext = strrchr( basename, '.' );
                         if ( ext != NULL )
                         {
-                            if ( strcasecmp( ext, ".nenc" ) == 0 || strcasecmp( ext, ",ncbi_enc" ) == 0 )
+                            if ( strcasecmp( ext, ".nenc" ) == 0 || strcasecmp( ext, ".ncbi_enc" ) == 0 )
                             {
                                 *ext = '\0';
                                 ext = strrchr( basename, '.' );

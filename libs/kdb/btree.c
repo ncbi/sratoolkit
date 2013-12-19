@@ -931,7 +931,7 @@ typedef struct KBTreeBranchNode_v2 KBTreeBranchNode;
    will be such that some number of keys are guaranteed to fit */
 #define MIN_KEY_COUNT 2
 #define MAX_KEY_SIZE \
-    ( ( PGSIZE - sizeof ( KBTreeBranchEntry_v2 ) - \
+    (( PGSIZE - 12 - 256 * sizeof(KBTreeSrchWindow)   - \
         MIN_KEY_COUNT * ( sizeof ( KBTreeBranchEntry_v2 ) + sizeof ( uint32_t ) ) \
         ) / MIN_KEY_COUNT )
 
@@ -1316,11 +1316,11 @@ int compare_keys ( const KBTree *self, const void *query, size_t qsize, const vo
     if ( self -> cmp != NULL )
         return ( * self -> cmp ) ( query, qsize, key, key_size );
     else {
-	int csize = (qsize < key_size) ? qsize : key_size;
-	int diff = memcmp ( query, key, csize);
-	if(diff == 0)
-		return qsize-key_size;
-	return diff;
+        size_t csize = (qsize < key_size) ? qsize : key_size;
+        int diff = memcmp ( query, key, csize);
+        if (diff == 0)
+            return (int)qsize - (int)key_size;
+        return diff;
     }
 }
 
@@ -1702,8 +1702,8 @@ rc_t make_entry ( KBTree *self, KBTreeEntryData *pb, void *hdrp, void *ordp )
         uint8_t *page = hdrp;
         KBTreeLeafNode *hdr = hdrp;
         KBTreeLeafEntry *ord = ordp;
-	const uint8_t *key = pb -> key;
-	uint16_t key_size = pb -> key_size - hdr->key_prefix_len;
+        const uint8_t *key = pb -> key;
+        uint16_t key_size = (uint16_t) ( pb -> key_size - hdr->key_prefix_len );
 
 
         assert(memcmp(key,page + hdr->key_prefix, hdr -> key_prefix_len)==0);/*** validate in debug mode **/ 
@@ -1854,7 +1854,7 @@ rc_t split_leaf ( KBTree *self, KBTreeEntryData *pb,
     {
         ksize = left -> ord [ j ] . ksize + sizeof ( uint32_t );
         right -> ord [ i ] . ksize = left -> ord [ j ] . ksize;
-        right -> key_bytes += ksize;
+        right -> key_bytes += (uint16_t) ksize;
         right -> ord [ i ] . key = ( uint16_t ) ( PGSIZE - right -> key_bytes );
         memcpy (rpage + right -> ord [ i ] . key, lpage + left -> ord [ j ] . key, ksize );
 	if(i == 0 && left->key_prefix_len > 0){
@@ -1877,7 +1877,7 @@ rc_t split_leaf ( KBTree *self, KBTreeEntryData *pb,
     {
         j = ord [ i ];
         ksize = left -> ord [ j ] . ksize + sizeof ( uint32_t );
-        off = PGSIZE - ( left -> key_bytes += ksize );
+        off = PGSIZE - ( left -> key_bytes += (uint16_t) ksize );
         if ( left -> ord [ j ] . key != off )
         {
             memmove ( & lpage [ off ], & lpage [ left -> ord [ j ] . key ], ksize );
@@ -1943,7 +1943,7 @@ rc_t split_leaf ( KBTree *self, KBTreeEntryData *pb,
 #endif
         memcpy ( split -> key, pb -> key , pb -> key_size );
         memcpy ( & ( ( uint8_t* ) split -> key ) [ pb -> key_size ], pb -> id, sizeof * pb -> id );
-	split -> ksize =  pb -> key_size;
+        split -> ksize =  (uint16_t) pb -> key_size;
         return 0;
 #else
         /* insert value */
@@ -1964,7 +1964,7 @@ rc_t split_leaf ( KBTree *self, KBTreeEntryData *pb,
        will succeed, unless there would be a provision for overflow. */
 
     /* decide where to insert entry */
-    if ( slot <= median )
+    if ( slot <= (uint32_t) median )
         return leaf_insert ( self, pb, left, slot );
     return leaf_insert ( self, pb, right, slot - median - 1 );
 }
@@ -2291,16 +2291,16 @@ rc_t split_branch ( KBTree *self,
     {
         ksize = left -> ord [ j ] . ksize + sizeof ( uint32_t );
         right -> ord [ i ] . ksize = left -> ord [ j ] . ksize;
-        right -> key_bytes += ksize;
+        right -> key_bytes += (uint16_t) ksize;
         right -> ord [ i ] . key = ( uint16_t ) ( PGSIZE - right -> key_bytes );
         memcpy ( & rpage [ PGSIZE - right -> key_bytes ], & lpage [ left -> ord [ j ] . key ], ksize );
         right -> ord [ i - 1 ] . trans = left -> ord [ j - 1 ] . trans;
-	if(i == 0 && left->key_prefix_len > 0){
+        if(i == 0 && left->key_prefix_len > 0){
                 off = PGSIZE - right -> key_bytes - left -> key_prefix_len;
                 memcpy ( & rpage [ off ], lpage + left -> key_prefix, left -> key_prefix_len );
                 right -> key_bytes += left -> key_prefix_len;
                 right -> key_prefix_len = left -> key_prefix_len;
-                right -> key_prefix = off;
+                right -> key_prefix = (uint16_t) off;
         }
     }
 
@@ -2319,7 +2319,7 @@ rc_t split_branch ( KBTree *self,
     {
         j = ord [ i ];
         ksize = left -> ord [ j ] . ksize + sizeof ( uint32_t );
-        off = PGSIZE - ( left -> key_bytes += ksize );
+        off = PGSIZE - ( left -> key_bytes += (uint16_t) ksize );
         if ( left -> ord [ j ] . key != off )
         {
             memmove ( & lpage [ off ], & lpage [ left -> ord [ j ] . key ], ksize );
@@ -2329,7 +2329,7 @@ rc_t split_branch ( KBTree *self,
                 off = PGSIZE - left -> key_bytes - left -> key_prefix_len;
                 memcpy ( & lpage [ off ], rpage + right -> key_prefix, left -> key_prefix_len );
                 left -> key_bytes += left -> key_prefix_len;
-                left -> key_prefix = off;
+                left -> key_prefix = (uint16_t) off;
         }
     }
     /*** maintain search windows ****/
@@ -2389,7 +2389,7 @@ rc_t split_branch ( KBTree *self,
     }
 
     /* decide where to insert entry */
-    if ( slot <= median )
+    if ( slot <= (uint32_t) median )
         return branch_insert ( self, left, val, slot );
     return branch_insert ( self, right, val, slot - median - 1 );
 }
@@ -2436,7 +2436,7 @@ rc_t leaf_compact (KBTree *self, KPage *pg,uint16_t prefix_len)
 				uint16_t ksize = node->ord[j].ksize + sizeof ( uint32_t ) - prefix_len;
 				memmove(dst,src,ksize);
 				node->ord[j].ksize -= prefix_len;
-				node->ord[j].key    = dst -  ((uint8_t*)node);
+				node->ord[j].key    = (uint16_t) ( dst -  ((uint8_t*)node) );
 			}
 			assert( node -> key_bytes > (node->count-1) * prefix_len);
 			node -> key_bytes -= (node->count-1) * prefix_len;
@@ -2514,7 +2514,7 @@ rc_t branch_compact (KBTree *self, KPage *pg,uint16_t prefix_len)
 				uint16_t ksize = node->ord[j].ksize + sizeof ( uint32_t ) - prefix_len;
 				memmove(dst,src,ksize);
 				node->ord[j].ksize -= prefix_len;
-				node->ord[j].key    = dst -  ((uint8_t*)node);
+				node->ord[j].key    = (uint16_t) ( dst -  ((uint8_t*)node) );
 			}
 			assert( node -> key_bytes > (node->count-1) * prefix_len);
 			node -> key_bytes -= (node->count-1) * prefix_len;
@@ -2942,7 +2942,7 @@ rc_t leaf_foreach ( const KBTree *self, bool reverse, uint32_t nid,
     if ( nid == 0 )
         return 0;
 
-    rc = KPageFileGet ( self -> pgfile, & page, nid >> 1 );
+    rc = KPageFileGet ( self -> pgfile, & page, (uint32_t) ( nid >> 1 ) );
     if ( rc == 0 )
     {
         const KBTreeLeafNode *cnode;
@@ -2976,7 +2976,7 @@ rc_t branch_foreach ( const KBTree *self, bool reverse, uint32_t nid,
 #endif
 {
     KPage *page;
-    rc_t rc = KPageFileGet ( self -> pgfile, & page, nid >> 1 );
+    rc_t rc = KPageFileGet ( self -> pgfile, & page, (uint32_t) ( nid >> 1 ) );
     if ( rc == 0 )
     {
         const KBTreeBranchNode *cnode;

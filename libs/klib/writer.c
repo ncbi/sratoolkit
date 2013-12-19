@@ -487,7 +487,7 @@ LIB_EXPORT rc_t CC LogInsertSpace(const char *spacer, char *buffer, size_t bsize
         return 0;
     }
 
-    len = snprintf ( buffer, bsize, spacer );
+    len = snprintf ( buffer, bsize, "%s", spacer );
 
     * num_writ = len;
 

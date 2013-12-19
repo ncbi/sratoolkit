@@ -708,7 +708,7 @@ rc_t KTocEntryGetFileLocator ( const KTocEntry * self, uint64_t * locator )
             if (self->u.chunked_file.num_chunks > 0)
             {
                 uint64_t loc;
-                int ix;
+                uint32_t ix;
 
                 *locator = self->u.chunked_file.chunks[0].source_position;
                 for (ix = 1; ix < self->u.chunked_file.num_chunks; ++ix)

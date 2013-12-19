@@ -89,7 +89,7 @@ LIB_EXPORT rc_t CC KDirectoryRelease ( const KDirectory *cself )
                 KRefcountInit ( & self -> refcount, 1, classname, "failed-release", "orphan" );
             return rc;
         }
-        case krefLimit:
+        case krefNegative:
             return RC ( rcDB, rcTable, rcReleasing, rcRange, rcExcessive );
         }
     }

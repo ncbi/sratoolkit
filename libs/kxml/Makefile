@@ -29,14 +29,11 @@ TOP ?= $(shell ../../build/abspath.sh ../..)
 MODULE = libs/kxml
 
 INT_LIBS = \
-
-EXT_LIBS = \
 	libkxml \
 	libkxfs
 
 ALL_LIBS = \
-	$(INT_LIBS) \
-	$(EXT_LIBS)
+	$(INT_LIBS)
 
 include $(TOP)/build/Makefile.env
 
@@ -63,17 +60,13 @@ endif
 $(INT_LIBS): makedirs
 	@ $(MAKE_CMD) LIBXML_INCLUDES=$(LIBXML_INCLUDES) $(ILIBDIR)/$@
 
-$(EXT_LIBS): makedirs
-	@ $(MAKE_CMD) LIBXML_INCLUDES=$(LIBXML_INCLUDES) $(LIBDIR)/$@
-
 .PHONY: all std $(ALL_LIBS)
 
 #-------------------------------------------------------------------------------
 # std
 #
 $(TARGDIR)/std: \
-	$(addprefix $(ILIBDIR)/,$(INT_LIBS)) \
-	$(addprefix $(LIBDIR)/,$(EXT_LIBS))
+	$(addprefix $(ILIBDIR)/,$(INT_LIBS))
 
 .PHONY: $(TARGDIR)/std
 
@@ -85,29 +78,9 @@ clean: stdclean
 .PHONY: clean
 
 #-------------------------------------------------------------------------------
-# tag
-#
-tag: \
-	$(addsuffix _tag,$(ALL_LIBS))
-
-.PHONY: tag $(addsuffix _tag,$(ALL_LIBS))
-
-#-------------------------------------------------------------------------------
-# defs
-#
-XML_DEF = \
-	xml
-
-XML_INC = \
-	$(addprefix $(TOP)/interfaces/klib/,$(addsuffix .h,$(XML_DEF)))
-
-libkxml-$(BUILD).def: libkxml.vers $(XML_INC) $(TOP)/build/make-defs.pl
-	perl $(TOP)/build/make-defs.pl -o libkxml -v libkxml.vers $(PP) - -- $(XML_INC) > $@ || rm -f $@
-
-#-------------------------------------------------------------------------------
 # tiny, lightweight interface to libxml
 #
-$(LIBDIR)/libkxml: $(addprefix $(LIBDIR)/libkxml.,$(LIBEXT))
+$(ILIBDIR)/libkxml: $(addprefix $(ILIBDIR)/libkxml.,$(ILIBEXT))
 
 XML_SRC = \
 	xml
@@ -124,24 +97,17 @@ XML_LIB += \
 	-X$(LIBXML_LPATH) -lxml2
 endif
 
-$(LIBDIR)/libkxml.$(SHLX): $(XML_OBJ)
-	$(LD) --dlib --vers $(SRCDIR) -o $@ $^ $(XML_LIB)
-
-$(LIBDIR)/libkxml.$(LIBX): $(XML_OBJ)
-	$(LD) --slib --vers $(SRCDIR) -o $@ $^ $(XML_LIB)
-
-libkxml_tag:
-	@ $(TOP)/build/tag-module.sh $(MODULE) libkxml $(XML_OBJ)
+$(ILIBDIR)/libkxml.$(LIBX): $(XML_OBJ)
+	$(LD) --slib -o $@ $^ $(XML_LIB)
 
 #-------------------------------------------------------------------------------
 # kxfs
 #
-$(LIBDIR)/libkxfs: $(addprefix $(LIBDIR)/libkxfs.,$(LIBEXT))
+$(ILIBDIR)/libkxfs: $(addprefix $(ILIBDIR)/libkxfs.,$(ILIBEXT))
 
 KXFS_SRC = \
 	xtoc \
 	xtoc-parsexml
-
 
 KXFS_OBJ = \
 	$(addsuffix .$(LOBX),$(KXFS_SRC))
@@ -153,13 +119,6 @@ KXFS_LIB = \
 	-dz \
 	-dbz2 \
 
-$(LIBDIR)/libkxfs.$(SHLX): $(KXFS_OBJ)
-	$(LD) --dlib --vers $(SRCDIR) -o $@ $^ $(KXFS_LIB)
-
-$(LIBDIR)/libkxfs.$(LIBX): $(KXFS_OBJ)
-	$(LD) --slib --vers $(SRCDIR) -o $@ $^ $(KXFS_LIB)
-
-libkxfs_tag:
-	@ $(TOP)/build/tag-module.sh $(MODULE) libkxfs $(KXFS_OBJ)
-
+$(ILIBDIR)/libkxfs.$(LIBX): $(KXFS_OBJ)
+	$(LD) --slib -o $@ $^ $(KXFS_LIB)
 

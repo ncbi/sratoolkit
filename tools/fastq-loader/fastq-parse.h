@@ -24,8 +24,8 @@
  *
  */
 
-#ifndef _h_fastq_scan_
-#define _h_fasta_scan_
+#ifndef _h_fastq_parse_
+#define _h_fastq_parse_
 
 #include <align/extern.h>
 #include <klib/text.h>
@@ -91,6 +91,7 @@ typedef struct FASTQParseBlock
     void* self;
     size_t (CC *input)(struct FASTQParseBlock* sb, char* buf, size_t max_size);
     uint8_t phredOffset;
+    uint8_t maxPhred;
     
     void* scanner;
     size_t length; /* input characters consumed for the current record */
@@ -109,7 +110,7 @@ typedef struct FASTQParseBlock
     KDataBuffer quality;
     size_t expectedQualityLines;
     
-    uint8_t defaultReadNumber;
+    int8_t defaultReadNumber; /* -1: never assign read numbers */
     
     bool fatalError;
 } FASTQParseBlock;
@@ -137,4 +138,4 @@ extern void CC FASTQ_error(FASTQParseBlock* pb, const char* msg);
 }
 #endif
 
-#endif /* _h_fastq_scan_ */
+#endif /* _h_fastq_parse_ */

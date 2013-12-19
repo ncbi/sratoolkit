@@ -61,7 +61,10 @@ enum ETableWriterAlgn_ColNames {
     ewalgn_cn_REF_OFFSET,
     ewalgn_cn_EVIDENCE_ALIGNMENT_IDS,
     ewalgn_cn_ALIGN_GROUP,
-    ewalgn_cn_Last = ewalgn_cn_ALIGN_GROUP
+    ewalgn_cn_MISMATCH_QUALITY,
+    ewalgn_cn_MATE_GLOBAL_REF_START,
+    ewalgn_cn_MATE_REF_START,
+    ewalgn_cn_Last
 };
 
 typedef uint8_t ETableWriterAlgn_TableType;
@@ -73,11 +76,13 @@ enum {
 };
 
 enum ETableWriterAlgn_ColOptions {
-    ewalgn_co_SEQ_SPOT_ID = 0x01,   /* SEQ_SPOT_ID will be written with the whole record */
-    ewalgn_co_TMP_KEY_ID = 0x02,    /* use TMP_KEY_ID column, by default not opened */
-    ewalgn_co_PLOIDY = 0x04,        /* ploidy is more than 1, columns PLOIDY, READ_START, READ_LEN needs data */
-    ewalgn_co_unsorted = 0x08,       /* use the unsorted table scheme */
-    ewalgn_co_MATE_ALIGN_ID_only = 0x10 /* disable all other MATE_* columns */
+    ewalgn_co_SEQ_SPOT_ID = 0x01,           /* SEQ_SPOT_ID will be written with the whole record */
+    ewalgn_co_TMP_KEY_ID = 0x02,            /* use TMP_KEY_ID column, by default not opened */
+    ewalgn_co_PLOIDY = 0x04,                /* ploidy is more than 1, columns PLOIDY, READ_START, READ_LEN needs data */
+    ewalgn_co_unsorted = 0x08,              /* use the unsorted table scheme */
+    ewalgn_co_MATE_ALIGN_ID_only = 0x10,    /* disable all other MATE_* columns */
+    ewalgn_co_MISMATCH_QUALITY = 0x20,      /* enable MISMATCH_QUALITY column */
+    ewalgn_co_MATE_POSITION = 0x40          /* enable mate position columns */
 };
 
 typedef struct TableWriterAlgnData_struct {
@@ -97,6 +102,7 @@ typedef struct TableWriterAlgnData_struct {
     TableWriterData global_ref_start; /* used only for sorted */
     TableWriterData has_mismatch;  /* mandatory only for primary */
     TableWriterData mismatch; /* mandatory only for primary */
+    TableWriterData mismatch_qual;
 
     INSDC_coord_len ref_len; /* projection on refseq is same for all alleles! */
     /* tmp data, never saved to db */
@@ -122,6 +128,15 @@ typedef struct TableWriterAlgnData_struct {
 } TableWriterAlgnData;
 
 typedef struct TableWriterAlgn TableWriterAlgn;
+    
+typedef union ReferenceStart ReferenceStart;
+union ReferenceStart {
+    uint64_t global_ref_start;
+    struct {
+        int64_t ref_id;
+        INSDC_coord_one ref_start;
+    } local;
+};
 
 ALIGN_EXTERN rc_t CC TableWriterAlgn_Make(const TableWriterAlgn** cself, VDatabase* db,
                                           ETableWriterAlgn_TableType type, uint32_t options);
@@ -143,8 +158,17 @@ ALIGN_EXTERN rc_t CC TableWriterAlgn_TmpKeyStart(const TableWriterAlgn* cself);
 /* retrieve TMP_KEY value by rowid */
 ALIGN_EXTERN rc_t CC TableWriterAlgn_TmpKey(const TableWriterAlgn* cself, int64_t rowid, uint64_t* key_id);
 
+/* retrieve reference start value by rowid */
+ALIGN_EXTERN rc_t CC TableWriterAlgn_RefStart(const TableWriterAlgn* cself, int64_t rowid, ReferenceStart *const rslt);
+
 /* assign a SPOT_ID value to row */
 ALIGN_EXTERN rc_t CC TableWriterAlgn_Write_SpotId(const TableWriterAlgn* cself, int64_t rowid, int64_t spot_id);
+
+ALIGN_EXTERN rc_t CC TableWriterAlgn_Write_SpotInfo(const TableWriterAlgn* cself,
+                                                    int64_t rowid,
+                                                    int64_t spot_id,
+                                                    int64_t mate_id,
+                                                    ReferenceStart const *ref_start);
 
 #ifdef __cplusplus
 }

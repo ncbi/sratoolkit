@@ -88,7 +88,7 @@ typedef struct seq_id_node
 } seq_id_node;
 
 
-static int cmp_pchar( const char * a, const char * b )
+static int cmp_pchar_0( const char * a, const char * b )
 {
     int res = 0;
     if ( ( a != NULL )&&( b != NULL ) )
@@ -142,7 +142,7 @@ static void free_seq_id_tree( BSTree * tree )
 static int CC seq_id_node_vs_pchar_wrapper( const void *item, const BSTNode *n )
 {
     const seq_id_node * node = ( const seq_id_node * )n;
-    return cmp_pchar( (const char *)item, node->seq_id );
+    return cmp_pchar_0( (const char *)item, node->seq_id );
 }
 
 
@@ -156,7 +156,7 @@ static int CC node_vs_node_wrapper( const BSTNode *item, const BSTNode *n )
 {
    const seq_id_node * a = ( const seq_id_node * )item;
    const seq_id_node * b = ( const seq_id_node * )n;
-   return cmp_pchar( a->seq_id, b->seq_id );
+   return cmp_pchar_0( a->seq_id, b->seq_id );
 }
 
 
@@ -245,7 +245,7 @@ static void CC print_header_callback( BSTNode *n, void *data )
             hctx->rc = KOutMsg( "@SQ\tSN:%s\tLN:%u\n", node->seq_id, node->seq_len );
         else
         {
-            if ( cmp_pchar( node->seq_id, node->name ) == 0 )
+            if ( cmp_pchar_0( node->seq_id, node->name ) == 0 )
                 hctx->rc = KOutMsg( "@SQ\tSN:%s\tLN:%u\n", node->name, node->seq_len );
             else
                 hctx->rc = KOutMsg( "@SQ\tSN:%s\tAS:%s\tLN:%u\n", node->name, node->seq_id, node->seq_len );

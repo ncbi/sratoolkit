@@ -418,7 +418,7 @@ rc_t schema_signature ( KSymTable *tbl, KTokenSource *src, KToken *t,
  *                    | '...'
  */
 rc_t fact_signature ( KSymTable *tbl, KTokenSource *src, KToken *t,
-    const SchemaEnv *env, const VSchema *self, struct SFormParmlist *sig );
+    const SchemaEnv *env, VSchema *self, struct SFormParmlist *sig );
 
 
 /*--------------------------------------------------------------------------
@@ -506,19 +506,19 @@ rc_t phys_encoding_expr ( KSymTable *tbl, KTokenSource *src, KToken *t,
  *  returns non-zero error code if failed
  */
 rc_t eval_const_expr ( const VSchema *self, const VTypedecl *td,
-    struct SExpression const *expr, struct SExpression **value );
+    struct SExpression const *expr, struct SExpression **value, Vector *cx_bind );
 
 /* eval-uint-expr
  *  special const expression evaluator for uint32_t
  */
 rc_t eval_uint_expr ( const VSchema *self,
-    struct SExpression const *expr, uint32_t *value );
+    struct SExpression const *expr, uint32_t *value, Vector *cx_bind );
 
 /* eval-uint64-expr
  *  special const expression evaluator for uint64_t
  */
 rc_t eval_uint64_expr ( const VSchema *self,
-    struct SExpression const *expr, uint64_t *value );
+    struct SExpression const *expr, uint64_t *value, Vector *cx_bind );
 
 /* eval-expr-syntax
  *  examine expression syntax

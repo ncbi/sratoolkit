@@ -48,6 +48,7 @@ extern "C" {
  */
 struct String;
 struct KSymbol;
+struct KDataBuffer;
 struct KWrtHandler;
 
 
@@ -140,7 +141,7 @@ struct KWrtHandler;
         | 'g'           : general double
         | 'c'           : UTF-32 character
         | 'N'           : const KSymbol* [ <klib/symbol.h> ]
-        | 'V' *(4)      : tri-part version [ ver_t ]
+        | 'V' *(2)      : tri-part version [ ver_t ]
         | 'R'           : return code [ rc_t ]
         | 'T'           : const KTime*  [ <klib/time.h> ]
         | '!'           ; operating specific error code ( i.e. errno or GetLastError() )
@@ -154,7 +155,7 @@ struct KWrtHandler;
         | 'b' | 'p'     : to select element
         | 'f' | 'e' | 'g'
         | 'N'           : const KSymbol* [ <klib/symbol.h> ]
-        | 'V' *(4)      : tri-part version [ ver_t ]
+        | 'V' *(2)      : tri-part version [ ver_t ]
         | 'R'           : return code [ rc_t ]
         | 'T'           : const KTime*  [ <klib/time.h> ]
         ;
@@ -212,6 +213,20 @@ KLIB_EXTERN rc_t CC string_printf ( char *dst, size_t bsize,
     size_t *num_writ, const char *fmt, ... );
 KLIB_EXTERN rc_t CC string_vprintf ( char *dst, size_t bsize,
     size_t *num_writ, const char *fmt, va_list args );
+
+
+/* KDataBufferPrintf
+ *  provides a facility similar to string_printf
+ *  except that it appends into a KDataBuffer
+ *
+ *  "buf" [ IN ] - previously initialized buffer
+ *  MUST be initialized, or results are unpredictable
+ *  ( except for the prediction that all will fail )
+ */
+KLIB_EXTERN rc_t CC KDataBufferPrintf ( struct KDataBuffer * buf,
+    const char * fmt, ... );
+KLIB_EXTERN rc_t CC KDataBufferVPrintf ( struct KDataBuffer * buf,
+    const char * fmt, va_list args );
 
 
 /*--------------------------------------------------------------------------

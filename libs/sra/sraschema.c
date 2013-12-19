@@ -32,7 +32,6 @@
 #include <klib/rc.h>
 #include <sysalloc.h>
 
-#include "libsraschema.vers.h"
 #include "sraschema-priv.h"
 #include "sra-priv.h"
 

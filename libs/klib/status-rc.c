@@ -126,8 +126,8 @@ size_t KWrtFmt_rc_t ( char * pout, size_t max, const char * fmt, rc_t rc_in )
         state_size = str - state_str;
 
 #if _DEBUGGING
-        rc = string_printf (pout, max, & needed, "RC(%s:%s:%u:%*s,%*s,%*s,%*s,%*s)", 
-                            GetRCFilename(), GetRCFunction(), GetRCLineno(),
+        rc = string_printf (pout, max, & needed, "RC(%s:%u:%s %*s,%*s,%*s,%*s,%*s)", 
+                            GetRCFilename(), GetRCLineno(), GetRCFunction(),
                            (uint32_t)mod_size, mod_str,
                            (uint32_t)targ_size, targ_str,
                            (uint32_t)ctx_size, ctx_str,

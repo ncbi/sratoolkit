@@ -249,18 +249,18 @@ LIB_EXPORT int CC StringCompare ( const String *a, const String *b )
 /* StringCaseEqual
  *  compare strings for case-insensitive equality
  */
-LIB_EXPORT int CC StringCaseEqual ( const String *a, const String *b )
+LIB_EXPORT bool CC StringCaseEqual ( const String *a, const String *b )
 {
     uint32_t len;
 
     if ( a == b )
-        return 1;
+        return true;
     if ( a == NULL || b == NULL )
-        return 0;
+        return false;
 
     len = a -> len;
     if ( b -> len != len )
-        return 0;
+        return false;
 
     return strcase_cmp ( a -> addr, a -> size, b -> addr, b -> size, len ) == 0;
 }

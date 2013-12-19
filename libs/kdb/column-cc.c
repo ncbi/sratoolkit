@@ -141,7 +141,7 @@ rc_t KColumnCheckBlobs(const KColumn *self,
                        CCReportFunc report, void *ctx)
 {
     int64_t start;
-    int64_t row;
+    uint64_t row;
     uint64_t rows;
     rc_t rc;
     

@@ -42,6 +42,7 @@
 #define CG_EVDNC_PLOIDY (3)
 #define CG_EVDNC_INTERVALID_LEN (32)
 #define CG_EVDNC_SPOT_LEN (10 * 1024)
+#define CG_TAG_LFR_DATA_LEN (10)
 
 /* CG_EVDNC_ALLELE_NUM is 3 in v.1.5; 4 in v.2 */
 #define CG_EVDNC_ALLELE_NUM (4)
@@ -73,6 +74,7 @@ typedef uint16_t CGFIELD_WINDOW_SHIFT_TYPE;
 typedef uint16_t CGFIELD_WINDOW_WIDTH_TYPE;
 typedef uint16_t CGFIELD_NUMBER_LEVELS_TYPE;
 typedef uint16_t CGFIELD_MEAN_LEVEL_X_TYPE;
+typedef uint16_t CGFIELD_WELL_ID;
 
 typedef enum CG_EFileType_enum {
     cg_eFileType_Unknown = 0,
@@ -115,6 +117,8 @@ typedef enum CG_EFileType_enum {
     cg_eFileType_COVERAGE_BY_GC_CODING,
     cg_eFileType_LIB_SMALL_GAPS_ROLLUP,
     cg_eFileType_DIPLOID_SOMATIC_CNV_DETAILSCORES,
+
+    cg_eFileType_TAG_LFR,
     cg_eFileType_Last
 } CG_EFileType;
 

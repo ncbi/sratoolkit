@@ -46,6 +46,8 @@ using std::string;
 //const int TestEnv::TEST_CASE_TIMED_OUT=14; //SIGALRM
 //const int TestEnv::TEST_CASE_FAILED=255;
 
+bool TestEnv::in_child_process = false;
+
 #if ALLOW_TESTING_CODE_TO_RELY_UPON_CODE_BEING_TESTED
 struct Args* TestEnv::args = 0;
 #endif

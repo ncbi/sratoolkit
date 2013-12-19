@@ -362,8 +362,30 @@ static unsigned HashKey(void const *key, unsigned keylen)
     return h;
 }
 
-static rc_t GetKeyID(context_t *const ctx, uint64_t *const rslt, bool *const wasInserted, char const key[], char const name[], unsigned const namelen)
+#define USE_ILLUMINA_NAMING_POUND_NUMBER_SLASH_HACK 1
+
+static size_t GetFixedNameLength(char const name[], size_t const namelen)
 {
+#if USE_ILLUMINA_NAMING_POUND_NUMBER_SLASH_HACK
+    char const *const pound = string_chr(name, namelen, '#');
+    
+    if (pound && pound + 2u < name + namelen && pound[1] >= '0' && pound[1] <= '9' && pound[2] == '/') {
+        return (size_t)(pound - name) + 2u;
+    }
+#endif
+    return namelen;
+}
+
+static
+rc_t GetKeyID(context_t *const ctx,
+              uint64_t *const rslt,
+              bool *const wasInserted,
+              char const key[],
+              char const name[],
+              size_t const o_namelen)
+{
+    size_t const namelen = GetFixedNameLength(name, o_namelen);
+
     if (ctx->key2id_max == 1)
         return GetKeyIDOld(ctx, rslt, wasInserted, key, name, namelen);
     else {
@@ -462,6 +484,7 @@ static rc_t GetKeyID(context_t *const ctx, uint64_t *const rslt, bool *const was
             tmpKey = ctx->idCount[f];
             rc = KBTreeEntry(ctx->key2id[f], &tmpKey, wasInserted, name, namelen);
             if (rc == 0) {
+              /*              fprintf(stderr, "GetKeyID: { Key: '%s', Name: '%.*s', id: '%u:%x', new: %s }\n", key, (int)namelen, name, (unsigned)f, (unsigned)tmpKey, *wasInserted ? "true" : "false"); */
                 *rslt = (((uint64_t)f) << 32) | tmpKey;
                 if (*wasInserted)
                     ++ctx->idCount[f];
@@ -1066,11 +1089,13 @@ static rc_t ProcessBAM(char const bamFile[], context_t *ctx, VDatabase *db,
             BAMAlignmentGetReadLength(rec, &readlen);/*BAM*/
             if (isColorSpace) {
                 BAMAlignmentGetCSSeqLen(rec, &csSeqLen);
-                if (readlen != csSeqLen && readlen != 0) {
+                if (readlen > csSeqLen) {
                     rc = RC(rcAlign, rcRow, rcReading, rcData, rcInconsistent);
-                    (void)LOGERR(klogErr, rc, "Sequence length and CS Sequence length are not equal");
+                    (void)LOGERR(klogErr, rc, "Sequence length and CS Sequence length are inconsistent");
                     goto LOOP_END;
                 }
+                else if (readlen < csSeqLen)
+                    readlen = 0;
             }
             else if (readlen == 0) {
             }
@@ -1146,6 +1171,9 @@ static rc_t ProcessBAM(char const bamFile[], context_t *ctx, VDatabase *db,
             goto LOOP_END;
         originally_aligned = (flags & BAMFlags_SelfIsUnmapped) == 0;/*BAM*/
         aligned = originally_aligned && (AR_MAPQ(data) >= G.minMapQual);
+
+        if (isColorSpace && readlen == 0)   /* detect hard clipped colorspace   */
+            aligned = false;                /* reads and make unaligned         */
         
         if (aligned && align == NULL) {
             rc = RC(rcApp, rcFile, rcReading, rcData, rcInconsistent);
@@ -1582,7 +1610,7 @@ static rc_t ProcessBAM(char const bamFile[], context_t *ctx, VDatabase *db,
                 }
             }
         }
-        else if (wasInserted & (isPrimary || !originally_aligned)) {
+        else if (CTX_VALUE_GET_S_ID(*value) == 0 && (isPrimary || !originally_aligned)) {
             /* new unmated fragment - no spot assembly */
             unsigned readLen[1];
             

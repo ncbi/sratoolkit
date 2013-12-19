@@ -29,16 +29,16 @@
 #include <klib/refcount.h>
 #include <klib/rc.h>
 #include <kfs/dyload.h>
+#include <kfs/directory.h>
+#include <kfs/impl.h>
 
 #include "kns_mgr_priv.h"
-
-#include <sysalloc.h>
 
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
 #include <assert.h>
-
+#include <sysalloc.h>
 
 static const char knsmanager_classname [] = "KNSManager";
 static struct KNSManager * kns_mgr_singleton = NULL;
@@ -67,8 +67,47 @@ LIB_EXPORT rc_t CC KNSManagerAddRef ( const struct KNSManager *self )
 }
 
 
+static rc_t KNSManager_Make_DlCurl( KDyld ** dl )
+{
+    rc_t rc = KDyldMake ( dl );
+#if ! WINDOWS
+    if ( rc == 0 )
+    {
+        const KDirectory * dir;
+        rc = KDyldHomeDirectory ( *dl, &dir, ( fptr_t ) KNSManager_Make_DlCurl );
+        if ( rc == 0 )
+        {
+            struct KSysDir const *sysdir = KDirectoryGetSysDir ( dir );
+            if ( sysdir != NULL )
+            {
+                char int_path[ 4096 ];
+                rc = KSysDirRealPath ( sysdir, int_path, sizeof int_path, "." );
+                if ( rc == 0 )
+                {
+                    KDyldAddSearchPath ( *dl, int_path );
+                }
+            }
+            KDirectoryRelease( dir );
+        }
+        rc = 0;
+    }
+#endif
+    return rc;
+}
+
 static rc_t KNSManagerLoadLib( struct KNSManager *self )
 {
+#ifdef HAVE_LIBCURL /* just link directly */
+    self->curl_easy_init_fkt      = &curl_easy_init;
+    self->curl_easy_cleanup_fkt   = &curl_easy_cleanup;
+    self->curl_easy_setopt_fkt    = &curl_easy_setopt;
+    self->curl_easy_perform_fkt   = &curl_easy_perform;
+    self->curl_easy_getinfo_fkt   = &curl_easy_getinfo;
+    self->curl_slist_append_fkt   = &curl_slist_append;
+    self->curl_slist_free_all_fkt = &curl_slist_free_all;
+
+    return 0;
+#else
     KDyld *dl;
     /* make a dynamic-library loader */
     rc_t rc = KDyldMake ( &dl );
@@ -76,6 +115,15 @@ static rc_t KNSManagerLoadLib( struct KNSManager *self )
     {
         /* load the curl-library */
         rc = KDyldLoadLib( dl, &lib_curl_handle, LPFX "curl" SHLX );
+        if ( rc != 0 )
+        {
+            KDyldRelease ( dl );
+            rc = KNSManager_Make_DlCurl( &dl );
+            if ( rc == 0 )
+            {
+                rc = KDyldLoadLib( dl, &lib_curl_handle, LPFX "curl" SHLX );
+            }
+        }
         if ( rc == 0 )
         {
             KSymAddr *sym;
@@ -164,7 +212,7 @@ static rc_t KNSManagerLoadLib( struct KNSManager *self )
     }
 
     return rc;
-
+#endif
 }
 
 
@@ -190,8 +238,17 @@ LIB_EXPORT rc_t CC KNSManagerMake( struct KNSManager **self )
             rc = RC( rcNS, rcMgr, rcConstructing, rcMemory, rcExhausted );
         else
         {
-            tmp->create_rc = KNSManagerLoadLib( tmp );
-            KRefcountInit( &tmp->refcount, 1, "KNS", "make", knsmanager_classname );
+            rc = KNSManagerInit ( tmp );
+            if ( rc != 0 )
+            {
+                free ( tmp );
+                tmp = NULL;
+            }
+            else
+            {
+                tmp->create_rc = KNSManagerLoadLib( tmp );
+                KRefcountInit( &tmp->refcount, 1, "KNS", "make", knsmanager_classname );
+            }
         }
         *self = tmp;
         kns_mgr_singleton = tmp;
@@ -222,18 +279,36 @@ LIB_EXPORT rc_t CC KNSManagerCurlVersion( const struct KNSManager *self, const c
 }
 
 
+LIB_EXPORT void KNSManagerSetVerbose ( struct KNSManager *self, bool verbosity )
+{
+    if ( self != NULL )
+        self->verbose = verbosity;
+}
+
+
+LIB_EXPORT bool KNSManagerIsVerbose ( struct KNSManager *self )
+{
+    if ( self != NULL )
+        return self->verbose;
+    else
+        return false;
+}
+
+
 static rc_t KNSManagerDestroy( struct KNSManager *self )
 {
     if ( self == NULL )
         return RC( rcNS, rcFile, rcDestroying, rcSelf, rcNull );
 
+    KDylibRelease ( lib_curl_handle );
+    lib_curl_handle = NULL;
+
+    KNSManagerCleanup ( self );
+
     KRefcountWhack( &self->refcount, knsmanager_classname );
 
     free( self );
     kns_mgr_singleton = NULL;
-    
-    KDylibRelease ( lib_curl_handle );
-    lib_curl_handle = NULL;
     
     return 0;
 }

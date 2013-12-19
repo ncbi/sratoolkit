@@ -33,7 +33,6 @@ include $(TOP)/build/Makefile.env
 INT_TOOLS =
 
 EXT_TOOLS = \
-	sra-dump \
 	fastq-dump \
 	sff-dump \
 	illumina-dump \
@@ -77,47 +76,6 @@ clean: stdclean
 .PHONY: clean
 
 #-------------------------------------------------------------------------------
-# tag
-#
-tag: \
-	$(addsuffix _tag,$(ALL_TOOLS))
-
-.PHONY: tag $(addsuffix _tag,$(ALL_TOOLS))
-
-#-------------------------------------------------------------------------------
-# sra-dump
-#  vdb table copy tool
-#
-SRADUMP_SRC = \
-	sra-dump
-
-SRADUMP_OBJ = \
-	$(addsuffix .$(OBJX),$(SRADUMP_SRC))
-
-SRADUMP_LIB = \
-	-lkapp \
-	-lsradb \
-	-lalign-reader \
-	$(READONLY_SCHEMA_LIBS) \
-	-lvdb \
-	-lkdb \
-	-lvfs \
-	-lkurl \
-	-lkrypto \
-	-lkfg \
-	-lkfs \
-	-dksrch \
-	-lkproc \
-	-lklib \
-	-lm
-
-$(BINDIR)/sra-dump: $(SRADUMP_OBJ)
-	$(LD) --exe --vers $(SRCDIR) -o $@ $^ $(SRADUMP_LIB)
-
-sradump_tag:
-	@ $(TOP)/build/tag-module.sh $(MODULE) sradump $(SRADUMP_OBJ)
-
-#-------------------------------------------------------------------------------
 # Common dumper definitions
 #
 DUMP_COMMON_SRC = \
@@ -127,22 +85,8 @@ DUMP_COMMON_SRC = \
 
 DUMP_COMMON_LIB = \
 	-lkapp \
-	-dsraxf \
-	-daxf \
-	-dvxf \
-	-lsradb \
-	-lsrareader \
-	-lalign-reader \
-	-lvdb \
-	-lkdb \
-	-lvfs \
-	-lkurl \
-	-lkrypto \
-	-lkfg \
-	-lkfs \
-	-dksrch \
-	-lkproc \
-	-lklib \
+	-lncbi-vdb \
+	-lxml2 \
 	-lm
 
 #-------------------------------------------------------------------------------
@@ -158,9 +102,6 @@ FASTQ_DUMP_OBJ = \
 $(BINDIR)/fastq-dump: $(FASTQ_DUMP_OBJ)
 	$(LD) --exe --vers $(SRCDIR) -o $@ $^ $(DUMP_COMMON_LIB)
 
-fastq-dump_tag:
-	@ $(TOP)/build/tag-module.sh $(MODULE) fastq-dump $(FASTQ_DUMP_OBJ)
-
 #-------------------------------------------------------------------------------
 # sff-dump
 #
@@ -173,9 +114,6 @@ SFF_DUMP_OBJ = \
 
 $(BINDIR)/sff-dump: $(SFF_DUMP_OBJ)
 	$(LD) --exe --vers $(SRCDIR) -o $@ $^ $(DUMP_COMMON_LIB)
-
-sff-dump_tag:
-	@ $(TOP)/build/tag-module.sh $(MODULE) sff-dump $(SFF_DUMP_OBJ)
 
 #-------------------------------------------------------------------------------
 # illumina-dump
@@ -190,9 +128,6 @@ ILLUMINA_DUMP_OBJ = \
 $(BINDIR)/illumina-dump: $(ILLUMINA_DUMP_OBJ)
 	$(LD) --exe --vers $(SRCDIR) -o $@ $^ $(DUMP_COMMON_LIB)
 
-illumina-dump_tag:
-	@ $(TOP)/build/tag-module.sh $(MODULE) illumina-dump $(ILLUMINA_DUMP_OBJ)
-
 #-------------------------------------------------------------------------------
 # abi-dump
 #
@@ -206,5 +141,3 @@ ABI_DUMP_OBJ = \
 $(BINDIR)/abi-dump: $(ABI_DUMP_OBJ)
 	$(LD) --exe --vers $(SRCDIR) -o $@ $^ $(DUMP_COMMON_LIB)
 
-abi-dump_tag:
-	@ $(TOP)/build/tag-module.sh $(MODULE) abi-dump $(ABI_DUMP_OBJ)

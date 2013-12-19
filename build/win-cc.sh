@@ -22,7 +22,8 @@
 #  Please cite the author in any work or product based on this material.
 #
 # ===========================================================================
-
+VERBOSE=
+if [ "$VERBOSE" != "" ] ; then echo "$0 $*"; fi
 # prepare script name
 SELF_NAME="$(basename $0)"
 SCRIPT_BASE="${0%.sh}"
@@ -45,6 +46,7 @@ unset DEPENDENCIES
 # paths for translating local to remote
 unset RHOME
 unset LHOME
+unset ROUTDIR
 unset RHOST
 unset RPORT
 unset PROXY_TOOL
@@ -54,7 +56,11 @@ function convert_path
     if [ "$OS" != "rwin" ] ; then
         convert_path_result="$(cygpath -w $1)"
     elif [ "$1" != "." ] ; then
-        convert_path_result="$RHOME${1#$LHOME}"
+        if [ "${1#$LHOME}" != "$1" ] ; then
+            convert_path_result="$RHOME${1#$LHOME}"
+        else
+            convert_path_result="$1"
+        fi
         convert_path_result="${convert_path_result//\//\\}"
     else
         convert_path_result="."
@@ -89,6 +95,16 @@ do
 
     --lhome)
         LHOME="$2"
+        shift
+        ;;
+
+    --loutdir)
+        LOUTDIR="$2"
+        shift
+        ;;
+
+    --routdir)
+        ROUTDIR="$2"
         shift
         ;;
 
@@ -147,7 +163,11 @@ do
         DEPENDENCIES=1
         ;;
 
-    -fPIC|-std=c99|-ansi|-pedantic)
+    -fPIC|-std=c99|-ansi)
+        ;;
+        
+    -pedantic)
+        ARGS="$ARGS /W3"
         ;;
 
     -*)
@@ -171,6 +191,7 @@ done
 unset STATUS
 
 CMD="$CC $ARGS"
+if [ "$VERBOSE" != "" ] ; then echo "CMD=$CMD"; fi
 
 # run command with redirection
 if [ "$OS" = "win" ]
@@ -180,7 +201,7 @@ then
 else
     # determine current directory
     CURDIR="$(pwd)"
-    ${TOP}/build/run_remotely.sh $PROXY_TOOL $RHOST $RPORT $RHOME $LHOME $CURDIR $CMD > $TARG.out 2> $TARG.err
+    ${TOP}/build/run_remotely.sh $PROXY_TOOL $RHOST $RPORT $RHOME $LHOME $CURDIR $ROUTDIR $LOUTDIR $CMD > $TARG.out 2> $TARG.err
     STATUS=$?
 fi
 
@@ -205,27 +226,18 @@ then
         # make sure to compare lowercased prefixes
         rhome_low=$(echo ${RHOME} | tr '[A-Z]' '[a-z]' | tr '\\' '/')
         rhome_len=${#RHOME}
+        routdir_low=$(echo ${ROUTDIR} | tr '[A-Z]' '[a-z]' | tr '\\' '/')
+        routdir_len=${#ROUTDIR}
 
         for inc in $(cat $TARG.inc)
         do
             inc_low=$(echo ${inc} | tr '[A-Z]' '[a-z]' | tr '\\' '/')
-            # vers.h files are now generated in the objdir
-            if [ "$inc" != "${inc%.vers.h}" ]
+            if [ "${inc_low#$rhome_low}" != "$inc_low" ]
             then
-                # convert the "...vers.h" in the object directory into "...vers" in the source directory
-                inc="${inc%.h}"
-                if [ "${inc_low#$rhome_low}" != "$inc_low" ]
-                then
-                    inc="${inc:$rhome_len}"
-                    inc="${inc//\\//}"
-                    inc="$(basename $inc)"
-                    inc="$SRCDIR/$inc"
-                fi
-            else
-                if [ "${inc_low#$rhome_low}" != "$inc_low" ]
-                then
-                    inc="$LHOME${inc:$rhome_len}"
-                fi
+                inc="$LHOME${inc:$rhome_len}"
+            elif [ "${inc_low#$routdir_low}" != "$inc_low" ]
+            then
+                inc="$OUTDIR${inc:$routdir_len}"
             fi
             echo -n " $inc" | tr '\\' '/' >> $TARG.d
         done

@@ -98,7 +98,7 @@ static rc_t ReportKfgFiles(const ReportFuncs *f,
                 rc, "KNamelistCount", "origin", "KConfigListIncluded");
         }
         else {
-            int i = 0;
+            uint32_t i = 0;
             reportOpen(indent, "Files", 1, "count", 'd', count);
             for (i = 0; i < count && rc == 0; ++i) {
                 const char* name = NULL;
@@ -180,13 +180,14 @@ rc_t ReportConfigNodeChildren(const ReportFuncs *f, int indent,
         }
         else {
             if (count) {
-                int i = 0;
+                uint32_t i = 0;
+                int j;
                 OUTMSG(("\n"));
                 for (i = 0; i < count && rc == 0; ++i) {
                     rc = ReportChildNode
                         (f, indent + 1, names, node, nodeName, i);
                 }
-                for (i = 0; i < indent; ++i)
+                for (j = 0; j < indent; ++j)
                 {   OUTMSG((" ")); }
             }
         }
@@ -379,7 +380,7 @@ rc_t ReportKrypto(const ReportFuncs *f, int indent, const KConfig* cfg)
 {
     rc_t rc = 0;
 
-    const char root[] = "krypto/pwfile";
+    const char root[] = KFG_KRYPTO_PWFILE;
     const char name[] = "krypto";
 
     const KConfigNode* node = NULL;

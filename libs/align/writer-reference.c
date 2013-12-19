@@ -24,7 +24,6 @@
 */
 #include <align/extern.h>
 
-#include <kapp/main.h>
 #include <klib/log.h>
 #include <klib/rc.h>
 #include <klib/sort.h>
@@ -1236,7 +1235,7 @@ LIB_EXPORT rc_t CC ReferenceMgr_Make(ReferenceMgr const **cself, VDatabase *db,
                 }
             }
         }
-        ReferenceMgr_Release(self, false, NULL, false);
+        ReferenceMgr_Release(self, false, NULL, false, NULL);
     }
     else
         rc = RC(rcAlign, rcIndex, rcConstructing, rcMemory, rcExhausted);
@@ -1444,7 +1443,7 @@ rc_t CoverageGetSeqLen(ReferenceMgr const *const mgr, TCover data[], uint64_t co
 }
 
 static
-rc_t ReferenceMgr_ReCover(const ReferenceMgr* cself, uint64_t ref_rows)
+rc_t ReferenceMgr_ReCover(const ReferenceMgr* cself, uint64_t ref_rows, rc_t (*const quitting)(void))
 {
     rc_t rc = 0;
     uint64_t new_rows = 0;
@@ -1613,7 +1612,7 @@ rc_t ReferenceMgr_ReCover(const ReferenceMgr* cself, uint64_t ref_rows)
                     }
                 } /**** DONE WITH WORK ON STATISTICS ***/
                 ALIGN_DBGERR(rc);
-                rc = rc ? rc : Quitting();
+                rc = rc ? rc : quitting();
             }
 		    /*** HAVE TO RELEASE **/
 		    TableReader_Whack(reader);
@@ -1690,34 +1689,36 @@ rc_t ReferenceMgr_ReCover(const ReferenceMgr* cself, uint64_t ref_rows)
 }
 
 LIB_EXPORT rc_t CC ReferenceMgr_Release(const ReferenceMgr *cself,
-                                        bool commit,
+                                        const bool commit,
                                         uint64_t *const Rows,
-                                        bool build_coverage)
+                                        const bool build_coverage,
+                                        rc_t (*const quitting)(void)
+                                        )
 {
     rc_t rc = 0;
 
     if (cself != NULL) {
         ReferenceMgr *const self = (ReferenceMgr *)cself;
-        uint64_t rows;
+        uint64_t rows = 0;
         unsigned i;
-        
+
         rc = TableWriterRef_Whack(self->writer, commit, &rows);
         if (Rows) *Rows = rows;
         KDirectoryRelease(self->dir);
-        
+
         for (i = 0; i != self->refSeqsById.elem_count; ++i)
             free((void *)((key_id_t *)self->refSeqsById.base)[i].key);
-        
+
         for (i = 0; i != self->refSeqs.elem_count; ++i)
             ReferenceSeq_Whack(&self->refSeq[i]);
-        
+
         KDataBufferWhack(&self->compress);
         KDataBufferWhack(&self->seq);
         KDataBufferWhack(&self->refSeqs);
         KDataBufferWhack(&self->refSeqsById);
-        
-        if (rc == 0 && build_coverage && commit)
-            rc = ReferenceMgr_ReCover(cself, rows);
+
+        if (rc == 0 && build_coverage && commit && rows > 0)
+            rc = ReferenceMgr_ReCover(cself, rows, quitting);
 #if 0 
         {
             VTable* t = NULL;
@@ -1771,7 +1772,7 @@ rc_t ReferenceSeq_ReadDirect(ReferenceSeq *self,
             
             memcpy(&buffer[dst_off], &src[offset], to_write);
             *written += to_write;
-            if (!read_circular)
+            if (!self->circular)
                 break;
             offset = 0;
             dst_off += to_write;
@@ -2238,12 +2239,30 @@ LIB_EXPORT rc_t CC ReferenceMgr_Compress(const ReferenceMgr* cself, uint32_t opt
     return rc;
 }
 
-LIB_EXPORT rc_t CC ReferenceSeq_Compress(const ReferenceSeq* cself, const uint32_t options, INSDC_coord_zero offset,
+LIB_EXPORT size_t CC ReferenceMgr_CompressHelper(uint8_t cmp_rslt[],
+                                                 TableWriterAlgnData const *const data,
+                                                 uint8_t const input[])
+{
+    size_t const len = data->has_mismatch.elements;
+    bool const *const has_mismatch = data->has_mismatch.buffer;
+    size_t i;
+    size_t n;
+    
+    for (n = i = 0; i != len; ++i) {
+        if (has_mismatch[i]) {
+            cmp_rslt[n] = input[i];
+            ++n;
+        }
+    }
+    return n;
+}
+
+LIB_EXPORT rc_t CC ReferenceSeq_Compress(const ReferenceSeq* cself, uint32_t options, INSDC_coord_zero offset,
                                          const char* seq, INSDC_coord_len seq_len,
                                          const void* cigar, uint32_t cigar_len,
                                          INSDC_coord_zero allele_offset, const char* allele,
-					 INSDC_coord_len allele_len,
-					 INSDC_coord_zero offset_in_allele,
+                                         INSDC_coord_len allele_len,
+                                         INSDC_coord_zero offset_in_allele,
                                          const void* allele_cigar, uint32_t allele_cigar_len,
                                          TableWriterAlgnData* data)
 {
@@ -2414,6 +2433,7 @@ LIB_EXPORT rc_t CC ReferenceSeq_Compress(const ReferenceSeq* cself, const uint32
                             has_mismatch[seq_pos] = false;
                         }
                     }
+                    data->mismatch.elements = ReferenceMgr_CompressHelper(mismatch, data, (uint8_t const *)seq);
                 }
             }
         }

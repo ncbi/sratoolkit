@@ -291,3 +291,17 @@ rc_t VColumnRead ( const VColumn *cself, int64_t row_id,
 
     return rc;
 }
+
+/* IsStatic
+ *  answers question: "does this column have the same value for every cell?"
+ */
+rc_t VColumnIsStatic ( const VColumn *self, bool *is_static )
+{
+    if ( self != NULL )
+        return VProductionIsStatic ( self -> in, is_static );
+    
+    assert ( is_static != NULL );
+    * is_static = false;
+
+    return RC ( rcVDB, rcColumn, rcAccessing, rcSelf, rcNull );
+}

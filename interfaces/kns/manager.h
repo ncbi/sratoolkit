@@ -78,6 +78,19 @@ KNS_EXTERN rc_t CC KNSManagerAvail ( const KNSManager *self );
 KNS_EXTERN rc_t CC KNSManagerCurlVersion ( const KNSManager *self, const char ** version_string );
 
 
+/* SetVerbose
+ *  set/clear verbosity flag of manager ( dflt is false )...
+ *  the network-code has to request it
+ */
+KNS_EXTERN void CC KNSManagerSetVerbose ( struct KNSManager *self, bool verbosity );
+
+
+/* IsVerbose
+ *  request the verbosity flag of manager ( dflt is false )...
+ */
+KNS_EXTERN bool CC KNSManagerIsVerbose ( const KNSManager *self );
+
+
 #ifdef __cplusplus
 }
 #endif

@@ -73,15 +73,6 @@ clean: stdclean
 
 .PHONY: clean
 
-#-------------------------------------------------------------------------------
-# tag
-#
-tag: \
-	$(addsuffix _tag,$(ALL_TOOLS))
-
-.PHONY: tag $(addsuffix _tag,$(ALL_TOOLS))
-
-
 #----------------------------------------------------------------
 # kar
 #
@@ -93,21 +84,13 @@ KAR_OBJ = \
 	$(addsuffix .$(OBJX),$(KAR_SRC))
 
 KAR_LIB = \
-	-skapp \
-	-lvfs \
-	-lkurl \
-	-lkfg \
-	-lkrypto \
-	-lkfs \
-	-lkproc \
-	-lklib \
-	-lm
+	-lkapp \
+	-lncbi-vdb \
+
 
 $(BINDIR)/kar: $(KAR_OBJ)
 	$(LD) --exe --vers $(SRCDIR) -o $@ $^ $(KAR_LIB)
 
-kar_tag:
-	@ $(TOP)/build/tag-module.sh $(MODULE) kar $(KAR_OBJ)
 
 #----------------------------------------------------------------
 # sra-kar
@@ -121,22 +104,9 @@ SRA_KAR_OBJ = \
 
 SRA_KAR_LIB = \
 	-skapp \
-	-lsradb \
-	-lvdb \
-	-lkdb \
-	-lvfs \
-	-lkurl \
-	-lkfg \
-	-lkrypto \
-	-lkfs \
-	-lkproc \
-	-lklib \
-	-lm
+	-lncbi-vdb \
 
 $(BINDIR)/sra-kar: $(SRA_KAR_OBJ)
 	$(LD) --exe --vers $(SRCDIR) -o $@ $^ $(SRA_KAR_LIB)
-
-sra-kar_tag:
-	@ $(TOP)/build/tag-module.sh $(MODULE) sra-kar $(SRA_KAR_OBJ)
 
 

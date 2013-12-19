@@ -240,24 +240,15 @@ static rc_t wga_log_error (const char * path, rc_t rc, bool decrypt_bin_compatib
 static rc_t nencvalidWGAEncValidate (const char * path, const KFile * file, VFSManager * mgr, bool decrypt_bin_compatible)
 {
     rc_t rc;
-    size_t ppathz;
-    char ppath [4097];
     size_t pwz;
     char   pw [8192];
-    bool error_logged = false;
 
-    rc = VFSManagerGetConfigPWFile (mgr, ppath, sizeof (ppath) - 1, &ppathz);
+    rc = VFSManagerGetKryptoPassword (mgr, pw, sizeof (pw) - 1, &pwz);
 
-    /* failure to read configuration */
-    if (rc)
+    if (rc) 
     {
-        if (GetRCState(rc) != rcNotFound)
-        {
-            LOGERR (klogInt, rc, "unable to read configuration to get password file");
-            error_logged = true;
-        }
-        else
-        {
+        if (GetRCObject(rc) == rcEncryptionKey && GetRCState(rc) == rcNotFound)
+        {   /* krypto/pwfile not found in the configuration; will proceed without decryption */
             LOGERR (klogWarn, rc, "no password file configured file content will not be validated");
 
             /* configuration did not contain a password file so set it to nul */
@@ -265,75 +256,8 @@ static rc_t nencvalidWGAEncValidate (const char * path, const KFile * file, VFSM
             pwz = 0;
             rc = 0;
         }
-    }
-    /* we got a password file from configuration */
-    else
-    {
-        VPath * vpath;
-
-        pwz = 0;
-
-        /* force to ASCIZ which is probably redundant */
-        ppath[ppathz] = '\0';
-
-        rc = VPathMake (&vpath, ppath);
-        if (rc)
-        {
-            PLOGERR (klogInt, (klogInt, rc, "unable to create vpath for "
-                               "password file '$(P)'", "P=%s", ppath));
-            error_logged = true;
-        }
         else
-        {
-            const KFile * pwfile;
-
-            rc = VFSManagerOpenFileRead (mgr, &pwfile, vpath);
-            if (rc)
-            {
-                PLOGERR (klogInt, (klogInt, rc, "unable to open "
-                                   "password file '$(P)'", "P=%s", ppath));
-                error_logged = true;
-            }
-            else
-            {
-                rc = KFileReadAll (pwfile, 0, pw, sizeof pw - 1, &pwz);
-                if (rc)
-                {
-                    PLOGERR (klogInt, (klogInt, rc, "unable to read "
-                                       "password file '$(P)'", "P=%s", ppath));
-                    error_logged = true;
-                }
-
-                else
-                {
-                    char * pc;
-
-                    pc = string_chr (pw, pwz, '\n');
-                    if (pc)
-                    {
-                        *pc = '\0';
-                        pwz = pc - pw;
-                    }
-
-                    pc = string_chr (pw, pwz, '\r');
-                    if (pc)
-                    {
-                        *pc = '\0';
-                        pwz = pc - pw;
-                    }
-
-                    if (pwz == sizeof pw-1)
-                    {
-                        rc = RC (rcExe, rcFile, rcAccessing, rcBuffer, rcInsufficient);
-                        PLOGERR (klogInt, (klogInt, rc, "password too long in "
-                                           "password file '$(P)' ignoring", "P=%s", ppath));
-                        pwz = 0;
-                    }
-                }
-                KFileRelease (pwfile);
-            }
-            VPathRelease (vpath);
-        }
+            LOGERR (klogInt, rc, "unable to read password file");
     }
 
     if (rc == 0)
@@ -355,7 +279,7 @@ rc_t HandleOneFile (VFSManager * mgr, const char * path, bool decrypt_bin_compat
     rc_t rc;
     VPath * vpath;
 
-    rc = VPathMake (&vpath, path);
+    rc = VFSManagerMakePath (mgr, &vpath, path);
     if (rc)
         PLOGERR (klogErr,
                  (klogErr, rc, "failed to parse path "

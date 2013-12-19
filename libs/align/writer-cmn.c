@@ -213,13 +213,18 @@ rc_t CC TableWriter_GetVTable(const TableWriter* cself, VTable** vtbl)
     return rc;
 }
 
-rc_t CC TableWriter_Sign(const TableWriter* cself, const char* argv0, const char* argv0_date, const char* app_name, ver_t app_version)
+rc_t CC TableWriter_Sign(const TableWriter *const cself,
+                         const char loader_name[],
+                         const ver_t loader_version,
+                         const char loader_date[],
+                         const char app_name[],
+                         const ver_t app_version)
 {
     rc_t rc = 0;
     KMetadata* meta = NULL;
     KMDataNode* root = NULL;
 
-    if( cself == NULL || argv0 == NULL || argv0_date == NULL || app_name == NULL || app_version == 0 ) {
+    if( cself == NULL || loader_name == NULL || loader_date == NULL || app_name == NULL || app_version == 0 ) {
         rc = RC(rcAlign, rcMetadata, rcWriting, rcParam, rcNull);
     } else if( (rc = VTableOpenMetadataUpdate(cself->vtbl, &meta)) == 0 &&
                (rc = KMetadataOpenNodeUpdate(meta, &root, "/")) == 0 ) {
@@ -228,20 +233,20 @@ rc_t CC TableWriter_Sign(const TableWriter* cself, const char* argv0, const char
             char str_vers[64];
             KMDataNode *subNode = NULL;
             if( (rc = KMDataNodeOpenNodeUpdate(node, &subNode, "loader")) == 0 ) {
-                if( (rc = string_printf(str_vers, sizeof(str_vers), NULL, "%V", KAppVersion())) == 0 ) {
+                if( (rc = string_printf(str_vers, sizeof(str_vers), NULL, "%V", loader_version)) == 0 ) {
                     rc = KMDataNodeWriteAttr(subNode, "vers", str_vers);
                 }
                 if(rc == 0) {
-                    rc = KMDataNodeWriteAttr(subNode, "date", argv0_date);
+                    rc = KMDataNodeWriteAttr(subNode, "date", loader_date);
                 }
                 if(rc == 0) {
-                    const char* tool_name = strrchr(argv0, '/');
-                    const char* r = strrchr(argv0, '\\');
+                    const char* tool_name = strrchr(loader_name, '/');
+                    const char* r = strrchr(loader_name, '\\');
                     if( tool_name != NULL && r != NULL && tool_name < r ) {
                         tool_name = r;
                     }
                     if( tool_name++ == NULL) {
-                        tool_name = argv0;
+                        tool_name = loader_name;
                     }
                     rc = KMDataNodeWriteAttr(subNode, "name", tool_name);
                 }
@@ -252,7 +257,7 @@ rc_t CC TableWriter_Sign(const TableWriter* cself, const char* argv0, const char
                     rc = KMDataNodeWriteAttr(subNode, "vers", str_vers);
                 }
                 if(rc == 0) {
-                    rc = KMDataNodeWriteAttr(subNode, "name", app_name ? app_name : "internal");
+                    rc = KMDataNodeWriteAttr(subNode, "name", app_name);
                 }
                 KMDataNodeRelease(subNode);
             }

@@ -167,49 +167,29 @@ rc_t CC KMain ( int argc, char *argv [] )
                         else
                         {
                             const VPath * upath;
-
-                            rc = VPathMakeSysPath ((VPath**)&upath, pc);
+                            rc = VFSManagerMakePath ( mgr, (VPath**)&upath, pc);
                             if (rc == 0)
                             {
-                                const VPath * rpath;
+                                const VPath * local;
+                                const VPath * remote;
 
-                                rc = VResolverLocal (resolver, upath, &rpath);
-                                if (rc == 0) {
-                                    STSMSG(1, ("'%s': found locally", pc));
-                                }
-                                else if (GetRCState(rc) == rcNotFound) {
-                                    STSMSG(1, ("'%s': not found locally", pc));
-                                    rc = VResolverRemote(resolver,
-                                        upath, &rpath, NULL);
-                                    if (rc == 0) {
-                                        STSMSG(1, ("'%s': found remotely", pc));
-                                    }
-                                    else if (GetRCState(rc) == rcNotFound) {
-                                        STSMSG(1,
-                                            ("'%s': not found remotely", pc));
-                                    }
-                                    else {
-                                        STSMSG(1, ("'%s': "
-                                            "error resolving remotely: %R",
-                                            pc, rc));
-                                    }
-                                }
-                                else {
-                                    STSMSG(1, (
-                                        "'%s': error resolving locally: %R",
-                                        pc, rc));
-                                }
+                                rc = VResolverQuery (resolver, eProtocolHttp, upath, &local, &remote, NULL);
 
                                 if (rc == 0)
                                 {
                                     const String * s;
 
-                                    rc = VPathMakeString (rpath, &s);
+                                    if (local != NULL)
+                                        rc = VPathMakeString (local, &s);
+                                    else 
+                                        rc = VPathMakeString (remote, &s);
                                     if (rc == 0)
                                     {
                                         OUTMSG (("%S\n", s));
                                         free ((void*)s);
                                     }
+                                    VPathRelease (local);
+                                    VPathRelease (remote);
                                 }
                                 else
                                 {
@@ -265,8 +245,6 @@ rc_t CC KMain ( int argc, char *argv [] )
                                     }
                                     KDirectoryRelease(cwd);
                                 }
-                                VPathRelease (rpath);
-                                VPathRelease (upath);
                             }
                         }
                     }

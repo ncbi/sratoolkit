@@ -176,7 +176,7 @@ LIB_EXPORT rc_t CC KLockFileRelease ( const KLockFile *self )
         {
         case krefWhack:
             return KLockFileWhack ( ( KLockFile* ) self );
-        case krefLimit:
+        case krefNegative:
             return RC ( rcFS, rcLock, rcReleasing, rcRange, rcExcessive );
         }
     }

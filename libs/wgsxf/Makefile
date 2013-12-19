@@ -28,9 +28,12 @@ default: std
 TOP ?= $(shell ../../build/abspath.sh ../..)
 MODULE = libs/wgsxf
 
-MOD_LIBS = \
+INT_LIBS = \
 	libwgsxf \
 	libwwgsxf
+
+ALL_LIBS = \
+	$(INT_LIBS)
 
 TEST_TOOLS = \
 
@@ -38,16 +41,13 @@ include $(TOP)/build/Makefile.env
 
 RWORKDIR = $(BINDIR)
 
-ALL_LIBS = \
-	$(MOD_LIBS)
-
 #-------------------------------------------------------------------------------
 # outer targets
 #
 all std: makedirs
 	@ $(MAKE_CMD) $(TARGDIR)/std
 
-$(MOD_LIBS): makedirs
+$(INT_LIBS): makedirs
 	@ $(MAKE_CMD) $(TARGDIR)/$@
 
 $(TEST_TOOLS): makedirs
@@ -59,7 +59,7 @@ $(TEST_TOOLS): makedirs
 # std
 #
 $(TARGDIR)/std: \
-	$(addprefix $(TARGDIR)/,$(MOD_LIBS))
+	$(addprefix $(TARGDIR)/,$(INT_LIBS))
 
 .PHONY: $(TARGDIR)/std
 
@@ -73,9 +73,7 @@ clean: stdclean
 #-------------------------------------------------------------------------------
 # wgs-vdb transform library
 #
-$(TARGDIR)/libwgsxf: $(addprefix $(TARGDIR)/libwgsxf.,$(MODEXT))
-
-$(TARGDIR)/libwgsxf.$(SHLX): $(MODDIR)/libwgsxf.$(SHLX)
+$(TARGDIR)/libwgsxf: $(addprefix $(ILIBDIR)/libwgsxf.,$(ILIBEXT))
 
 WGSXF_SRC = \
 	build_scaffold \
@@ -91,23 +89,16 @@ WGSXF_LIB = \
 	-dz \
 	-dbz2
 
-$(MODDIR)/libwgsxf.$(SHLX): $(WGSXF_OBJ)
-	$(LD) --dlib --vers $(SRCDIR) -o $@ $^ $(WGSXF_LIB)
-
-$(TARGDIR)/libwgsxf.$(LIBX): $(ILIBDIR)/libwgsxf.$(LIBX)
-
 $(ILIBDIR)/libwgsxf.$(LIBX): $(WGSXF_OBJ)
 	$(LD) --slib -o $@ $^ $(WGSXF_LIB)
 
-.PHONY: $(TARGDIR)/libwgsxf $(TARGDIR)/libwgsxf.$(SHLX) $(TARGDIR)/libwgsxf.$(LIBX)
+.PHONY: $(TARGDIR)/libwgsxf
 
 #-------------------------------------------------------------------------------
 # update-side wgs transform library
 #
 
-$(TARGDIR)/libwwgsxf: $(addprefix $(TARGDIR)/libwwgsxf.,$(MODEXT))
-
-$(TARGDIR)/libwwgsxf.$(SHLX): $(WMODDIR)/libwwgsxf.$(SHLX)
+$(TARGDIR)/libwwgsxf: $(addprefix $(ILIBDIR)/libwwgsxf.,$(ILIBEXT))
 
 WWGSXF_SRC = \
 	$(WGSXF_SRC)
@@ -124,15 +115,10 @@ WWGSXF_LIB = \
 	-dz \
 	-dbz2
 
-$(WMODDIR)/libwwgsxf.$(SHLX): $(WWGSXF_OBJ)
-	$(LD) --dlib --vers $(SRCDIR) -o $@ $^ $(WWGSXF_LIB)
-
-$(TARGDIR)/libwwgsxf.$(LIBX): $(ILIBDIR)/libwwgsxf.$(LIBX)
-
 $(ILIBDIR)/libwwgsxf.$(LIBX): $(WWGSXF_OBJ)
 	$(LD) --slib -o $@ $^ $(WWGSXF_LIB)
 
 libwwgsxf.vers.h:
 	@ true
 
-.PHONY: $(TARGDIR)/libwwgsxf $(TARGDIR)/libwwgsxf.$(SHLX) $(TARGDIR)/libwwgsxf.$(LIBX)
+.PHONY: $(TARGDIR)/libwwgsxf

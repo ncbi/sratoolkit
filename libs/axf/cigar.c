@@ -352,7 +352,7 @@ rc_t CC cigar_impl_2 ( void *data, const VXformInfo *info, int64_t row_id,
     rc_t rc = 0;
     uint64_t cnt;
     INSDC_coord_zero start;
-    INSDC_coord_len *cigar_len;
+    INSDC_coord_len *cigar_len = NULL;
     KDataBuffer *buf = (self->version & 0x04) ? NULL : rslt->data;
     
     assert(argv[0].u.data.elem_bits == 8);
@@ -397,7 +397,7 @@ rc_t CC cigar_impl_2 ( void *data, const VXformInfo *info, int64_t row_id,
                                 reflen[argv[4].u.data.first_elem],(nreads==1));
         }
         if (rc) return rc;
-        if (self->version & 0x04)
+        if (cigar_len != NULL /*self->version & 0x04*/)
             cigar_len[n] = cnt;
         else
             rslt->elem_count += cnt;

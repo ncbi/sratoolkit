@@ -87,6 +87,8 @@ clean: stdclean
 TOOL_SRC = \
 	cmdline_cmn \
 	reref \
+	ref_regions \
+	ref_walker \
 	sra-pileup
 
 TOOL_OBJ = \
@@ -94,19 +96,8 @@ TOOL_OBJ = \
 
 TOOL_LIB = \
 	-lkapp \
-	-lalign-reader \
-	$(READONLY_SCHEMA_LIBS) \
-	-lsraschema \
-	-lvdb \
-	-lkdb \
-	-lvfs \
-	-lkurl \
-	-lkrypto \
-	-lkfg \
-	-lkfs \
-	-lksrch \
-	-lkproc \
-	-lklib \
+	-lncbi-vdb \
+	-lxml2 \
 	-lm
 
 $(BINDIR)/sra-pileup: $(TOOL_OBJ)
@@ -133,19 +124,8 @@ SAMDUMP3_OBJ = \
 
 SAMDUMP3_LIB = \
 	-lkapp \
-	-lalign-reader \
-	$(READONLY_SCHEMA_LIBS) \
-	-lsraschema \
-	-lvdb \
-	-lkdb \
-	-lvfs \
-	-lkurl \
-	-lkrypto \
-	-lkfg \
-	-lkfs \
-	-lksrch \
-	-lkproc \
-	-lklib \
+	-lncbi-vdb \
+	-lxml2 \
 	-lm
 
 $(BINDIR)/sam-dump: $(SAMDUMP3_OBJ)

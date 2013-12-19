@@ -50,7 +50,7 @@ ALIGN_EXTERN rc_t CC RefSeqMgr_Make(const RefSeqMgr** cself, const VDBManager* v
 
 ALIGN_EXTERN rc_t CC RefSeqMgr_Release(const RefSeqMgr* cself);
 
-ALIGN_EXTERN rc_t CC RefSeqMgr_SetCache(RefSeqMgr const *cself, size_t cache, uint32_t keep_open_num);
+ALIGN_EXTERN rc_t CC RefSeqMgr_SetCache(RefSeqMgr const *const cself, size_t cache, uint32_t keep_open_num);
 
 /* return value if 0 means object was found, path is optional */
 ALIGN_EXTERN rc_t RefSeqMgr_Exists(const RefSeqMgr* cself, const char* accession, uint32_t accession_sz, char** path);

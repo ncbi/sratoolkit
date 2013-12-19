@@ -79,7 +79,7 @@ rc_t VProdResolveColumn ( const VProdResolve *self,
     vcol = VCursorCacheGet ( & curs -> col, & scol -> cid );
     if ( vcol == NULL )
     {
-        rc = VCursorMakeColumn ( curs, & vcol, scol );
+        rc = VCursorMakeColumn ( curs, & vcol, scol, self -> cx_bind );
         if ( rc != 0 )
             return rc;
 

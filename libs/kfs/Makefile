@@ -28,13 +28,10 @@ TOP ?= $(shell ../../build/abspath.sh ../..)
 MODULE = libs/kfs
 
 INT_LIBS = \
-
-EXT_LIBS = \
 	libkfs
 
 ALL_LIBS = \
-	$(INT_LIBS) \
-	$(EXT_LIBS)
+	$(INT_LIBS)
 
 include $(TOP)/build/Makefile.env
 
@@ -47,17 +44,13 @@ all std: makedirs
 $(INT_LIBS): makedirs
 	@ $(MAKE_CMD) $(ILIBDIR)/$@
 
-$(EXT_LIBS): makedirs
-	@ $(MAKE_CMD) $(LIBDIR)/$@
-
 .PHONY: all std $(ALL_LIBS)
 
 #-------------------------------------------------------------------------------
 # std
 #
 $(TARGDIR)/std: \
-	$(addprefix $(ILIBDIR)/,$(INT_LIBS)) \
-	$(addprefix $(LIBDIR)/,$(EXT_LIBS))
+	$(addprefix $(ILIBDIR)/,$(INT_LIBS))
 
 .PHONY: $(TARGDIR)/std
 
@@ -69,17 +62,11 @@ clean: stdclean
 .PHONY: clean
 
 #-------------------------------------------------------------------------------
-# tag
-#
-tag: \
-	$(addsuffix _tag,$(ALL_LIBS))
-
-.PHONY: tag $(addsuffix _tag,$(ALL_LIBS))
-
-#-------------------------------------------------------------------------------
 # kfs
 #
-$(LIBDIR)/libkfs: $(addprefix $(LIBDIR)/libkfs.,$(LIBEXT))
+$(ILIBDIR)/libkfs: $(addprefix $(ILIBDIR)/libkfs.,$(ILIBEXT))
+
+$(ILIBDIR)/libkfs-nommap: $(addprefix $(ILIBDIR)/libkfs-nommap.,$(LIBX))
 
 KFS_CMN = \
 	directory \
@@ -134,14 +121,8 @@ KFS_LIB = \
 	-dz \
 	-dbz2
 
-$(LIBDIR)/libkfs.$(SHLX): $(KFS_OBJ)
-	$(LD) --dlib --vers $(SRCDIR) -o $@ $^ $(KFS_LIB)
-
-$(LIBDIR)/libkfs.$(LIBX): $(KFS_OBJ)
-	$(LD) --slib --vers $(SRCDIR) -o $@ $^ $(KFS_LIB)
-
-libkfs_tag:
-	@ $(TOP)/build/tag-module.sh $(MODULE) libkfs $(KFS_OBJ)
+$(ILIBDIR)/libkfs.$(LIBX): $(KFS_OBJ)
+	$(LD) --slib -o $@ $^ $(KFS_LIB)
 
 
 #-------------------------------------------------------------------------------
@@ -157,11 +138,8 @@ endif
 KFF_SRC = \
 	fileformat \
 	ffext \
-	ffkey
-
-ifneq (win,$(OS))
-	KFF_SRC += ffmagic
-endif
+	ffkey \
+	ffmagic
 
 KFF_OBJ = \
 	$(addsuffix .$(LOBX),$(KFF_SRC))
@@ -174,11 +152,5 @@ ifneq (win,$(OS))
 	KFF_LIB += -lmagic
 endif
 
-$(ILIBDIR)/libkff.$(SHLX): $(KFF_OBJ)
-	$(LD) --dlib -o $@ $^ $(KFF_LIB)
-
 $(ILIBDIR)/libkff.$(LIBX): $(KFF_OBJ)
 	$(LD) --slib -o $@ $^ $(KFF_LIB)
-
-libkff_tag:
-	@ $(TOP)/build/tag-module.sh $(MODULE) libkff $(KFF_OBJ)

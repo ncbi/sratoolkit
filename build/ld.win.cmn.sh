@@ -22,6 +22,8 @@
 #  Please cite the author in any work or product based on this material.
 #
 # ===========================================================================
+VERBOSE=
+if [ "$VERBOSE" != "" ] ; then echo "$0 $*"; fi
 
 # script name
 SELF_NAME="$(basename $0)"
@@ -58,6 +60,16 @@ OBJS="$1"
 LIBS="$2"
 shift 2
 
+PROXY_TOOL=$1
+RHOST=$2
+RPORT=$3
+RHOME=$4
+LHOME=$5
+WORKDIR=$6
+ROUTDIR=$7
+LOUTDIR=$8
+shift 8
+
 # decode MODE
 STATIC=$(expr $MODE % 2)
 MODE=$(expr $MODE / 2)
@@ -67,17 +79,63 @@ KPROC=$(expr $MODE % 2)
 MODE=$(expr $MODE / 2)
 THREADS=$(expr $MODE % 2)
 MODE=$(expr $MODE / 2)
-KRYPTO=$(expr $MODE % 2)
-CRYPTO=$(expr $MODE / 2)
+HAVE_M=$(expr $MODE % 2)
+MODE=$(expr $MODE / 2)
+HAVE_XML=$(expr $MODE % 2)
 
 ##### TEMPORARY #####
 KPROC=0
 THREADS=0
+HAVE_M=0
+HAVE_XML=0
 #####################
 
 # decode SCMFLAGS
 CHECKSUM=$(expr $SCMFLAGS % 2)
 STATICSYSLIBS=$(expr $SCMFLAGS / 2)
+
+if [ "$VERBOSE" != "" ] 
+then
+echo "LD            =$LD"
+echo "ARCH          =$ARCH"
+echo "BUILD         =$BUILD"
+echo "SRCDIR        =$SRCDIR"        
+echo "BINDIR        =$BINDIR"        
+echo "OUTDIR        =$OUTDIR"        
+echo "TARG          =$TARG"          
+echo "NAME          =$NAME"          
+echo "DBGAP         =$DBGAP"         
+echo "VERS          =$VERS"          
+echo "VERSFILE      =$VERSFILE"      
+echo "DEPFILE       =$DEPFILE"       
+echo "MODE          =$MODE"          
+echo "SCMFLAGS      =$SCMFLAGS"      
+echo "LDFLAGS       =$LDFLAGS"       
+echo "LDIRS         =$LDIRS"         
+echo "XDIRS         =$XDIRS"         
+echo "OBJS          =$OBJS"          
+echo "LIBS          =$LIBS"   
+echo "PROXY_TOOL    =$PROXY_TOOL"   
+echo "RHOST         =$RHOST"   
+echo "RPORT         =$RPORT"   
+echo "RHOME         =$RHOME"   
+echo "LHOME         =$LHOME"   
+echo "WORKDIR       =$WORKDIR" 
+echo "ROUTDIR       =$ROUTDIR" 
+echo "LOUTDIR       =$LOUTDIR"       
+echo "STATIC        =$STATIC"        
+echo "MODE          =$MODE"          
+echo "DYLD          =$DYLD"          
+echo "MODE          =$MODE"          
+echo "KPROC         =$KPROC"         
+echo "MODE          =$MODE"          
+echo "THREADS       =$THREADS"       
+echo "MODE          =$MODE"          
+echo "HAVE_M        =$HAVE_M"        
+echo "HAVE_XML      =$HAVE_XML"        
+echo "CHECKSUM      =$CHECKSUM"      
+echo "STATICSYSLIBS =$STATICSYSLIBS" 
+fi
 
 # return parameter for find-lib
 xLIBPATH=''

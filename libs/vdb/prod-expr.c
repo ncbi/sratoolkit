@@ -108,7 +108,7 @@ rc_t VProdResolveCastExpr ( const VProdResolve *self, VProduction **out, const S
     /* extract cast type */
     VFormatdecl cast;
     rc_t rc = STypeExprResolveAsFormatdecl
-        ( ( const STypeExpr* ) expr -> left, self -> schema, & cast );
+        ( ( const STypeExpr* ) expr -> left, self -> schema, & cast, self -> cx_bind );
     if ( rc == 0 )
     {
         /* resolve rh expression */
@@ -183,7 +183,7 @@ rc_t VProdResolveSProduction ( const VProdResolve *self, VProduction **out, cons
         else
         {
             rc = STypeExprResolveAsFormatdecl
-                ( ( const STypeExpr* ) sprod -> fd, self -> schema, & fd );
+                ( ( const STypeExpr* ) sprod -> fd, self -> schema, & fd, self -> cx_bind );
         }
     }
     if ( rc == 0 )
@@ -762,7 +762,7 @@ rc_t VProdResolveColumnRead ( const VProdResolve *self,
     /* create a simple prod to manage fd and desc */
     name = scol -> name -> name . addr;
     assert ( name [ scol -> name -> name . size ] == 0 );
-    rc = VSimpleProdMake ( out, self -> owned, self->curs, prodSimpleCast,
+    rc = VSimpleProdMake ( out, self -> owned, self -> curs, prodSimpleCast,
         name, & fd, & vcol -> desc, NULL, * out, self -> chain );
 
     assert (rc != -1);

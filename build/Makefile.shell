@@ -104,17 +104,6 @@ else
 	SRCDIR=$(TOP)
 endif
 
-# set OUTDIR
-ifndef OUTDIR
-	OUTDIR = $(shell test -f $(TOP)/build/OUTDIR && mv $(TOP)/build/OUTDIR $(TOP)/build/OUTDIR.$(BUILD_OS); test -f $(TOP)/build/OUTDIR.$(BUILD_OS) && cat $(TOP)/build/OUTDIR.$(BUILD_OS) || echo $(TOP))
-	ifeq (,$(OUTDIR))
-		OUTDIR = $(TOP)
-	endif
-	ifeq (.,$(OUTDIR))
-		OUTDIR = $(TOP)
-	endif
-endif
-
 # set COMP, LNKG and BUILD
 COMP = $(shell test -f $(TOP)/build/COMP && mv $(TOP)/build/COMP $(TOP)/build/COMP.$(OS); test -f $(TOP)/build/COMP.$(OS) && cat $(TOP)/build/COMP.$(OS) || echo gcc)
 LNKG = $(shell test -f $(TOP)/build/STATIC && mv $(TOP)/build/STATIC $(TOP)/build/LNKG.$(OS) && echo stat > $(TOP)/build/LNKG.$(OS); test -f $(TOP)/build/LNKG.$(OS) && cat $(TOP)/build/LNKG.$(OS) || echo stat)
@@ -130,6 +119,17 @@ COMP = gcc
 endif
 endif
 
+endif
+
+# set OUTDIR
+ifndef OUTDIR
+	OUTDIR = $(shell test -f $(TOP)/build/OUTDIR && mv $(TOP)/build/OUTDIR $(TOP)/build/OUTDIR.$(BUILD_OS); test -f $(TOP)/build/OUTDIR.$(BUILD_OS) && cat $(TOP)/build/OUTDIR.$(BUILD_OS) || echo $(TOP))
+	ifeq (,$(OUTDIR))
+		OUTDIR = $(TOP)
+	endif
+endif
+ifeq (,$(ROUTDIR))
+	ROUTDIR = $(RHOME)
 endif
 
 # OS flavor is normally OS

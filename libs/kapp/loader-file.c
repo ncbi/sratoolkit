@@ -268,7 +268,7 @@ rc_t KLoaderFile_Fill(KLoaderFile *self)
                 if( (rc = KFileRead(self->file, self->pos + self->avail,
                                     &self->buffer[self->avail], to_read, &num_read)) == 0 ) {
                     self->eof = (num_read == 0);
-                    self->avail += num_read;
+                    self->avail += (uint32_t) num_read;
                     to_read -= num_read;
                     DBG(("KLoaderFile read %s from %lu %u bytes%s\n",
                          self->filename, self->pos + self->avail - num_read, num_read, self->eof ? " EOF" : ""));
@@ -320,7 +320,7 @@ LIB_EXPORT rc_t CC KLoaderFile_Reset(const KLoaderFile* cself)
             self->buffer[0] = 0;
             self->eof = false;
         } else {
-            self->avail += self->buffer_pos - self->buffer;
+            self->avail += (uint32_t) ( self->buffer_pos - self->buffer );
         }
         self->pos = 0;
         self->eol = 0;
@@ -474,7 +474,7 @@ LIB_EXPORT rc_t CC KLoaderFile_Readline(const KLoaderFile* cself, const void** b
                 } 
             } else {
                 *length = nl - (uint8_t*)*buffer;
-                self->eol = nl - self->buffer_pos + 1;
+                self->eol = (uint32_t) ( nl - self->buffer_pos + 1 );
                 if( *nl == '\r' && nl < &self->buffer[self->buffer_size - 1] && *(nl + 1) == '\n' ) {
                     /* \r\n */
                     self->eol++;
@@ -501,8 +501,8 @@ LIB_EXPORT rc_t CC KLoaderFile_Read(const KLoaderFile* cself, size_t advance, si
                 self->eol = 0;
             } else {
                 self->buffer_pos += advance;
-                self->avail -= advance;
-                self->eol = self->eol > advance ? self->eol - advance : 0;
+                self->avail -= (uint32_t) advance;
+                self->eol = (uint32_t) ( self->eol > advance ? self->eol - advance : 0 );
             }
         }
         if( size > self->avail || self->avail == 0 ) {

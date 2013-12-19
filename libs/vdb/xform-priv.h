@@ -60,48 +60,21 @@ typedef rc_t ( CC * VBlobCompareFunc ) (void *self, const VRowData *input, const
 typedef union VFuncDescInternalFuncs VFuncDescInternalFuncs;
 union VFuncDescInternalFuncs
 {
-    VRowFunc    rf;
-    VNonDetRowFunc ndf;
-    VFixedRowFunc pf;
-    VArrayFunc    af;
-    VBlobFunc     bf;
-    VBlobFuncN    bfN;
+    VRowFunc         rf;
+    VNonDetRowFunc   ndf;
+    VFixedRowFunc    pf;
+    VArrayFunc       af;
+    VBlobFunc        bf;
+    VBlobFuncN       bfN;
     VBlobCompareFunc cf;
 };
 
 #define VFUNCDESC_INTERNAL_FUNCS( DESC ) \
-    ( ( union VFuncDescInternalFuncs *)(&(DESC)->u))
+    ( ( union VFuncDescInternalFuncs * ) ( & ( DESC ) -> u ) )
 
 /* factory declaration with no self parameter */
 #define VTRANSFACT_BUILTIN_IMPL( fact, maj, min, rel ) \
-    VTRANSFACT_BUILTIN_IMPL_SELF( fact, maj, min, rel, NULL )
-
-/* factory declaration with static or constant self parameter */
-#define VTRANSFACT_BUILTIN_IMPL_SELF( fact, maj, min, rel, self ) \
-    static rc_t CC VTRANSFACT_NAME ( fact ) ( const void*, \
-        const VXfactInfo*, VFuncDesc*, const VFactoryParams*, const VFunctionParams* ); \
-    rc_t CC fact ( VTransDesc *desc ) \
-    { \
-        desc -> fself = ( self ); \
-        desc -> whack = NULL; \
-        desc -> factory = VTRANSFACT_NAME ( fact ); \
-        desc -> itf_version = VTRANSVERS ( maj, min, rel ); \
-        return 0; \
-    } \
-    static rc_t CC VTRANSFACT_NAME ( fact )
-
-/* factory declaration with dynamically allocated self parameter */
-#define VTRANSFACT_BUILTIN_IMPL_CONSTRUCT( fact, maj, min, rel, construct, destroy ) \
-    static rc_t CC VTRANSFACT_NAME ( fact ) ( const void*, \
-        const VXfactInfo*, VFuncDesc*, const VFactoryParams*, const VFunctionParams* ); \
-    rc_t CC fact ( VTransDesc *desc ) \
-    { \
-        desc -> whack = ( destroy ); \
-        desc -> factory = VTRANSFACT_NAME ( fact ); \
-        desc -> itf_version = VTRANSVERS ( maj, min, rel ); \
-        return construct ( & desc -> fself ); \
-    } \
-    static rc_t CC VTRANSFACT_NAME ( fact )
+    VTRANSFACT_IMPL ( fact, maj, min, rel )
 
 #ifdef __cplusplus
 }

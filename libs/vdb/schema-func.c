@@ -31,6 +31,7 @@
 
 #include <klib/symbol.h>
 #include <klib/symtab.h>
+#include <klib/out.h>
 #include <klib/rc.h>
 #include <sysalloc.h>
 
@@ -50,7 +51,6 @@
 void CC SIndirectConstWhack ( void *item, void *ignore )
 {
     SIndirectConst * self = item;
-    SExpressionWhack ( self -> expr );
     SExpressionWhack ( self -> td );
     free ( self );
 }
@@ -61,10 +61,7 @@ void CC SIndirectConstMark ( void * item, void * data )
 {
     const SIndirectConst * self = item;
     if ( self != NULL )
-    {
-        SExpressionMark ( ( void * )self -> td, data );
-        SExpressionMark ( ( void * )self -> expr, data );
-    }
+        SExpressionMark ( ( void* ) self -> td, data );
 }
 
 /* Dump
@@ -99,9 +96,7 @@ bool CC SIndirectConstDefDump ( void *item, void *data )
  */
 void CC SIndirectTypeWhack ( void *item, void *ignore )
 {
-    SIndirectType *self = item;
-    SExpressionWhack ( self -> type );
-    free ( self );
+    free ( item );
 }
 
 
@@ -118,16 +113,6 @@ SIndirectType *VSchemaFindITypeid ( const VSchema *self, uint32_t id )
         pt = VectorGet ( & self -> pt, id );
     }
     return pt;
-}
-
-
-/* Mark
- */
-void CC SIndirectTypeMark ( void * item, void * data )
-{
-    const SIndirectType * self = item;
-    if ( self != NULL )
-        SExpressionMark ( ( void * ) self -> type, data );
 }
 
 
@@ -283,20 +268,44 @@ int CC SFunctionSort ( const void *item, const void *n )
     return ( int ) ( a -> version >> 24 ) - ( int ) ( b -> version >> 24 );
 }
 
+#if _DEBUGGING && 0
+static String no_name = { "<no-name>", sizeof "<no-name>" - 1, sizeof "<no-name>" - 1 };
+#define DBG_CXBIND1( op, name, id, val ) \
+    OUTMSG (( "%s:%d - cx_bind %s: name=%S, id=%u, val=%p\n", __func__, __LINE__, op, & name, id, val ))
+#define DBG_CXBIND2( op, name, id, old, new ) \
+    OUTMSG (( "%s:%d - cx_bind %s: name=%S, id=%u, old=%p, new=%p\n", __func__, __LINE__, op, & name, id, old, new ))
+#else
+#define DBG_CXBIND1( op, name, id, val ) \
+    ( ( void ) 0 )
+#define DBG_CXBIND2( op, name, id, old, new ) \
+    ( ( void ) 0 )
+#endif
+
 /* Bind
  *  perform schema and factory param substitution
  *  returns prior param values
+ *
+ *  9/11/13
+ *  "self" is a cursor-local cloned version of schema decl
  */
 rc_t SFunctionBindSchemaParms ( const SFunction *self,
-    Vector *prior, const Vector *subst )
+    Vector *prior, const Vector *subst, Vector *cx_bind )
 {
     rc_t rc = 0;
-    uint32_t i, count;
 
-    /* count input params */
+    uint32_t i, count;
+    void *cx_old, *cx_new;
+
+    const SIndirectType *id;
+    const SIndirectConst *ic;
+
+    /* count input params
+       the first bunch are types
+       the remainder are constants */
     count = VectorLength ( subst );
 
-    /* initialize return value */
+    /* initialize return value
+       the prior values act as a stack for recursion */
     VectorInit ( prior, 0, count );
 
     /* determine total schema params */
@@ -317,73 +326,119 @@ rc_t SFunctionBindSchemaParms ( const SFunction *self,
         return rc;
     }
 
-    /* save prior types */
+    /* bind types */
     count = VectorLength ( & self -> type );
     for ( i = 0; i < count; ++ i )
     {
-        const SIndirectType *id = VectorGet ( & self -> type, i );
+        /* get the indirect type object */
+        id = VectorGet ( & self -> type, i );
         assert ( id != NULL );
-        rc = VectorSet ( prior, id -> pos, id -> type );
+
+        /* get the new type expression */
+        cx_new = VectorGet ( subst, id -> pos );
+        assert ( cx_new != NULL );
+
+        /* update the binding vector */
+        rc = VectorSwap ( cx_bind, id -> type_id, cx_new, & cx_old );
+        if ( rc != 0 )
+            break;
+        DBG_CXBIND2 ( "bind schema type", id -> name -> name, id -> type_id, cx_old, cx_new );
+
+        /* save old value on stack for recursion */
+        rc = VectorSet ( prior, id -> pos, cx_old );
         if ( rc != 0 )
         {
-            VectorWhack ( prior, NULL, NULL );
-            return rc;
+            cx_new = cx_old;
+            VectorSwap ( cx_bind, id -> type_id, cx_new, & cx_old );
+            DBG_CXBIND2 ( "revert bind type", id -> name -> name, id -> type_id, cx_old, cx_new );
+            break;
         }
     }
 
-    /* save prior constants */
-    count = VectorLength ( & self -> schem );
-    for ( i = 0 ; i < count; ++ i )
+    /* bind constants */
+    if ( rc == 0 )
     {
-        const SIndirectConst *ic = VectorGet ( & self -> schem, i );
-        assert ( ic != NULL );
-        rc = VectorSet ( prior, ic -> id, ic -> td ? ( void* ) ic -> expr : ( void* ) ic -> func );
-        if ( rc != 0 )
+        count = VectorLength ( & self -> schem );
+        for ( i = 0 ; i < count; ++ i )
         {
-            VectorWhack ( prior, NULL, NULL );
-            return rc;
+            ic = VectorGet ( & self -> schem, i );
+            assert ( ic != NULL );
+
+            /* get the new constant value expression */
+            cx_new = VectorGet ( subst, ic -> pos );
+            assert ( cx_new != NULL );
+
+            /* update the binding vector */
+            rc = VectorSwap ( cx_bind, ic -> expr_id, cx_new, & cx_old );
+            if ( rc != 0 )
+                break;
+            DBG_CXBIND2 ( "bind schema const", ic -> name -> name, ic -> expr_id, cx_old, cx_new );
+
+            /* save old value on stack for recursion */
+            rc = VectorSet ( prior, ic -> pos, cx_old );
+            if ( rc != 0 )
+            {
+                cx_new = cx_old;
+                VectorSwap ( cx_bind, ic -> expr_id, cx_new, & cx_old );
+                DBG_CXBIND2 ( "revert bind const", ic -> name -> name, ic -> expr_id, cx_old, cx_new );
+                break;
+            }
         }
+
+        /* if there was no error, we're done */
+        if ( rc == 0 )
+            return 0;
+
+        /* reverse the damage done by binding constants */
+        while ( i -- > 0 )
+        {
+            ic = VectorGet ( & self -> schem, i );
+            assert ( ic != NULL );
+
+            /* get the old constant value expression */
+            cx_new = VectorGet ( prior, ic -> pos );
+            assert ( cx_new != NULL );
+
+            /* restore the binding vector */
+            VectorSwap ( cx_bind, ic -> expr_id, cx_new, & cx_old );
+            DBG_CXBIND2 ( "revert bind const", ic -> name -> name, ic -> expr_id, cx_old, cx_new );
+        }
+
+        /* reset i */
+        i = VectorLength ( & self -> type );
     }
 
-    /* set new values */
-    count = VectorLength ( & self -> type );
-    for ( i = 0; i < count; ++ i )
+    /* reverse the damage done by binding types */
+    while ( i -- > 0 )
     {
-        SIndirectType *id = VectorGet ( & self -> type, i );
-        id -> type = VectorGet ( subst, id -> pos );
-        assert ( id -> type != NULL );
+        /* get the indirect type object */
+        id = VectorGet ( & self -> type, i );
+        assert ( id != NULL );
+
+        /* get the old type expression */
+        cx_new = VectorGet ( prior, id -> pos );
+        assert ( cx_new != NULL );
+
+        /* restore the binding vector */
+        VectorSwap ( cx_bind, id -> type_id, cx_new, & cx_old );
+        DBG_CXBIND2 ( "revert bind type", id -> name -> name, id -> type_id, cx_old, cx_new );
     }
 
-    count = VectorLength ( & self -> schem );
-    for ( i = 0; i < count; ++ i )
-    {
-        SIndirectConst *ic = VectorGet ( & self -> schem, i );
-        if ( ic -> td == NULL )
-        {
-            ic -> func = VectorGet ( subst, ic -> id );
-            assert ( ic -> func != NULL );
-        }
-        else
-        {
-            ic -> expr = VectorGet ( subst, ic -> id );
-            assert ( ic -> expr != NULL );
-        }
-    }
-
-    return 0;
+    /* a non-zero rc indicates the Vector is invalid */
+    VectorWhack ( prior, NULL, NULL );
+    return rc;
 }
 
 rc_t SFunctionBindFactParms ( const SFunction *self,
-    Vector *prior, const Vector *subst )
+    Vector *parms, Vector *prior, const Vector *subst, Vector *cx_bind )
 {
-    rc_t rc;
+    rc_t rc = 0;
+    SIndirectConst *ic;
+    void *cx_old, *cx_new;
     uint32_t i, count, act_count, form_count;
-    SIndirectConst *ic, *last;
 
     /* count input params */
     count = act_count = VectorLength ( subst );
-
-    VectorInit ( prior, 0, 0 );
 
     /* must have minimum count */
     if ( act_count < self -> fact . mand )
@@ -396,6 +451,7 @@ rc_t SFunctionBindFactParms ( const SFunction *self,
                    self -> fact . mand, act_count ));
         return rc;
     }
+
     /* test against maximum count */
     form_count = VectorLength ( & self -> fact . parms );
     if ( act_count > form_count )
@@ -413,65 +469,117 @@ rc_t SFunctionBindFactParms ( const SFunction *self,
         count = form_count;
     }
 
-    /* save prior constants */
+    /* initialize return values
+       the "parms" vector is a positional vector of expressions,
+       and is the only way to get at varargs.
+       the prior values act as a stack for recursion */
+    VectorInit ( parms, 0, act_count );
     VectorInit ( prior, 0, form_count );
-    for ( i = 0 ; i < form_count; ++ i )
+
+    /* bind actual formal parameter values */
+    for ( i = 0; i < form_count && i < act_count; ++ i )
     {
+        /* get the indirect constant object */
         ic = VectorGet ( & self -> fact . parms, i );
         assert ( ic != NULL );
-        rc = VectorSet ( prior, ic -> id, ic -> td ? ( void* ) ic -> expr : ( void* ) ic -> func );
+
+        /* get the new value expression */
+        assert ( ic -> pos == i );
+        cx_new = VectorGet ( subst, i );
+        assert ( cx_new != NULL );
+
+        /* update the positional vector */
+        rc = VectorAppend ( parms, NULL, cx_new );
+        if ( rc != 0 )
+            break;
+
+        /* update the binding vector */
+        rc = VectorSwap ( cx_bind, ic -> expr_id, cx_new, & cx_old );
+        if ( rc != 0 )
+            break;
+        DBG_CXBIND2 ( "bind fact const", ic -> name -> name, ic -> expr_id, cx_old, cx_new );
+
+        /* save the old value on stack for recursion */
+        rc = VectorSet ( prior, i, cx_old );
         if ( rc != 0 )
         {
-            VectorWhack ( prior, NULL, NULL );
-            return rc;
-        }
-    }
-
-    /* set new values */
-    for ( last = NULL, i = 0; i < count; last = ic, ++ i )
-    {
-        ic = VectorGet ( & self -> fact . parms, i );
-        if ( ic -> td == NULL )
-        {
-            ic -> func = VectorGet ( subst, ic -> id );
-            assert ( ic -> func != NULL );
-        }
-        else
-        {
-            ic -> expr = VectorGet ( subst, ic -> id );
-            assert ( ic -> expr != NULL );
-        }
-    }
-
-    /* set vararg values */
-    for ( rc = 0; i < act_count; ++ i )
-    {
-        ic = malloc(sizeof(*ic));
-        if (ic == NULL) {
-            rc = RC ( rcVDB, rcFunction, rcEvaluating, rcMemory, rcExhausted );
+            cx_new = cx_old;
+            VectorSwap ( cx_bind, ic -> expr_id, cx_new, & cx_old );
+            DBG_CXBIND2 ( "revert bind const", ic -> name -> name, ic -> expr_id, cx_old, cx_new );
             break;
         }
-
-        /* not quite right - should have a temp name... */
-        * ic = * last;
-        ic->id = i;
-
-        if ( ic -> td == NULL )
-        {
-            ic -> func = VectorGet ( subst, ic -> id );
-            assert ( ic -> func != NULL );
-        }
-        else
-        {
-            ic -> expr = VectorGet ( subst, ic -> id );
-            assert ( ic -> expr != NULL );
-        }
-
-        rc = VectorSet ( ( Vector* ) & self -> fact . parms, i, ic );
     }
 
-    if (rc != 0)
-        VectorWhack ( prior, NULL, NULL );
+    if ( rc == 0 )
+    {
+        /* this loop should only actually execute
+           to record missing optional formals */
+        assert ( i == form_count || ( i == act_count && act_count < form_count ) );
+
+        /* record optional formal parameter values */
+        for ( ; i < form_count; ++ i )
+        {
+            /* get the indirect constant object */
+            ic = VectorGet ( & self -> fact . parms, i );
+            assert ( ic != NULL );
+
+            /* get the new value expression */
+            assert ( ic -> pos == i );
+            cx_new = VectorGet ( subst, i );
+
+            /* save the same value on stack for recursion */
+            rc = VectorSet ( prior, i, cx_new );
+            if ( rc != 0 )
+                break;
+
+            DBG_CXBIND1 ( "ignore optional fact const", ic -> name -> name, ic -> expr_id, cx_new );
+        }
+    }
+
+    if ( rc == 0 )
+    {
+        /* this loop should only actually execute
+           to record vararg params beyond all formals */
+        assert ( i == form_count );
+
+        /* set vararg values */
+        for ( ; i < act_count; ++ i )
+        {
+            /* get the extra value expression */
+            cx_new = VectorGet ( subst, i );
+            assert ( cx_new != NULL );
+
+            /* update the positional vector */
+            rc = VectorAppend ( parms, NULL, cx_new );
+            if ( rc != 0 )
+                break;
+
+            DBG_CXBIND1 ( "vararg fact const", no_name, 0, cx_new );
+        }
+
+        if ( rc == 0 )
+            return 0;
+
+        i = form_count;
+    }
+
+    while ( i -- > 0 )
+    {
+        /* get the indirect type object */
+        ic = VectorGet ( & self -> fact . parms, i );
+        assert ( ic != NULL );
+
+        /* get the old type expression */
+        cx_new = VectorGet ( subst, ic -> pos );
+        assert ( cx_new != NULL );
+
+        /* restore the binding vector */
+        VectorSwap ( cx_bind, ic -> expr_id, cx_new, & cx_old );
+        DBG_CXBIND2 ( "revert bind const", ic -> name -> name, ic -> expr_id, cx_old, cx_new );
+    }
+    
+    VectorWhack ( parms, NULL, NULL ); 
+    VectorWhack ( prior, NULL, NULL );
 
     return rc;
 }
@@ -480,56 +588,76 @@ rc_t SFunctionBindFactParms ( const SFunction *self,
  *  restore schema and factory param substitution
  *  destroys prior param vector
  */
-void SFunctionRestSchemaParms ( const SFunction *self, Vector *prior )
+void SFunctionRestSchemaParms ( const SFunction *self, Vector *prior, Vector *cx_bind )
 {
+    rc_t rc;
     uint32_t i, count;
+    void * cx_old, * ignore;
+
+    /* must have whole thing in prior */
+    assert ( VectorLength ( prior ) == VectorLength ( & self -> type ) + VectorLength ( & self -> schem ) );
 
     /* restore prior values */
     count = VectorLength ( & self -> type );
     for ( i = 0; i < count; ++ i )
     {
-        SIndirectType *id = VectorGet ( & self -> type, i );
-        id -> type = VectorGet ( prior, id -> pos );
+        /* get the indirect type object */
+        const SIndirectType *id = VectorGet ( & self -> type, i );
+        assert ( id != NULL );
+
+        /* get the old type expression */
+        cx_old = VectorGet ( prior, id -> pos );
+
+        /* update the binding vector */
+        rc = VectorSwap ( cx_bind, id -> type_id, cx_old, & ignore );
+        assert ( rc == 0 );
+
+        DBG_CXBIND2 ( "restore bind type", id -> name -> name, id -> type_id, ignore, cx_old );
     }
 
     count = VectorLength ( & self -> schem );
     for ( i = 0; i < count; ++ i )
     {
-        SIndirectConst *ic = VectorGet ( & self -> schem, i );
-        if ( ic -> td == NULL )
-            ic -> func = VectorGet ( prior, ic -> id );
-        else
-            ic -> expr = VectorGet ( prior, ic -> id );
+        const SIndirectConst *ic = VectorGet ( & self -> schem, i );
+        assert ( ic != NULL );
+
+        /* get the old constant value expression */
+        cx_old = VectorGet ( prior, ic -> pos );
+
+        /* restore the binding vector */
+        rc = VectorSwap ( cx_bind, ic -> expr_id, cx_old, & ignore );
+        assert ( rc == 0 );
+
+        DBG_CXBIND2 ( "restore bind const", ic -> name -> name, ic -> expr_id, ignore, cx_old );
     }
 
     VectorWhack ( prior, NULL, NULL );
 }
 
-void SFunctionRestFactParms ( const SFunction *self, Vector *prior )
+void SFunctionRestFactParms ( const SFunction *self, Vector *prior, Vector *cx_bind )
 {
+    rc_t rc;
     uint32_t i, count;
+    void * cx_old, * ignore;
 
-    /* whack extra fake params created with varargs - see above */
-    count = VectorLength ( &self->fact.parms );
-    for (i = VectorLength ( prior ); i < count; ) {
-        SIndirectConst *ic;
-
-        assert ( i != 0 );
-        VectorRemove ( ( Vector* ) & self -> fact . parms, -- count, ( void** ) & ic );
-        free ( ic );
-    }
-
-    assert ( VectorLength ( & self -> fact . parms ) == VectorLength ( prior ) );
+    /* must have whole thing in prior */
+    assert ( VectorLength ( prior ) == VectorLength ( & self -> fact . parms ) );
 
     /* restore prior values */
-    assert ( count == i );
+    count = VectorLength ( & self -> fact . parms );
     for ( i = 0; i < count; ++ i )
     {
-        SIndirectConst *ic = VectorGet ( & self -> fact . parms, i );
-        if ( ic -> td == NULL )
-            ic -> func = VectorGet ( prior, ic -> id );
-        else
-            ic -> expr = VectorGet ( prior, ic -> id );
+        const SIndirectConst *ic = VectorGet ( & self -> fact . parms, i );
+        assert ( ic != NULL );
+
+        /* get the old constant value expression */
+        cx_old = VectorGet ( prior, ic -> pos );
+
+        /* restore the binding vector */
+        rc = VectorSwap ( cx_bind, ic -> expr_id, cx_old, & ignore );
+        assert ( rc == 0 );
+
+        DBG_CXBIND2 ( "restore bind const", ic -> name -> name, ic -> expr_id, ignore, cx_old );
     }
 
     VectorWhack ( prior, NULL, NULL );
@@ -554,7 +682,6 @@ void CC SFunctionMark ( void * item, void * data )
         SExpressionMark ( ( void * )self -> rt, data );
         SFormParmlistMark ( & self -> fact, SIndirectConstMark, schema );
         SFormParmlistMark ( & self -> func, SProductionMark, schema );
-        VectorForEach ( & self -> type, false, SIndirectTypeMark, data );
         VectorForEach ( & self -> schem, false, SIndirectConstMark, data );
 
         if ( self -> script )
@@ -752,7 +879,7 @@ rc_t formal_symbol ( KSymTable *tbl, KTokenSource *src, KToken *t,
  */
 static
 rc_t param_formal ( KSymTable *tbl, KTokenSource *src, KToken *t,
-    const SchemaEnv *env, const VSchema *self, SFormParmlist *sig )
+    const SchemaEnv *env, VSchema *self, SFormParmlist *sig )
 {
     rc_t rc;
 
@@ -824,7 +951,7 @@ rc_t param_formal ( KSymTable *tbl, KTokenSource *src, KToken *t,
  */
 static
 rc_t fact_formal ( KSymTable *tbl, KTokenSource *src, KToken *t,
-    const SchemaEnv *env, const VSchema *self, SFormParmlist *sig )
+    const SchemaEnv *env, VSchema *self, SFormParmlist *sig )
 {
     rc_t rc;
     SIndirectConst *param = malloc ( sizeof * param );
@@ -834,24 +961,27 @@ rc_t fact_formal ( KSymTable *tbl, KTokenSource *src, KToken *t,
         return KTokenRCExplain ( t, klogInt, rc );
     }
 
-    param -> expr = NULL;
-    param -> func = NULL;
+    param -> td = NULL;
+    param -> expr_id = 0;
 
+#if ACCEPT_FUNCTION_AS_FACT_PARAM
     /* type could be 'function' */
     if ( t -> id == kw_function )
-    {
-        param -> td = NULL;
         next_token ( tbl, src, t );
-    }
 
     /* should be a typedecl */
     else
+#endif
     {
         rc = type_expr ( tbl, src, t, env, self, & param -> td );
         if ( rc != 0 )
         {
             free ( param );
-            return KTokenFailure ( t, klogErr, rc, "function or data type" );
+            return KTokenFailure ( t, klogErr, rc,
+#if ACCEPT_FUNCTION_AS_FACT_PARAM
+                                   "function or "
+#endif
+                                   "data type" );
         }
     }
 
@@ -865,12 +995,15 @@ rc_t fact_formal ( KSymTable *tbl, KTokenSource *src, KToken *t,
     param -> name = t -> sym;
 
     /* store as a parameter */
-    rc = VectorAppend ( & sig -> parms, & param -> id, param );
+    rc = VectorAppend ( & sig -> parms, & param -> pos, param );
     if ( rc != 0 )
     {
         SIndirectConstWhack ( param, NULL );
         return KTokenRCExplain ( t, klogInt, rc );
     }
+
+    /* set binding constant */
+    param -> expr_id = ++ self -> num_indirect;
 
     next_token ( tbl, src, t );
     return 0;
@@ -882,9 +1015,9 @@ rc_t fact_formal ( KSymTable *tbl, KTokenSource *src, KToken *t,
  */
 static
 rc_t formal_params ( KSymTable *tbl, KTokenSource *src, KToken *t,
-    const SchemaEnv *env, const VSchema *self, SFormParmlist *sig,
+    const SchemaEnv *env, VSchema *self, SFormParmlist *sig,
     rc_t ( * formal_param ) ( KSymTable*, KTokenSource*, KToken*,
-        const SchemaEnv*, const VSchema*, SFormParmlist* ) )
+        const SchemaEnv*, VSchema*, SFormParmlist* ) )
 {
     while ( t -> sym != NULL || t -> id == eIdent )
     {
@@ -909,9 +1042,9 @@ rc_t formal_params ( KSymTable *tbl, KTokenSource *src, KToken *t,
  */
 static
 rc_t formal_signature ( KSymTable *tbl, KTokenSource *src, KToken *t,
-    const SchemaEnv *env, const VSchema *self, SFormParmlist *sig,
+    const SchemaEnv *env, VSchema *self, SFormParmlist *sig,
     rc_t ( * formal_param ) ( KSymTable*, KTokenSource*, KToken*,
-        const SchemaEnv*, const VSchema*, SFormParmlist* ) )
+        const SchemaEnv*, VSchema*, SFormParmlist* ) )
 {
     /* read mandatory parameters */
     rc_t rc = formal_params ( tbl, src, t, env, self, sig, formal_param );
@@ -952,7 +1085,7 @@ rc_t formal_signature ( KSymTable *tbl, KTokenSource *src, KToken *t,
  */
 static
 rc_t parm_signature ( KSymTable *tbl, KTokenSource *src, KToken *t,
-    const SchemaEnv *env, const VSchema *self, SFormParmlist *sig )
+    const SchemaEnv *env, VSchema *self, SFormParmlist *sig )
 {
     /* open list */
     rc_t rc = expect ( tbl, src, t, eLeftParen, "(", true );
@@ -974,7 +1107,7 @@ rc_t parm_signature ( KSymTable *tbl, KTokenSource *src, KToken *t,
  *                    | '...'
  */
 rc_t fact_signature ( KSymTable *tbl, KTokenSource *src, KToken *t,
-    const SchemaEnv *env, const VSchema *self, SFormParmlist *sig )
+    const SchemaEnv *env, VSchema *self, SFormParmlist *sig )
 {
     /* open list */
     rc_t rc = expect ( tbl, src, t, eLeftAngle, "<", true );
@@ -1062,7 +1195,7 @@ rc_t schema_signature ( KSymTable *tbl, KTokenSource *src, KToken *t,
 
             /* initialize to raw format,
                undefined type, and no dimension */
-            formal -> type = NULL;
+            formal -> type_id = 0;
 
             /* create symbol */
             rc = KSymTableCreateConstSymbol ( tbl, & formal -> name,
@@ -1088,6 +1221,8 @@ rc_t schema_signature ( KSymTable *tbl, KTokenSource *src, KToken *t,
                 free ( formal );
                 return KTokenRCExplain ( t, klogInt, rc );
             }
+
+            formal -> type_id = ++ self -> num_indirect;
         }
         else
         {
@@ -1099,9 +1234,8 @@ rc_t schema_signature ( KSymTable *tbl, KTokenSource *src, KToken *t,
                 return KTokenRCExplain ( t, klogInt, rc );
             }
 
-            /* initialize with no value or function */
-            formal -> expr = NULL;
-            formal -> func = NULL;
+            /* initialize with no value */
+            formal -> expr_id = 0;
             formal -> td = td;
 
             /* create symbol */
@@ -1110,15 +1244,17 @@ rc_t schema_signature ( KSymTable *tbl, KTokenSource *src, KToken *t,
             if ( rc == 0 )
             {
                 /* record formal */
-                rc = VectorAppend ( & sig -> schem, & formal -> id, formal );
+                rc = VectorAppend ( & sig -> schem, & formal -> pos, formal );
                 if ( rc == 0 )
-                    formal -> id += VectorLength ( & sig -> type );
+                    formal -> pos += VectorLength ( & sig -> type );
             }
             if ( rc != 0 )
             {
                 SIndirectConstWhack ( formal, NULL );
                 return KTokenRCExplain ( t, klogInt, rc );
             }
+
+            formal -> expr_id = ++ self -> num_indirect;
         }
     }
     while ( next_token ( tbl, src, t ) -> id == eComma );
@@ -1310,8 +1446,9 @@ rc_t func_decl ( KSymTable *tbl, KTokenSource *src, KToken *t,
         if ( t -> id == eLeftCurly )
         {
 #if SLVL >= 4
-            /* if user already specified extern function */
-            if ( type == eFunction )
+            /* if user already specified extern function
+               or if user specified vararg factory params */
+            if ( type == eFunction || f -> fact . vararg )
 #endif
                 return KTokenExpected ( t, klogErr, "; or =" );
 #if SLVL >= 4

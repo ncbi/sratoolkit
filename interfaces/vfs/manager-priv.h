@@ -43,17 +43,12 @@
 extern "C" {
 #endif
 
-#define ENV_KRYPTO_PWFILE       "VDB_PWFILE"
-#define KFG_KRYPTO_PWFILE         "krypto/pwfile"
-#define KFG_KRYPTO_PWFD         "krypto/pwfd"
-
-
 struct VFSManager;
 struct KDirectory;
 struct KFile;
 struct VPath;
 struct SRAPath;
-
+struct KConfig;
 
 /* this resembles the interface functions in manager.h
  * but allows the use of a KDirectory for the base instead of a VPath
@@ -72,6 +67,7 @@ VFS_EXTERN rc_t CC VFSManagerResolvePathRelativeDir (const struct VFSManager * s
 
 /* bad interface.  Bad! Bad!
  * but needed to hack VFS into KDB
+ * MORE THAN BAD. REFLECTS A TOTAL MISUNDERSTANDING OF FS.
  */
 VFS_EXTERN rc_t CC VFSManagerOpenFileReadDirectoryRelative (const struct VFSManager *self, 
     const struct KDirectory * dir, struct KFile const **f, const struct VPath * path);
@@ -88,8 +84,9 @@ VFS_EXTERN rc_t CC VFSManagerOpenDirectoryReadDirectoryRelativeDecrypt ( const s
 VFS_EXTERN rc_t CC VFSManagerOpenDirectoryUpdateDirectoryRelative ( const struct VFSManager *self,
     struct KDirectory const * dir, struct KDirectory **d, const struct VPath * path );
 
+#define VPathMakeDirectoryRelative LegacyVPathMakeDirectoryRelative
 VFS_EXTERN rc_t CC VPathMakeDirectoryRelative ( struct VPath ** new_path,
-    struct KDirectory const * dir, const char * posix_path, struct SRAPath * srapathmgr);
+    struct KDirectory const * dir, const char * posix_path);
 
 
 VFS_EXTERN rc_t CC VFSManagerOpenFileReadDecrypt (const struct VFSManager *self,
@@ -104,9 +101,23 @@ VFS_EXTERN rc_t CC VFSManagerWGAValidateHack (const struct VFSManager * self,
                                               const struct KFile * file,
                                               const char * path); /* we'll move this to a vpath */
 
+/*
+ * Access to VFSManager's instance of configuration object, for testing purposes
+ */
+VFS_EXTERN const struct KConfig* CC VFSManagerGetConfig(const struct VFSManager * self);
 
+/* Make using a custom KConfig
+ */
+VFS_EXTERN rc_t CC VFSManagerMakeFromKfg ( struct VFSManager ** pmanager,
+    struct KConfig * cfg );
 
-
+/*
+ * Set/get pathname of the object_id/object_name bindings file (used for testing; should go away when the functionality
+ *  is rolled into KeyRing server)
+ * Set to NULL to use the default location ("~/.ncbi/objid.mapping")
+ */
+VFS_EXTERN void VFSManagerSetBindingsFile(struct VFSManager * self, const char* path);
+VFS_EXTERN const char* VFSManagerGetBindingsFile(struct VFSManager * self);
 
 #ifdef __cplusplus
 }

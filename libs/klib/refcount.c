@@ -24,19 +24,16 @@
 *
 */
 
-#include <klib/extern.h>
-#include <sysalloc.h>
-
-#ifndef TRACK_REFERENCES
 #define TRACK_REFERENCES 1
-#endif
+#define INLINE_REFCOUNT 0
 
-#undef INLINE_REFCOUNT
-/* #define INLINE_REFCOUNT 1 */
+#include <klib/extern.h>
 
 #include <klib/refcount.h>
 #include <klib/log.h>
 #include <atomic32.h>
+
+#include <sysalloc.h>
 
 #include <limits.h>
 #include <stdlib.h>
@@ -101,8 +98,7 @@
  *
  *  "name" [ IN ] - NUL-terminated name of instance
  */
-#if INLINE_REFCOUNT
-#else
+#if ! INLINE_REFCOUNT
 LIB_EXPORT void CC KRefcountInit ( KRefcount *refcount, int value,
     const char *clsname, const char *op, const char *name )
 {
@@ -136,8 +132,7 @@ LIB_EXPORT int CC KDualRefInit ( KDualRef *refcount, int owned, int dep,
 /* Whack
  *  tear down whatever was built up in object
  */
-#if INLINE_REFCOUNT
-#else
+#if ! INLINE_REFCOUNT
 LIB_EXPORT void CC KRefcountWhack ( KRefcount *self, const char *clsname )
 {
     REFMSG ( clsname, "whack", self );
@@ -163,8 +158,7 @@ LIB_EXPORT void CC KDualRefWhack ( KDualRef *self, const char *clsname )
  *    krefLimit    : reference was NOT added, too many references
  *    krefNegative : reference was NOT added, prior value was negative
  */
-#if INLINE_REFCOUNT
-#else
+#if ! INLINE_REFCOUNT
 LIB_EXPORT int CC KRefcountAdd ( const KRefcount *self, const char *clsname )
 {
 #if DETECT_ZERO_STATE
@@ -288,8 +282,7 @@ LIB_EXPORT int CC KDualRefAdd ( const KDualRef *self, const char *clsname )
  *    krefZero     : reference was dropped, and no further owned refernces exist
  *    krefNegative : reference was NOT dropped, as resultant count would be negative
  */
-#if INLINE_REFCOUNT
-#else
+#if ! INLINE_REFCOUNT
 LIB_EXPORT int CC KRefcountDrop ( const KRefcount *self, const char *clsname )
 {
 #if DETECT_ZERO_STATE
@@ -346,8 +339,7 @@ LIB_EXPORT int CC KDualRefDrop ( const KDualRef *self, const char *clsname )
  *    krefZero     : reference was added, but prior value was zero
  *    krefNegative : reference was NOT added, prior value was negative
  */
-#if INLINE_REFCOUNT
-#else
+#if ! INLINE_REFCOUNT
 LIB_EXPORT int CC KRefcountAddDep ( const KRefcount *self, const char *clsname )
 {
 #if DETECT_ZERO_STATE
@@ -461,8 +453,7 @@ LIB_EXPORT int CC KDualRefAddDep ( const KDualRef *self, const char *clsname )
  *    krefZero     : reference was dropped, and no further dependent refernces exist
  *    krefNegative : reference was NOT dropped, as resultant count would be negative
  */
-#if INLINE_REFCOUNT
-#else
+#if ! INLINE_REFCOUNT
 LIB_EXPORT int CC KRefcountDropDep ( const KRefcount *self, const char *clsname )
 {
 #if DETECT_ZERO_STATE

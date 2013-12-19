@@ -63,12 +63,12 @@ LIB_EXPORT int CC snprintf ( char * buffer, size_t bufsize, const char * format,
     rc = string_vprintf ( buffer, bufsize, &size, format, args );
     if ( rc == 0 )
     {
-        ret = size;
+        ret = ( int ) size;
     }
     else
     {
         if ( ( GetRCState( rc ) == rcInsufficient )&&( GetRCObject( rc ) == rcBuffer ) )
-            ret = size;
+            ret = ( int ) size;
         else
             ret = -1;
     }
@@ -94,7 +94,7 @@ rc_t CC KWrt_DefaultWriter( void * self, const char * buffer, size_t bufsize, si
     rc = 0;
 
     total = 0;
-    for (remaining = bufsize; remaining > 0; remaining -= num_written)
+    for (remaining = ( DWORD ) bufsize; remaining > 0; remaining -= num_written)
     {
         if (WriteFile (handle, pbyte, remaining, &num_written, NULL) == 0)
         {       

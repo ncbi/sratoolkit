@@ -417,7 +417,7 @@ typedef struct visit_ctx
 static rc_t CC on_seq_id( uint64_t key, int64_t value, void *user_data )
 {
     visit_ctx * vctx = user_data;
-    return vctx->f( ( int64_t )key, value, vctx->user_data );
+    return vctx->f( value, ( int64_t )key, vctx->user_data );
 }
 
 

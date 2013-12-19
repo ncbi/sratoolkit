@@ -527,13 +527,19 @@ static rc_t reportToStdErrSet(const Report* self, KWrtHandler* old_handler) {
 /* Finalize:
  * If (rc_in != 0) then report environment information.
  * Then clean itself.
+ *
+ * When "--" OPTION_REPORT "always" command line argument is passed
+ * then the report [usually] goes to strerr.
+ *
+ * When aForce == truethen the report goes to strout:
+ * it is done to insert it into test-sra output.
  */
-LIB_EXPORT rc_t CC ReportFinalize(rc_t rc_in) {
+static rc_t _ReportFinalize(rc_t rc_in, bool aForce) {
     rc_t rc = 0;
 
     const char* report_arg = NULL;
 
-    bool force =  rc_in != 0;
+    bool force = rc_in != 0;
 
     Report* self = NULL;
     ReportGet(&self);
@@ -553,6 +559,11 @@ LIB_EXPORT rc_t CC ReportFinalize(rc_t rc_in) {
                 force = false;
             }
         }
+    }
+
+    if (!force && aForce) {
+        force = true;
+        self -> silence = false;
     }
 
     if (self->argv) {
@@ -584,7 +595,7 @@ LIB_EXPORT rc_t CC ReportFinalize(rc_t rc_in) {
                                "type=%s", self->argv[i + 1]));*/
 
         if (force) {
-            if (self->hasZombies) {
+            if (self->hasZombies && !aForce) {
                 KOutHandlerSetStdErr();
                 if (self->object != NULL) {
                     OUTMSG(("\nThe archive '%s' may be truncated: "
@@ -603,7 +614,9 @@ LIB_EXPORT rc_t CC ReportFinalize(rc_t rc_in) {
                 bool to_file = false;
                 KWrtHandler old_handler;
                 if (rc_in == 0) {
-                    reportToStdErrSet(self, &old_handler);
+                    if (!aForce) {
+                        reportToStdErrSet(self, &old_handler);
+                    }
                 }
                 else {
                     rc_t rc2 = 0;
@@ -647,7 +660,8 @@ LIB_EXPORT rc_t CC ReportFinalize(rc_t rc_in) {
 
                 if ( self -> report_config != NULL )
                 {
-                    rc_t rc2 = ( * self -> report_config ) ( & report_funcs, indent + 1);
+                    rc_t rc2 = ( * self -> report_config )
+                        ( & report_funcs, indent + 1);
                     if (rc == 0 && rc2 != 0)
                     {   rc = rc2; }
                 }
@@ -663,9 +677,16 @@ LIB_EXPORT rc_t CC ReportFinalize(rc_t rc_in) {
                 if ( self -> report_software != NULL )
                 {
                     const char *argv_0 = self -> argv ? self -> argv [ 0 ] : "";
-                    rc_t rc2 = ( * self -> report_software ) ( & report_funcs, indent + 1, argv_0, self -> date, self -> tool_ver );
+                    rc_t rc2 = ( * self -> report_software )
+                        ( & report_funcs, indent + 1,
+                            argv_0, self -> date, self -> tool_ver );
                     if (rc == 0 && rc2 != 0)
                     {   rc = rc2; }
+                }
+
+                if (self->hasZombies) {
+                    OUTMSG(("\nOne of archives may be truncated: "
+                        "It should be redownloaded.\n"));
                 }
 
                 reportClose(indent, tag);
@@ -689,6 +710,18 @@ LIB_EXPORT rc_t CC ReportFinalize(rc_t rc_in) {
     ReportRelease();
 
     return rc;
+}
+
+/* Finalize:
+ * If (rc_in != 0) then report environment information.
+ * Then clean itself.
+ */
+LIB_EXPORT rc_t CC ReportFinalize(rc_t rc_in) {
+    return _ReportFinalize(rc_in, false);
+}
+
+LIB_EXPORT rc_t CC ReportForceFinalize(void) {
+    return _ReportFinalize(0, true);
 }
 
 static

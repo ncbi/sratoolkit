@@ -648,7 +648,7 @@ static const uint32_t rcon[] = {
 /**
  * Expand the cipher key into the encryption key schedule.
  */
-int AES_set_encrypt_key(const uint8_t *userKey, uint32_t bits,
+int AES_set_encrypt_key(const uint8_t *userKey, const uint32_t bits,
 			AES_KEY *key) {
 
 	uint32_t *rk;

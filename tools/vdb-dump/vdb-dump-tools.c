@@ -147,6 +147,7 @@ static rc_t vdb_dump_hex_ascii( p_dump_str s, const p_dump_src src,
         src_ptr[ dst ] = 0;
         if ( rc == 0 )
             rc = vds_append_fmt( s, dst, "%.*s", dst, tmp );
+        free( tmp );
     }
     else
         rc = RC( rcVDB, rcNoTarg, rcConstructing, rcMemory, rcExhausted );

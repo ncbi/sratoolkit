@@ -49,6 +49,8 @@
 #define OUTPUT_BUFFER_SIZE ( 128 * 1024 )
 
 uint32_t nreads_max = 0;
+uint32_t quality_N_limit = 0;
+bool g_legacy_report = false;
 
 typedef struct SRASplitterFile_struct {
     SLNode dad;
@@ -715,81 +717,118 @@ rc_t SRASplitter_ResolveSelf(const SRASplitter* self, enum RCContext ctx, SRASpl
     return 0;
 }
 
-rc_t SRASplitter_AddSpot(const SRASplitter* cself, spotid_t spot, readmask_t* readmask)
+rc_t SRASplitter_AddSpot( const SRASplitter * cself, spotid_t spot, readmask_t * readmask )
 {
-    rc_t rc = 0, rc2 = 0;
-    SRASplitter* self = NULL;
-
-    if( (rc = SRASplitter_ResolveSelf(cself, rcExecuting, &self)) == 0 ) {
-
-        if( self->type == eSplitterRead ) {
+    SRASplitter * self = NULL;
+    rc_t rc = SRASplitter_ResolveSelf( cself, rcExecuting, &self );
+    if ( rc == 0 )
+    {
+        if ( self->type == eSplitterRead )
+        {
             const SRASplitter_Keys* keys = NULL;
             uint32_t key_qty = 0;
             int32_t i, j, k;
-            make_readmask(used_readmasks);
+            make_readmask( used_readmasks );
 
-            clear_readmask(used_readmasks);
-            rc = self->GetKeySet(cself, &keys, &key_qty, spot, readmask);
-            for(i = 0; rc == 0 && i < key_qty; i++ ) {
-                if( keys[i].key != NULL && !isset_readmask(used_readmasks, i) ) {
-                    make_readmask(local_readmask);
-                    copy_readmask(keys[i].readmask, local_readmask);
+            clear_readmask( used_readmasks );
+            rc = self->GetKeySet( cself, &keys, &key_qty, spot, readmask );
+
+            for ( i = 0; rc == 0 && i < key_qty; i++ )
+            {
+                if ( keys[ i ].key != NULL && !isset_readmask( used_readmasks, i ) )
+                {
+                    make_readmask( local_readmask );
+                    copy_readmask( keys[ i ].readmask, local_readmask );
                     /* merge readmasks from duplicate keys in array */
-                    for(j = i + 1; j < key_qty; j++) {
-                        if( keys[i].key == keys[j].key || strcmp(keys[i].key, keys[j].key) == 0 ) {
-                            set_readmask(used_readmasks, j);
-                            for(k = 0; k < nreads_max; k++) {
-                                local_readmask[k] |= keys[j].readmask[k];
+                    for ( j = i + 1; j < key_qty; j++ )
+                    {
+                        if ( keys[ i ].key == keys[ j ].key || strcmp( keys[ i ].key, keys[ j ].key ) == 0 )
+                        {
+                            set_readmask( used_readmasks, j );
+                            for ( k = 0; k < nreads_max; k++ )
+                            {
+                                local_readmask[ k ] |= keys[ j ].readmask[ k ];
                             }
                         }
                     }
                     /* leave reads only allowed by previous object in chain */
-                    for(j = 0, k = 0; k < nreads_max; k++) {
-                        local_readmask[k] &= readmask[k];
-                        if( isset_readmask(local_readmask, k) ) {
+                    for ( j = 0, k = 0; k < nreads_max; k++ )
+                    {
+                        local_readmask[ k ] &= readmask[ k ];
+                        if ( isset_readmask( local_readmask, k ) )
+                        {
                             j++;
                         }
                     }
-                    if( j > 0 && (rc = SRASplitter_FindNextSplitter(self, keys[i].key)) == 0 ) {
+                    if ( j > 0 )
+                    {
+                        rc = SRASplitter_FindNextSplitter( self, keys[ i ].key );
+                        if ( rc == 0 )
+                        {
+                            /* push spot to next splitter in chain */
+                            rc = SRASplitterFiler_PushKey( self->last_found->key );
+                            if ( rc == 0 )
+                            {
+                                /* here comes RECURSION!!! */
+                                rc_t rc2;
+                                rc = SRASplitter_AddSpot( self->last_found->child.splitter, spot, local_readmask );
+                                rc2 = SRASplitterFiler_PopKey();
+                                rc = rc ? rc : rc2;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        else if ( self->type == eSplitterSpot )
+        {
+            const char* key = NULL;
+            make_readmask( new_readmask );
+            copy_readmask( readmask, new_readmask );
+            rc = self->GetKey( cself, &key, spot, new_readmask );
+            if ( rc == 0 && key != NULL )
+            {
+                int32_t j, k;
+                /* leave reads only allowed by previous object in chain */
+                for( j = 0, k = 0; k < nreads_max; k++ )
+                {
+                    readmask[ k ] &= new_readmask[ k ];
+                    if ( isset_readmask( readmask, k ) )
+                    {
+                        j++;
+                    }
+                }
+                if ( j > 0 )
+                {
+                    rc = SRASplitter_FindNextSplitter( self, key );
+                    if ( rc == 0 )
+                    {
                         /* push spot to next splitter in chain */
-                        if( (rc = SRASplitterFiler_PushKey(self->last_found->key)) == 0 ) {
-                            rc = SRASplitter_AddSpot(self->last_found->child.splitter, spot, local_readmask);
+                        rc = SRASplitterFiler_PushKey( self->last_found->key );
+                        if ( rc == 0 )
+                        {
+                            /* here comes RECURSION!!! */
+                            rc_t rc2;
+                            rc = SRASplitter_AddSpot( self->last_found->child.splitter, spot, readmask );
                             rc2 = SRASplitterFiler_PopKey();
                             rc = rc ? rc : rc2;
                         }
                     }
                 }
             }
-        } else if( self->type == eSplitterSpot ) {
-            const char* key = NULL;
-            make_readmask(new_readmask);
-            copy_readmask(readmask, new_readmask);
-            if( (rc = self->GetKey(cself, &key, spot, new_readmask)) == 0 && key != NULL ) {
-                int32_t j, k;
-                /* leave reads only allowed by previous object in chain */
-                for(j = 0, k = 0; k < nreads_max; k++) {
-                    readmask[k] &= new_readmask[k];
-                    if( isset_readmask(readmask, k) ) {
-                        j++;
-                    }
-                }
-                if( j > 0 && (rc = SRASplitter_FindNextSplitter(self, key)) == 0 ) {
-                    /* push spot to next splitter in chain */
-                    if( (rc = SRASplitterFiler_PushKey(self->last_found->key)) == 0 ) {
-                        rc = SRASplitter_AddSpot(self->last_found->child.splitter, spot, readmask);
-                        rc2 = SRASplitterFiler_PopKey();
-                        rc = rc ? rc : rc2;
-                    }
-                }
-            }
-        } else if( self->type == eSplitterFormat ) {
-            rc = self->Dump(cself, spot, readmask);
-        } else {
-            rc = RC(rcExe, rcFile, rcExecuting, rcInterface, rcUnsupported);
+        }
+        else if ( self->type == eSplitterFormat )
+        {
+            rc = self->Dump( cself, spot, readmask );
+        }
+        else
+        {
+            rc = RC( rcExe, rcFile, rcExecuting, rcInterface, rcUnsupported );
         }
     }
     return rc;
 }
+
 
 rc_t SRASplitter_Release(const SRASplitter* cself)
 {

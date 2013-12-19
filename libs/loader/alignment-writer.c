@@ -113,7 +113,7 @@ rc_t AlignmentStartUpdatingSpotIds(AlignmentWriter *const self)
     return 0;
 }
 
-rc_t AlignmentGetSpotKey(AlignmentWriter *const self, uint64_t * keyId)
+rc_t AlignmentGetSpotKey(AlignmentWriter * const self, uint64_t *keyId, int64_t *alignId, bool *isPrimary)
 {
     rc_t rc;
     
@@ -126,8 +126,11 @@ rc_t AlignmentGetSpotKey(AlignmentWriter *const self, uint64_t * keyId)
         ++self->st;
     case 1:
         rc = TableWriterAlgn_TmpKey(self->tbl[tblPrimary], ++self->rowId, keyId);
-        if (rc == 0)
+        if (rc == 0) {
+            *alignId = self->rowId;
+            *isPrimary = true;
             break;
+        }
         ++self->st;
         if (GetRCState(rc) != rcNotFound || GetRCObject(rc) != rcRow || self->tbl[tblSecondary] == NULL)
             break;
@@ -139,8 +142,11 @@ rc_t AlignmentGetSpotKey(AlignmentWriter *const self, uint64_t * keyId)
         ++self->st;
     case 3:
         rc = TableWriterAlgn_TmpKey(self->tbl[tblSecondary], ++self->rowId, keyId);
-        if (rc == 0)
+        if (rc == 0) {
+            *alignId = self->rowId;
+            *isPrimary = false;
             break;
+        }
         if (GetRCState(rc) != rcNotFound || GetRCObject(rc) != rcRow)
             break;
         ++self->st;
@@ -152,13 +158,24 @@ rc_t AlignmentGetSpotKey(AlignmentWriter *const self, uint64_t * keyId)
     return rc;
 }
 
-rc_t AlignmentWriteSpotId(AlignmentWriter * const self, int64_t const spotId)
+rc_t AlignmentGetRefPos(AlignmentWriter *const self, int64_t row, ReferenceStart *const rslt)
 {
     switch (self->st) {
     case 1:
-        return TableWriterAlgn_Write_SpotId(self->tbl[tblPrimary], self->rowId, spotId);
+        return TableWriterAlgn_RefStart(self->tbl[tblPrimary], self->rowId, rslt);
     case 3:
-        return TableWriterAlgn_Write_SpotId(self->tbl[tblSecondary], self->rowId, spotId);
+    default:
+        return RC(rcAlign, rcTable, rcUpdating, rcSelf, rcInconsistent);
+    }
+}
+
+rc_t AlignmentUpdateInfo(AlignmentWriter * const self, int64_t const spotId, int64_t const mateId, ReferenceStart const *mateRefPos)
+{
+    switch (self->st) {
+    case 1:
+        return TableWriterAlgn_Write_SpotInfo(self->tbl[tblPrimary], self->rowId, spotId, mateId, mateRefPos);
+    case 3:
+        return TableWriterAlgn_Write_SpotInfo(self->tbl[tblSecondary], self->rowId, spotId, 0, 0);
     default:
         return RC(rcAlign, rcTable, rcUpdating, rcSelf, rcInconsistent);
     }
@@ -174,7 +191,23 @@ rc_t AlignmentWhack(AlignmentWriter * const self, bool const commit)
     return rc ? rc : rc2;
 }
 
-void AlignmentRecordInit(AlignmentRecord *self, void *buffer, unsigned readlen, char **endp, bool expectUnsorted)
+size_t AlignmentRecordBufferSize(size_t const readlen, bool hasMismatchQual)
+{
+    AlignmentRecord const *const dummy;
+    size_t const elemSize = sizeof(AR_OFFSET(*dummy)[0])
+                          + sizeof(AR_HAS_MISMATCH(*dummy)[0])
+                          + sizeof(AR_HAS_OFFSET(*dummy)[0])
+                          + sizeof(AR_MISMATCH(*dummy)[0])
+                          + (hasMismatchQual ? sizeof(AR_MISMATCH_QUAL(*dummy)[0]) : 0);
+    
+    return elemSize * readlen;
+}
+
+void AlignmentRecordInit(AlignmentRecord *self, void *buffer, unsigned readlen,
+                         char **endp,
+                         bool expectUnsorted,
+                         bool hasMismatchQual
+                         )
 {
     memset(self, 0, sizeof(*self));
 
@@ -220,7 +253,10 @@ void AlignmentRecordInit(AlignmentRecord *self, void *buffer, unsigned readlen, 
     self->data.has_ref_offset.elements = readlen;
     self->data.mismatch.buffer = (char *)&AR_HAS_OFFSET(*self)[readlen];
     
-    *endp = (char *)&AR_MISMATCH(*self)[readlen];
+    if (hasMismatchQual) {
+        self->data.mismatch_qual.buffer = (uint8_t *)&AR_MISMATCH(*self)[readlen];
+        *endp = (char *)&AR_MISMATCH_QUAL(*self)[readlen];
+    }
+    else
+        *endp = (char *)&AR_MISMATCH(*self)[readlen];
 }
-
-

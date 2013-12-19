@@ -83,19 +83,8 @@ ALIGN_INFO_OBJ = \
 
 ALIGN_INFO_LIB = \
 	-lkapp \
-	-lsraschema \
-	-dalign-reader \
-	$(READONLY_SCHEMA_LIBS) \
-	-dksrch \
-	-lvdb \
-	-lkdb \
-	-lvfs \
-	-lkurl \
-	-lkrypto \
-	-lkfg \
-	-lkfs \
-	-lkproc \
-	-lklib \
+	-lncbi-vdb \
+	-lxml2 \
 	-lm
 
 $(BINDIR)/align-info: $(ALIGN_INFO_OBJ)

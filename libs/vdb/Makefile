@@ -29,28 +29,22 @@ TOP ?= $(shell ../../build/abspath.sh ../..)
 MODULE = libs/vdb
 
 INT_LIBS = \
-
-EXT_LIBS = \
 	libvdb \
 	libwvdb
 
 ALL_LIBS = \
-	$(INT_LIBS) \
-	$(EXT_LIBS)
+	$(INT_LIBS)
 
 include $(TOP)/build/Makefile.env
 
 #-------------------------------------------------------------------------------
 # outer targets
 #
-all std: vers-includes
+all std: makedirs
 	@ $(MAKE_CMD) $(TARGDIR)/std
 
-$(INT_LIBS): vers-includes
+$(INT_LIBS): makedirs
 	@ $(MAKE_CMD) $(ILIBDIR)/$@
-
-$(EXT_LIBS): vers-includes
-	@ $(MAKE_CMD) $(LIBDIR)/$@
 
 .PHONY: all std $(ALL_LIBS)
 
@@ -58,17 +52,9 @@ $(EXT_LIBS): vers-includes
 # std
 #
 $(TARGDIR)/std: \
-	$(addprefix $(ILIBDIR)/,$(INT_LIBS)) \
-	$(addprefix $(LIBDIR)/,$(EXT_LIBS))
+	$(addprefix $(ILIBDIR)/,$(INT_LIBS))
 
 .PHONY: $(TARGDIR)/all $(TARGDIR)/std
-
-#-------------------------------------------------------------------------------
-# vers-includes
-#
-$(TARGDIR)/vers-includes: $(addsuffix .vers.h,$(EXT_LIBS))
-
-.PHONY: $(TARGDIR)/vers-includes
 
 #-------------------------------------------------------------------------------
 # clean
@@ -78,17 +64,9 @@ clean: stdclean
 .PHONY: clean
 
 #-------------------------------------------------------------------------------
-# tag
-#
-tag: \
-	$(addsuffix _tag,$(ALL_LIBS))
-
-.PHONY: tag $(addsuffix _tag,$(ALL_LIBS))
-
-#-------------------------------------------------------------------------------
 # virtual db library
 #
-$(LIBDIR)/libvdb: $(addprefix $(LIBDIR)/libvdb.,$(LIBEXT))
+$(ILIBDIR)/libvdb: $(addprefix $(ILIBDIR)/libvdb.,$(ILIBEXT))
 
 VDBCMN_SRC = \
 	dbmgr-cmn \
@@ -163,19 +141,13 @@ VDB_LIB = \
 	-dklib \
 	-dz
 
-$(LIBDIR)/libvdb.$(SHLX): $(VDB_OBJ)
-	$(LD) --dlib --vers $(SRCDIR) -o $@ $^ $(VDB_LIB)
-
-$(LIBDIR)/libvdb.$(LIBX): $(VDB_OBJ)
-	$(LD) --slib --vers $(SRCDIR) -o $@ $^ $(VDB_LIB)
-
-libvdb_tag: $(VDB_TAGS)
-	@ $(TOP)/build/tag-module.sh $(MODULE) libvdb $(VDB_OBJ)
+$(ILIBDIR)/libvdb.$(LIBX): $(VDB_OBJ)
+	$(LD) --slib -o $@ $^ $(VDB_LIB)
 
 #-------------------------------------------------------------------------------
 # update version
 #
-$(LIBDIR)/libwvdb: $(addprefix $(LIBDIR)/libwvdb.,$(LIBEXT))
+$(ILIBDIR)/libwvdb: $(addprefix $(ILIBDIR)/libwvdb.,$(ILIBEXT))
 
 WVDB_SRC = \
 	$(VDBCMN_SRC) \
@@ -204,11 +176,5 @@ WVDB_LIB = \
 	-dklib \
 	-dz
 
-$(LIBDIR)/libwvdb.$(SHLX): $(WVDB_OBJ)
-	$(LD) --dlib --vers $(SRCDIR) -o $@ $^ $(WVDB_LIB)
-
-$(LIBDIR)/libwvdb.$(LIBX): $(WVDB_OBJ)
-	$(LD) --slib --vers $(SRCDIR) -o $@ $^ $(WVDB_LIB)
-
-libwvdb_tag: $(WVDB_TAGS)
-	@ $(TOP)/build/tag-module.sh $(MODULE) libwvdb $(WVDB_OBJ)
+$(ILIBDIR)/libwvdb.$(LIBX): $(WVDB_OBJ)
+	$(LD) --slib -o $@ $^ $(WVDB_LIB)

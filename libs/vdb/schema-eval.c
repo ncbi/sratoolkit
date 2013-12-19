@@ -906,11 +906,11 @@ rc_t SConstExprResolveAsU16 ( const SConstExpr *self,
     const VSchema *schema, uint16_t *u16, uint32_t capacity );
 
 rc_t SConstExprResolveAsU32 ( const SConstExpr *self,
-    const VSchema *schema, uint32_t *u32, uint32_t capacity )
+    const VSchema *schema, uint32_t *u32, uint32_t capacity, Vector *cx_bind )
 {
     if ( capacity != 1 )
         return RC ( rcVDB, rcExpression, rcEvaluating, rcType, rcUnsupported );
-    return eval_uint_expr ( schema, ( const SExpression* ) self, u32 );
+    return eval_uint_expr ( schema, ( const SExpression* ) self, u32, cx_bind );
 }
 
 rc_t SConstExprResolveAsU64 ( const SConstExpr *self,
@@ -937,7 +937,7 @@ rc_t SConstExprResolveAsUTF32 ( const SConstExpr *self,
  *  resolve type expression to either a VTypedecl or VFormatdecl
  */
 rc_t STypeExprResolveAsFormatdecl ( const STypeExpr *self,
-    const VSchema *schema, VFormatdecl *fd )
+    const VSchema *schema, VFormatdecl *fd, Vector *cx_bind )
 {
     rc_t rc;
     uint32_t dim;
@@ -959,12 +959,12 @@ rc_t STypeExprResolveAsFormatdecl ( const STypeExpr *self,
     if ( self -> id != NULL )
     {
         /* the type needs to be resolved */
-        const STypeExpr *type = ( const STypeExpr* ) self -> id -> type;
+        const STypeExpr *type = ( const STypeExpr* ) VectorGet ( cx_bind, self -> id -> type_id );
         if ( type == NULL )
             return RC ( rcVDB, rcExpression, rcEvaluating, rcType, rcUndefined );
         if ( type -> dad . var != eTypeExpr )
             return RC ( rcVDB, rcExpression, rcEvaluating, rcType, rcIncorrect );
-        rc = STypeExprResolveAsFormatdecl ( type, schema, fd );
+        rc = STypeExprResolveAsFormatdecl ( type, schema, fd, cx_bind );
         if ( rc != 0 )
             return rc;
 
@@ -992,7 +992,7 @@ rc_t STypeExprResolveAsFormatdecl ( const STypeExpr *self,
 
             if ( dx -> var == eConstExpr )
             {
-                rc = SConstExprResolveAsU32 ( ( const SConstExpr* ) dx, schema, & dim, 1 );
+                rc = SConstExprResolveAsU32 ( ( const SConstExpr* ) dx, schema, & dim, 1, cx_bind );
                 if ( rc != 0 )
                     return rc;
                 break;
@@ -1004,7 +1004,7 @@ rc_t STypeExprResolveAsFormatdecl ( const STypeExpr *self,
             ic = ( ( const SSymExpr* ) dx ) -> _sym -> u . obj;
             assert ( ic != NULL );
 
-            dx = ic -> expr;
+            dx = ( const SExpression* ) VectorGet ( cx_bind, ic -> expr_id );
         }
 
         /* must have non-zero dim */
@@ -1019,10 +1019,10 @@ rc_t STypeExprResolveAsFormatdecl ( const STypeExpr *self,
 }
 
 rc_t STypeExprResolveAsTypedecl ( const STypeExpr *self,
-    const VSchema *schema, VTypedecl *td )
+    const VSchema *schema, VTypedecl *td, Vector *cx_bind )
 {
     VFormatdecl fd;
-    rc_t rc = STypeExprResolveAsFormatdecl ( self, schema, & fd );
+    rc_t rc = STypeExprResolveAsFormatdecl ( self, schema, & fd, cx_bind );
     if ( rc == 0 )
     {
         if ( fd . fmt != 0 )
@@ -1053,13 +1053,17 @@ rc_t eval_type_expr ( const VSchema *self, const VTypedecl *td,
  */
 static
 rc_t eval_indirect_expr ( const VSchema *self, const VTypedecl *td,
-    const SSymExpr *expr, SExpression **xp )
+    const SSymExpr *expr, SExpression **xp, Vector *cx_bind )
 {
     const SIndirectConst *ic = expr -> _sym -> u . obj;
 
     /* if the expression is there */
-    if ( ic -> expr != NULL )
-        return eval_const_expr ( self, td, ic -> expr, xp );
+    if ( ic -> expr_id != 0 )
+    {
+        const SExpression *ic_expr = ( const SExpression* ) VectorGet ( cx_bind, ic -> expr_id );
+        if ( ic_expr != NULL )
+            return eval_const_expr ( self, td, ic_expr, xp, cx_bind );
+    }
 
     /* just return self */
     * xp = & ( ( SSymExpr* ) expr ) -> dad;
@@ -1089,10 +1093,12 @@ rc_t eval_func_param_expr ( const VSchema *self, const VTypedecl *td,
     return -1;
 }
 
-struct eval_vector_param_expr_pb {
+struct eval_vector_param_expr_pb
+{
     rc_t rc;
     const VSchema *self;
     const VTypedecl *td;
+    Vector *cx_bind;
     Vector v;
 };
 
@@ -1103,23 +1109,26 @@ void CC vector_free ( void *item, void *data )
 }
 
 static
-bool CC do_eval_vector_param_expr ( void *item, void *data ) {
-    struct eval_vector_param_expr_pb *pb = (struct eval_vector_param_expr_pb *)data;
-    SExpression *rslt = 0;
+bool CC do_eval_vector_param_expr ( void *item, void *data )
+{
+    struct eval_vector_param_expr_pb *pb = data;
+    SExpression *rslt = NULL;
     
-    pb->rc = eval_const_expr(pb->self, pb->td, (struct SExpression const *)item, &rslt);
-    if (pb->rc)
+    pb -> rc = eval_const_expr ( pb -> self, pb -> td, item, & rslt, pb -> cx_bind );
+    if ( pb -> rc != 0 )
         return true;
-    switch (rslt->var) {
+
+    switch ( rslt -> var )
+    {
     case eConstExpr:
-        VectorAppend(&pb->v, 0, rslt);
+        VectorAppend ( & pb -> v, NULL, rslt );
         break;
     case eVectorExpr:
-        free(rslt);
+        free ( rslt );
         break;
     default:
-        free(rslt);
-        pb->rc = RC ( rcVDB, rcExpression, rcEvaluating, rcExpression, rcUnexpected );
+        free ( rslt );
+        pb -> rc = RC ( rcVDB, rcExpression, rcEvaluating, rcExpression, rcUnexpected );
         return true;
     }
 
@@ -1129,16 +1138,17 @@ bool CC do_eval_vector_param_expr ( void *item, void *data ) {
 /* eval-vector-param-expr
  */
 static
-rc_t eval_vector_param_expr ( const VSchema *self,
-    const VTypedecl *td, const SVectExpr *expr, SExpression **xp )
+rc_t eval_vector_param_expr ( const VSchema *self, const VTypedecl *td,
+    const SVectExpr *expr, SExpression **xp, Vector *cx_bind )
 {
     struct eval_vector_param_expr_pb pb;
 
     *xp = NULL;
     
-    pb.rc = 0;
-    pb.self = self;
-    pb.td = td;
+    pb . rc = 0;
+    pb . self = self;
+    pb . td = td;
+    pb . cx_bind = cx_bind;
     VectorInit ( & pb . v, 0, 32 );
     
     VectorDoUntil ( & expr -> expr, 0, do_eval_vector_param_expr, & pb );
@@ -1198,7 +1208,7 @@ rc_t eval_vector_param_expr ( const VSchema *self,
  *  returns non-zero error code if failed
  */
 rc_t eval_const_expr ( const VSchema *self, const VTypedecl *td,
-    const SExpression *expr, SExpression **xp )
+    const SExpression *expr, SExpression **xp, Vector *cx_bind )
 {
     rc_t rc;
     const SConstExpr *s;
@@ -1212,7 +1222,7 @@ rc_t eval_const_expr ( const VSchema *self, const VTypedecl *td,
         break;
 #if SLVL >= 3
     case eIndirectExpr:
-        return eval_indirect_expr ( self, td, ( const SSymExpr* ) expr, xp );
+        return eval_indirect_expr ( self, td, ( const SSymExpr* ) expr, xp, cx_bind );
 #endif
 #if SLVL >= 4
     case eFuncParamExpr:
@@ -1221,7 +1231,7 @@ rc_t eval_const_expr ( const VSchema *self, const VTypedecl *td,
     case eCastExpr:
         return eval_const_cast_expr ( self, td, expr, xp );
     case eVectorExpr:
-        return eval_vector_param_expr(self, td, ( const SVectExpr* )expr, xp);
+        return eval_vector_param_expr(self, td, ( const SVectExpr* ) expr, xp, cx_bind );
     default:
         *xp = NULL;
         return RC ( rcVDB, rcExpression, rcEvaluating, rcExpression, rcUnexpected );
@@ -1241,7 +1251,7 @@ rc_t eval_const_expr ( const VSchema *self, const VTypedecl *td,
  *  special const expression evaluator for uint32_t
  */
 rc_t eval_uint_expr ( const VSchema *self,
-    const SExpression *expr, uint32_t *value )
+    const SExpression *expr, uint32_t *value, Vector *cx_bind )
 {
     rc_t rc;
     VTypedecl td;
@@ -1254,7 +1264,7 @@ rc_t eval_uint_expr ( const VSchema *self,
     /* evaluate expression against type */
     td . type_id = U32_id;
     td . dim = 1;
-    rc = eval_const_expr ( self, & td, expr, ( SExpression** ) & x );
+    rc = eval_const_expr ( self, & td, expr, ( SExpression** ) & x, cx_bind );
     if ( rc != 0 )
         return rc;
 
@@ -1274,7 +1284,7 @@ rc_t eval_uint_expr ( const VSchema *self,
  *  special const expression evaluator for uint32_t
  */
 rc_t eval_uint64_expr ( const VSchema *self,
-    const SExpression *expr, uint64_t *value )
+    const SExpression *expr, uint64_t *value, Vector *cx_bind )
 {
     rc_t rc;
     VTypedecl td;
@@ -1287,7 +1297,7 @@ rc_t eval_uint64_expr ( const VSchema *self,
     /* evaluate expression against type */
     td . type_id = U64_id;
     td . dim = 1;
-    rc = eval_const_expr ( self, & td, expr, ( SExpression** ) & x );
+    rc = eval_const_expr ( self, & td, expr, ( SExpression** ) & x, cx_bind );
     if ( rc != 0 )
         return rc;
 

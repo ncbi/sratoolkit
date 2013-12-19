@@ -23,10 +23,11 @@
 * ===========================================================================
 */
 
-#include "factory-reads.h"
-#include "factory-mappings.h"
-#include "factory-evidence-intervals.h"
 #include "factory-evidence-dnbs.h"
+#include "factory-evidence-intervals.h"
+#include "factory-mappings.h"
+#include "factory-reads.h"
+#include "factory-tag-lfr.h"
 
 #include "file.h"
 
@@ -63,8 +64,9 @@ static const CGFileTypeFactory cg_ETypeXX_names[] = {
     { "JUNCTIONS", cg_eFileType_JUNCTIONS, NULL },
     { "JUNCTION-DNBS", cg_eFileType_JUNCTION_DNBS, NULL },
     /* undocumented */
-    { "VAR-OLPL", cg_eFileType_VAR_OLPL, NULL }
+    { "VAR-OLPL", cg_eFileType_VAR_OLPL, NULL },
     
+    { "TAG_LFR", cg_eFileType_TAG_LFR, CGTagLfr_Make },    
 };
 
 rc_t CGFile15_Make(const CGFileType** self,

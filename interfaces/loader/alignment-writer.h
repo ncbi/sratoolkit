@@ -77,6 +77,9 @@ struct AlignmentRecord {
 #define AR_NUM_MISMATCH(X) ((X).data.mismatch.elements)
 #define AR_MISMATCH(X) ((char *)((X).data.mismatch.buffer))
 
+#define AR_NUM_MISMATCH_QUAL(X) ((X).data.mismatch_qual.elements)
+#define AR_MISMATCH_QUAL(X) ((uint8_t *)((X).data.mismatch_qual.buffer))
+
 #define AR_NUM_OFFSET(X) ((X).data.ref_offset.elements)
 #define AR_OFFSET(X) ((INSDC_coord_zero *)((X).data.ref_offset.buffer))
 
@@ -86,12 +89,21 @@ rc_t AlignmentWriteRecord(AlignmentWriter * const self, AlignmentRecord * const 
 
 rc_t AlignmentStartUpdatingSpotIds(AlignmentWriter * const self);
 
-rc_t AlignmentGetSpotKey(AlignmentWriter * const self, uint64_t *keyId);
+rc_t AlignmentGetSpotKey(AlignmentWriter * const self, uint64_t *keyId, int64_t *alignId, bool *isPrimary);
 
-rc_t AlignmentWriteSpotId(AlignmentWriter * const self, int64_t const spotId);
+rc_t AlignmentGetRefPos(AlignmentWriter *const self, int64_t row, ReferenceStart *const rslt);
+
+rc_t AlignmentUpdateInfo(AlignmentWriter *const self, int64_t const spotId,
+                         int64_t const mateId, ReferenceStart const *const mateRefPos);
 
 rc_t AlignmentWhack(AlignmentWriter * const self, bool const commit);
 
-void AlignmentRecordInit(AlignmentRecord *self, void *buffer, unsigned readlen, char **endp, bool expectUnsorted);
+size_t AlignmentRecordBufferSize(size_t const readlen, bool const hasMismatchQual);
+
+void AlignmentRecordInit(AlignmentRecord *self, void *buffer, unsigned readlen,
+                         char **endp,
+                         bool expectUnsorted,
+                         bool hasMismatchQual
+                         );
 
 #endif

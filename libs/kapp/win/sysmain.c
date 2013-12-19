@@ -35,6 +35,7 @@
 #include <klib/debug.h>
 #include <klib/rc.h>
 #include <klib/text.h>
+#include <klib/report.h> 
 #include <atomic32.h>
 
 /* #define _WIN32_WINNT 0x0500 */

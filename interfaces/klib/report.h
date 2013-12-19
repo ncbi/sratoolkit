@@ -81,6 +81,11 @@ KLIB_EXTERN void CC ReportSilence ( void );
  */
 KLIB_EXTERN rc_t CC ReportFinalize ( rc_t rc );
 
+/* ForceFinalize
+ *  Finalize forcing report generation to stdout
+ */
+KLIB_EXTERN rc_t CC ReportForceFinalize ( void );
+
 
 /* ResetObject
  *  Resets the name of the current object beeing processes(path or accession),

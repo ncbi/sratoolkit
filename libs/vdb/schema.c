@@ -570,7 +570,7 @@ LIB_EXPORT rc_t CC VSchemaRelease ( const VSchema *self )
         {
         case krefWhack:
             return VSchemaWhack ( ( VSchema* ) self );
-        case krefLimit:
+        case krefNegative:
             return RC ( rcVDB, rcMgr, rcReleasing, rcRange, rcExcessive );
         }
     }
@@ -601,7 +601,7 @@ rc_t VSchemaSever ( const VSchema *self )
         {
         case krefWhack:
             return VSchemaWhack ( ( VSchema* ) self );
-        case krefLimit:
+        case krefNegative:
             return RC ( rcVDB, rcMgr, rcReleasing, rcRange, rcExcessive );
         }
     }
@@ -665,6 +665,7 @@ rc_t VSchemaMake ( VSchema **sp,  const VSchema *dad )
 
     KRefcountInit ( & schema -> refcount, 1, "VSchema", "make", "vschema" );
     schema -> file_count = 0;
+    schema -> num_indirect = ( dad == NULL ) ? 0 : dad -> num_indirect;
 
     /* copy the versioned name vectors and names */
     if ( dad != NULL )

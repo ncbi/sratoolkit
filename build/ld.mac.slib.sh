@@ -62,8 +62,8 @@ convert-static ()
     local m=
     for m in $mbrs
     do
-        mv $m $NAME-$m
-        CMD="$CMD ld-tmp/$NAME-$m"
+        mv $m $LIBNAME-$m
+        CMD="$CMD ld-tmp/$LIBNAME-$m"
     done
 
     # return to prior location
@@ -83,7 +83,7 @@ fi
 CMD="$CMD $OBJS"
 
 # initial dependency upon Makefile and vers file
-DEPS="$SRCDIR/Makefile $VERSFILE"
+DEPS="$SRCDIR/Makefile"
 if [ "$LIBS" != "" ]
 then
     # tack on libraries, finding as we go

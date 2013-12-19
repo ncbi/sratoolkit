@@ -25,6 +25,7 @@
 */
 
 #include <klib/extern.h>
+#include <klib/rc.h>
 #include <sysalloc.h>
 #include "writer-priv.h"
 #include <klib/text.h>

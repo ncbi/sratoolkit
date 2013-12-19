@@ -196,7 +196,7 @@ rc_t DB_Fini(const SParam* p, DB_Handle* h, bool drop)
         h->wev_dnb = NULL;
         h->ev_dnb = NULL;
         PLOGMSG(klogInfo, (klogInfo, "Fini calculating reference coverage", "severity=status"));
-        if( (rc2 = ReferenceMgr_Release(h->rmgr, !drop, NULL, drop ? false : true)) != 0 && !drop ) {
+        if( (rc2 = ReferenceMgr_Release(h->rmgr, !drop, NULL, drop ? false : true, Quitting)) != 0 && !drop ) {
             drop = true;
             rc = rc2;
 	    LOGERR(klogErr, rc, "Failed calculating reference coverage");
@@ -255,7 +255,8 @@ typedef struct FGroupKey_struct {
 } FGroupKey;
 
 static
-rc_t CC FGroupKey_Make(FGroupKey* key, const CGLoaderFile* file, const SParam* param)
+rc_t CC FGroupKey_Make(FGroupKey* key,
+    const CGLoaderFile* file, const SParam* param)
 {
     rc_t rc = 0;
     CG_EFileType ftype;
@@ -264,11 +265,14 @@ rc_t CC FGroupKey_Make(FGroupKey* key, const CGLoaderFile* file, const SParam* p
         switch(ftype) {
             case cg_eFileType_READS:
             case cg_eFileType_MAPPINGS:
+            case cg_eFileType_TAG_LFR:
                 key->type = cg_eFileType_READS;
-                if( (rc = CGLoaderFile_GetAssemblyId(file, &key->assembly_id)) == 0 &&
+                if ((rc = CGLoaderFile_GetAssemblyId(file, &key->assembly_id)) == 0 &&
                     (rc = CGLoaderFile_GetSlide(file, &key->u.map.slide)) == 0 &&
-                    (rc = CGLoaderFile_GetLane(file, &key->u.map.lane)) == 0 ) {
-                    rc = CGLoaderFile_GetBatchFileNumber(file, &key->u.map.batch_file_number);
+                    (rc = CGLoaderFile_GetLane(file, &key->u.map.lane)) == 0)
+                {
+                    rc = CGLoaderFile_GetBatchFileNumber(file,
+                        &key->u.map.batch_file_number);
                 }
                 break;
             case cg_eFileType_EVIDENCE_INTERVALS:
@@ -320,6 +324,7 @@ typedef struct FGroupMAP_struct {
     FGroupKey key;
     const CGLoaderFile* seq;
     const CGLoaderFile* align;
+    const CGLoaderFile* tagLfr;
 } FGroupMAP;
 
 static
@@ -416,6 +421,13 @@ rc_t CC FGroupMAP_Set(FGroupMAP* g, const CGLoaderFile* file)
                 } else {
                     rc = RC(rcExe, rcQueue, rcInserting, rcItem, rcDuplicate);
                 }
+            }
+            else if (ftype == cg_eFileType_TAG_LFR) {
+                if (g->tagLfr == NULL) {
+                    g->tagLfr = file;
+                } else {
+                    rc = RC(rcExe, rcQueue, rcInserting, rcItem, rcDuplicate);
+                }
             } else {
                 rc = RC(rcExe, rcQueue, rcInserting, rcItem, rcWrongType);
             }
@@ -460,6 +472,11 @@ void CC FGroupMAP_Validate( BSTNode *n, void *data )
         mnm = mnm ? strrchr(mnm, '/') : mnm;
         DEBUG_MSG(5, (" MAPPINGS(%s)", mnm));
     }
+    if (g->tagLfr != NULL) {
+        CGLoaderFile_Filename(g->tagLfr, &mnm);
+        mnm = mnm ? strrchr(mnm, '/') : mnm;
+        DEBUG_MSG(5, (" TAG_LFR(%s)", mnm));
+    }
     DEBUG_MSG(5, ("\n"));
     if( rc == 0 && g->seq == NULL ) {
         rc = RC(rcExe, rcQueue, rcValidating, rcItem, rcIncomplete);
@@ -496,7 +513,7 @@ rc_t CC DirVisitor(const KDirectory *dir, uint32_t type, const char *name, void 
             strcmp(&name[strlen(name) - 7], ".tsv.gz") == 0)
         {
             char buf[4096];
-            const CGLoaderFile* file;
+            const CGLoaderFile* file = NULL;
             FGroupKey key;
             if( (rc = KDirectoryResolvePath(dir, true, buf, sizeof(buf), name)) == 0 &&
                 (rc = CGLoaderFile_Make(&file, d->dir, buf, NULL, !d->param->no_read_ahead)) == 0 &&
@@ -545,46 +562,105 @@ typedef struct FGroupMAP_LoadData_struct {
     const BSTree* reads;
 } FGroupMAP_LoadData;
 
+typedef enum {
+    eCtxRead,
+    eCtxLfr,
+    eCtxMapping
+} TCtx;
+static bool _FGroupMAPDone(FGroupMAP *self, TCtx ctx, FGroupMAP_LoadData* d) {
+    /* (rcData rcDone) is always set on reads file EOF */
+    bool eofLfr = true;
+    bool eofMapping = true;
+    assert(self && d);
+    if (d->rc == 0 ||
+        GetRCState(d->rc) != rcDone || GetRCObject(d->rc) != rcData)
+    {
+        return false;
+    }
+    d->rc = 0;
+    if (d->rc == 0 && self->tagLfr != NULL) {
+        d->rc = CGLoaderFile_IsEof(self->tagLfr, &eofLfr);
+    }
+    if (d->rc == 0 && self->align != NULL) {
+        d->rc = CGLoaderFile_IsEof(self->align, &eofMapping);
+    }
+    if (d->rc == 0) {
+        switch (ctx) {
+            case eCtxRead:
+                if (!eofLfr) {
+                    /* not EOF */
+                    d->rc = RC(rcExe, rcFile, rcReading, rcData, rcUnexpected);
+                    CGLoaderFile_LOG(self->align, klogErr, d->rc,
+                        "extra tag LFRs, possible that corresponding "
+                        "reads file is truncated", NULL);
+                }
+                else if (!eofMapping) {
+                    /* not EOF */
+                    d->rc = RC(rcExe, rcFile, rcReading, rcData, rcUnexpected);
+                    CGLoaderFile_LOG(self->align, klogErr, d->rc,
+                        "extra mappings, possible that corresponding "
+                        "reads file is truncated", NULL);
+                }
+                break;
+            case eCtxLfr:
+            case eCtxMapping:
+                d->rc = RC(rcExe, rcFile, rcReading, rcCondition, rcInvalid);
+                break;
+            default:
+                assert(0);
+                break;
+        }
+    }
+    if (d->rc == 0) {
+        /* mappings and lfr file EOF detected ok */
+        DEBUG_MSG(5, (" done\n", FGroupKey_Validate(&self->key)));
+    }
+    return true;
+}
+
 bool CC FGroupMAP_LoadReads( BSTNode *node, void *data )
 {
+    TCtx ctx = eCtxRead;
     FGroupMAP* n = (FGroupMAP*)node;
     FGroupMAP_LoadData* d = (FGroupMAP_LoadData*)data;
 
+    bool done = false;
+
     DEBUG_MSG(5, (" started\n", FGroupKey_Validate(&n->key)));
-    while( d->rc == 0 )
-    {
-        if( (d->rc = CGLoaderFile_GetRead(n->seq, d->db.reads)) == 0 ) {
-            if( (d->db.reads->flags & (cg_eLeftHalfDnbNoMatches | cg_eLeftHalfDnbMapOverflow)) &&
-                (d->db.reads->flags & (cg_eRightHalfDnbNoMatches | cg_eRightHalfDnbMapOverflow)) ) {
+    while (!done && d->rc == 0) {
+        ctx = eCtxRead;
+        d->rc = CGLoaderFile_GetRead(n->seq, d->db.reads);
+        if (d->rc == 0 && n->tagLfr != NULL) {
+            ctx = eCtxLfr;
+            d->rc = CGLoaderFile_GetTagLfr(n->tagLfr, d->db.reads);
+        }
+        if (d->rc == 0) {
+            if ((d->db.reads->flags
+                   & (cg_eLeftHalfDnbNoMatches | cg_eLeftHalfDnbMapOverflow))
+                &&
+                (d->db.reads->flags
+                   & (cg_eRightHalfDnbNoMatches | cg_eRightHalfDnbMapOverflow)))
+            {
                 d->db.mappings->map_qty = 0;
             } else {
+                ctx = eCtxMapping;
                 d->rc = CGLoaderFile_GetMapping(n->align, d->db.mappings);
             }
-            /* alignment written 1st than sequence -> primary_alignment_id must be set!! */
-            if( d->rc == 0 && (d->rc = CGWriterAlgn_Write(d->db.walgn, d->db.reads)) == 0 ) {
+/* alignment written 1st than sequence -> primary_alignment_id must be set!! */
+            if (d->rc == 0 &&
+                (d->rc = CGWriterAlgn_Write(d->db.walgn, d->db.reads)) == 0)
+            {
                 d->rc = CGWriterSeq_Write(d->db.wseq);
             }
         }
-        if( GetRCState(d->rc) == rcDone && GetRCObject(d->rc) == rcData ) {
-            bool eof = false;
-            d->rc = 0;
-            if( n->align == NULL || ((d->rc = CGLoaderFile_IsEof(n->align, &eof)) == 0 && eof) ) {
-                /* mappings file EOF detected ok */
-                DEBUG_MSG(5, (" done\n", FGroupKey_Validate(&n->key)));
-                break;
-            } else if( d->rc == 0 ) {
-                /* not EOF */
-                d->rc = RC(rcExe, rcFile, rcReading, rcData, rcUnexpected);
-                CGLoaderFile_LOG(n->align, klogErr, d->rc,
-                    "extra mappings, possible that corresponding reads file is truncated", NULL);
-            }
-        }
+        done = _FGroupMAPDone(n, ctx, d);
         d->rc = d->rc ? d->rc : Quitting();
     }
     if( d->rc != 0 ) {
         CGLoaderFile_LOG(n->seq, klogErr, d->rc, NULL, NULL);
         CGLoaderFile_LOG(n->align, klogErr, d->rc, NULL, NULL);
     }
+
     FGroupMAP_CloseFiles(n);
     return d->rc != 0;
 }
@@ -1105,8 +1181,8 @@ rc_t CC KMain( int argc, char* argv[] )
         }
         else
         {
-            PLOGERR(klogErr, (klogErr, rc, "load failed: $(reason_short)",
-                    "severity=total,status=failure,accession=%s", refseq_chunk));
+            PLOGERR(klogErr, (klogErr, rc, "load failed: $(accession)",
+                   "severity=total,status=failure,accession=%s", refseq_chunk));
         }
     }
     else

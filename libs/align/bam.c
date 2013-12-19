@@ -178,10 +178,17 @@ rc_t BGZFileRead(BGZFile *self, zlib_block_t dst, unsigned *pNumRead)
     self->zs.avail_out = sizeof(zlib_block_t);
 
     for (loops = 0; loops != 2; ++loops) {
-        uInt const in = self->zs.total_in;
-        
-        zr = inflate(&self->zs, Z_FINISH);
-        self->bpos += self->zs.total_in - in;
+        {
+            uLong const initial = self->zs.total_in;
+            
+            zr = inflate(&self->zs, Z_FINISH);
+            {
+                uLong const final = self->zs.total_in;
+                uLong const len = final - initial;
+                
+                self->bpos += len;
+            }
+        }
         assert(self->zs.avail_in == self->bcount - self->bpos);
         
         switch (zr) {
@@ -228,7 +235,7 @@ rc_t BGZFileRead(BGZFile *self, zlib_block_t dst, unsigned *pNumRead)
                 rc = RC(rcAlign, rcFile, rcReading, rcFile, rcCorrupt);
             }
 #endif
-            *pNumRead = self->zs.total_out;
+            *pNumRead = (unsigned)self->zs.total_out; /* <= 64k */
             zr = inflateReset(&self->zs);
             assert(zr == Z_OK);
             return rc;
@@ -247,25 +254,27 @@ static uint64_t BGZFileGetPos(const BGZFile *self)
 }
 
 /* returns the position as proportion of the whole file */ 
-static float BGZFileProPos(const BGZFile *self)
+static float BGZFileProPos(BGZFile const *const self)
 {
     return BGZFileGetPos(self) / (double)self->fsize;
 }
 
-static rc_t BGZFileSetPos(BGZFile *self, uint64_t pos)
+static rc_t BGZFileSetPos(BGZFile *const self, uint64_t const pos)
 {
     if (self->fpos > pos || pos >= self->fpos + self->bcount) {
-        self->fpos = pos;
-        self->fpos -= pos & (MEM_ALIGN_SIZE - 1);
-        self->bpos = pos - self->fpos;
+        /* desired position is outside of current buffer */
+        self->fpos = pos ^ (pos & ((uint64_t)(MEM_ALIGN_SIZE - 1)));
+        self->bpos = (unsigned)(pos - self->fpos);
         self->bcount = 0; /* force re-read */
     }
     else {
-        self->bpos = pos - self->fpos;
-        self->zs.avail_in = (uInt)(self->bcount - self->bpos);
-        self->zs.next_in = (Bytef *)&self->buf[self->bpos];
-    }
+        /* desired position is inside of current buffer */
+        unsigned const bpos = (unsigned)(pos - self->fpos); /* < 64k */
 
+        self->bpos = bpos; /* pos - self->fpos; */
+        self->zs.avail_in = (uInt)(self->bcount - bpos);
+        self->zs.next_in = (Bytef *)&self->buf[bpos];
+    }
     return 0;
 }
 
@@ -274,7 +283,7 @@ typedef rc_t (*BGZFileWalkBlocks_cb)(void *ctx, const BGZFile *file,
                                      const zlib_block_t data, unsigned dsize);
 
 /* Without Decompression */
-static rc_t BGZFileWalkBlocksND(BGZFile *self, BGZFileWalkBlocks_cb cb, void *ctx)
+static rc_t BGZFileWalkBlocksND(BGZFile *const self, BGZFileWalkBlocks_cb const cb, void *const ctx)
 {
     rc_t rc = 0;
 #if VALIDATE_BGZF_HEADER
@@ -301,12 +310,18 @@ static rc_t BGZFileWalkBlocksND(BGZFile *self, BGZFileWalkBlocks_cb cb, void *ct
         assert(zr == Z_OK);
         
         for (loops = 0; loops != 2; ++loops) {
-            uInt temp = self->zs.total_in;
-            
-            zr = inflate(&self->zs, Z_BLOCK);
-            temp = self->zs.total_in - temp;
-            self->bpos += temp;
-            hsize += temp;
+            {
+                uLong const orig = self->zs.total_in;
+                
+                zr = inflate(&self->zs, Z_BLOCK);
+                {
+                    uLong const final = self->zs.total_in;
+                    uLong const bytes = final - orig;
+                    
+                    self->bpos += bytes;
+                    hsize += bytes;
+                }
+            }
             if (head.done) {
                 unsigned i;
                 
@@ -338,12 +353,11 @@ static rc_t BGZFileWalkBlocksND(BGZFile *self, BGZFileWalkBlocks_cb cb, void *ct
         bsize2 = bsize;
         bsize -= hsize;
         for ( ; ; ) {
-            unsigned n = bsize;
+            unsigned const max = (unsigned)(self->bcount - self->bpos); /* <= 64k */
+            unsigned const len = bsize > max ? max : bsize;
             
-            if (n > self->bcount - self->bpos)
-                n = self->bcount - self->bpos;
-            self->bpos += n;
-            bsize -= n;
+            self->bpos += len;
+            bsize -= len;
             if (self->bpos == self->bcount) {
                 rc = BGZFileGetMoreBytes(self);
                 if (rc) {
@@ -357,7 +371,7 @@ static rc_t BGZFileWalkBlocksND(BGZFile *self, BGZFileWalkBlocks_cb cb, void *ct
                 assert(zr == Z_OK);
                 self->zs.avail_in = (uInt)(self->bcount - self->bpos);
                 self->zs.next_in = (Bytef *)&self->buf[self->bpos];
-                rc = cb(ctx, self, fpos, 0, NULL, bsize2);
+                rc = cb(ctx, self, 0, fpos, NULL, bsize2);
                 break;
             }
         }
@@ -365,26 +379,26 @@ static rc_t BGZFileWalkBlocksND(BGZFile *self, BGZFileWalkBlocks_cb cb, void *ct
 DONE:
     if (GetRCState(rc) == rcInsufficient && GetRCObject(rc) == rcData)
         rc = 0;
-    rc = cb(ctx, self, self->fpos + self->bpos, rc, NULL, 0);
+    rc = cb(ctx, self, rc, self->fpos + self->bpos, NULL, 0);
 #endif
     return rc;
 }
 
-static rc_t BGZFileWalkBlocksUnzip(BGZFile *self, zlib_block_t *bufp, BGZFileWalkBlocks_cb cb, void *ctx)
+static rc_t BGZFileWalkBlocksUnzip(BGZFile *const self, zlib_block_t *const bufp, BGZFileWalkBlocks_cb const cb, void *const ctx)
 {
     rc_t rc;
     rc_t rc2;
-    unsigned dsize;
     
     do {
         uint64_t const fpos = self->fpos + self->bpos;
+        unsigned dsize;
         
         rc2 = BGZFileRead(self, *bufp, &dsize);
-        rc = cb(ctx, self, fpos, rc2, *bufp, dsize);
+        rc = cb(ctx, self, rc2, fpos, *bufp, dsize);
     } while (rc == 0 && rc2 == 0);
     if (GetRCState(rc2) == rcInsufficient && GetRCObject(rc2) == rcData)
         rc2 = 0;
-    rc = cb(ctx, self, self->fpos + self->bpos, rc2, NULL, 0);
+    rc = cb(ctx, self, rc2, self->fpos + self->bpos, NULL, 0);
     return rc ? rc : rc2;
 }
 
@@ -604,7 +618,7 @@ static rc_t BGZThreadFileInit(BGZThreadFile *self, const KFile *kfp, BGZFile_vt 
         (void (*)(void *))BGZThreadFileWhack
     };
     
-    memset(self, 0, sizeof(self));
+    memset(self, 0, sizeof(*self));
     
     rc = BGZFileInit(&self->file, kfp, vt);
     if (rc == 0) {
@@ -627,7 +641,7 @@ static rc_t BGZThreadFileInit(BGZThreadFile *self, const KFile *kfp, BGZFile_vt 
         }
         BGZFileWhack(&self->file);
     }
-    memset(self, 0, sizeof(self));
+    memset(self, 0, sizeof(*self));
     memset(vt, 0, sizeof(*vt));
     return rc;
 }
@@ -933,7 +947,7 @@ static int CC comp_ReadGroup(const void *a, const void *b, void *ignored) {
     return strcmp(((BAMReadGroup const *)a)->name, ((BAMReadGroup const *)b)->name);
 }
 
-static rc_t ParseHD(BAMFile *self, char hdata[], unsigned hlen, unsigned *used)
+static rc_t ParseHD(BAMFile *self, char hdata[], size_t hlen, unsigned *used)
 {
     unsigned i;
     unsigned tag;
@@ -992,7 +1006,7 @@ DONE:
     return RC(rcAlign, rcFile, rcParsing, rcData, rcInvalid);
 }
 
-static rc_t ParseSQ(BAMFile *self, char hdata[], unsigned hlen, unsigned *used, unsigned const rs_by_name[])
+static rc_t ParseSQ(BAMFile *self, char hdata[], size_t hlen, unsigned *used, unsigned const rs_by_name[])
 {
     unsigned i;
     unsigned tag;
@@ -1138,7 +1152,7 @@ DONE:
     return RC(rcAlign, rcFile, rcParsing, rcData, rcInvalid);
 }
 
-static rc_t ParseRG(BAMFile *self, char hdata[], unsigned hlen, unsigned *used, BAMReadGroup *dst)
+static rc_t ParseRG(BAMFile *self, char hdata[], size_t hlen, unsigned *used, BAMReadGroup *dst)
 {
     unsigned i;
     unsigned tag;
@@ -1236,7 +1250,7 @@ DONE:
     return RC(rcAlign, rcFile, rcParsing, rcData, rcInvalid);
 }
 
-static rc_t ParseHeader(BAMFile *self, char hdata[], unsigned hlen, unsigned const rs_by_name[]) {
+static rc_t ParseHeader(BAMFile *self, char hdata[], size_t hlen, unsigned const rs_by_name[]) {
     unsigned rg = 0;
     unsigned i;
     unsigned tag;
@@ -1358,7 +1372,7 @@ static rc_t ReadMagic(BAMFile *self)
 }
 
 static rc_t ReadHeaders(BAMFile *self,
-                        char **headerText, unsigned *headerTextLen,
+                        char **headerText, size_t *headerTextLen,
                         uint8_t **refData, unsigned *numrefs)
 {
     unsigned hlen;
@@ -1463,7 +1477,7 @@ static rc_t ProcessHeader(BAMFile *self, char const headerText[])
     unsigned cp;
     char *htxt;
     uint8_t *rdat;
-    unsigned hlen;
+    size_t hlen;
     unsigned nrefs;
     rc_t rc = ReadMagic(self);
 
@@ -1882,7 +1896,7 @@ static bool LoadOptTags(void *Ctx, char const tag[2], BAMOptDataValueType type, 
     struct ctx_LoadOptTags_s *ctx = Ctx;
     BAMAlignment *self = ctx->self;
     
-    self->extra[ctx->i].offset = (uint8_t const *)&tag[0] - (uint8_t const *)&self->data->raw[0];
+    self->extra[ctx->i].offset = (unsigned)((uint8_t const *)&tag[0] - (uint8_t const *)&self->data->raw[0]);
     self->extra[ctx->i].size = length;
     ++ctx->i;
     return false;
@@ -2296,6 +2310,28 @@ LIB_EXPORT rc_t CC BAMAlignmentGetReadName2(const BAMAlignment *cself, const cha
     return 0;
 }
 
+LIB_EXPORT rc_t CC BAMAlignmentGetReadName3(const BAMAlignment *cself, const char **rhs, size_t *length)
+{
+    char const *const name = getReadName(cself);
+    size_t len = getReadNameLength(cself);
+    size_t i;
+    
+    for (i = len; i; ) {
+        int const ch = name[--i];
+        
+        if (ch == '/') {
+            len = i;
+            break;
+        }
+        if (!isdigit(ch))
+            break;
+    }
+    *rhs = name;
+    *length = len;
+
+    return 0;
+}
+
 LIB_EXPORT rc_t CC BAMAlignmentGetFlags(const BAMAlignment *cself, uint16_t *rhs)
 {
     *rhs = getFlags(cself);
@@ -2385,7 +2421,7 @@ LIB_EXPORT rc_t CC BAMAlignmentGetCSKey(BAMAlignment const *cself, char rhs[1])
     return 0;
 }
 
-LIB_EXPORT rc_t CC BAMAlignmentGetCSSeqLen(BAMAlignment const *cself, uint32_t *const rhs)
+LIB_EXPORT rc_t CC BAMAlignmentGetCSSeqLen(BAMAlignment const *cself, uint32_t *rhs)
 {
     struct offset_size_s const *const vCS = get_CS_info(cself);
     
@@ -2393,7 +2429,7 @@ LIB_EXPORT rc_t CC BAMAlignmentGetCSSeqLen(BAMAlignment const *cself, uint32_t *
     return 0;
 }
 
-LIB_EXPORT rc_t CC BAMAlignmentGetCSSequence(BAMAlignment const *cself, char rhs[], uint32_t const seqlen)
+LIB_EXPORT rc_t CC BAMAlignmentGetCSSequence(BAMAlignment const *cself, char rhs[], uint32_t seqlen)
 {
     char const *const vCS = get_CS(cself);
     
@@ -2537,7 +2573,7 @@ LIB_EXPORT rc_t CC BAMAlignmentOptDataForEach(const BAMAlignment *cself, void *u
         uint8_t storage[4096];
     } value_auto;
     OptForEach_ctx_t ctx;
-    rc_t rc;
+    rc_t rc = 0;
     unsigned i;
     
     ctx.val = &value_auto.value;
@@ -2594,7 +2630,7 @@ LIB_EXPORT rc_t CC BAMAlignmentOptDataForEach(const BAMAlignment *cself, void *u
         if (i_OptDataForEach(cself, &ctx, tag, type, count, &vp[offset], size))
             break;
     }
-    rc = ctx.rc;
+    rc = rc ? rc : ctx.rc;
     if (ctx.alloced)
         free(ctx.alloced);
     return rc;
@@ -2605,31 +2641,31 @@ LIB_EXPORT bool CC BAMAlignmentHasCGData(BAMAlignment const *self)
     return get_CG_GC_info(self) && get_CG_GS_info(self) && get_CG_GQ_info(self);
 }
 
-static bool BAMAlignmentParseCGTag(BAMAlignment const *self,uint32_t *cg_segs,uint32_t max_cg_segs)
+static bool BAMAlignmentParseCGTag(BAMAlignment const *self, size_t const max_cg_segs, unsigned cg_segs[/* max_cg_segs */])
 {
-/*** patern in cg_segs should be nSnGnSnG - no more then 7 segments **/
+    /*** patern in cg_segs should be nSnGnSnG - no more then 7 segments **/
     struct offset_size_s const *const GCi = get_CG_GC_info(self);
-    char *cg  = (char *) &self->data->raw[GCi->offset + 3];
-    char *end = cg + GCi->size -4;
-    /** init**/
-    int iseg=0;
-    char last_op='S';
-    cg_segs[iseg] = 0;
+    char const *cg  = (char const *)&self->data->raw[GCi->offset + 3];
+    char const *const end = cg + GCi->size - 4;
+    unsigned iseg = 0;
+    char last_op = 'S';
 
-    while(cg < end && iseg < max_cg_segs){
-        int op_len = strtol(cg,&cg,10);
-        char op = *cg;
-        cg++;
-        if(op==last_op){
-                cg_segs[iseg] += op_len;
-        } else{
-                last_op = op;
-                iseg++;
-                cg_segs[iseg] = op_len;
+    memset(cg_segs, 0, max_cg_segs * sizeof(cg_segs[0]));
+    
+    while (cg < end && iseg < max_cg_segs) {
+        char *endp;
+        long const op_len = strtol(cg, &endp, 10);
+        char const op = *(cg = endp);
+        
+        ++cg;
+        if (op==last_op) {
+            cg_segs[iseg] += op_len;
         }
-    }
-    for(iseg+=1;iseg < max_cg_segs;iseg ++){
-        cg_segs[iseg] = 0;
+        else {
+            last_op = op;
+            ++iseg;
+            cg_segs[iseg] = (unsigned)op_len;
+        }
     }
     return true;
 }
@@ -2638,50 +2674,55 @@ static
 rc_t ExtractInt32(BAMAlignment const *self, int32_t *result,
                   struct offset_size_s const *const tag)
 {
-    int32_t y;
+    int64_t y;
+    int const type = self->data->raw[tag->offset + 2];
+    void const *const pvalue = &self->data->raw[tag->offset + 3];
     
-    switch (self->data->raw[tag->offset + 2]) {
+    switch (type) {
     case 'c':
         if (tag->size == 4)
-            y = ((int8_t const *)self->data->raw)[tag->offset + 3];
+            y = *((int8_t const *)pvalue);
         else
             return RC(rcAlign, rcRow, rcReading, rcData, rcInvalid);
         break;
     case 'C':
         if (tag->size == 4)
-            y = ((uint8_t const *)self->data->raw)[tag->offset + 3];
+            y = *((uint8_t const *)pvalue);
         else
             return RC(rcAlign, rcRow, rcReading, rcData, rcInvalid);
         break;
     case 's':
         if (tag->size == 5)
-            y = LE2HI16(self->data->raw + tag->offset + 3);
+            y = LE2HI16(pvalue);
         else
             return RC(rcAlign, rcRow, rcReading, rcData, rcInvalid);
         break;
     case 'S':
         if (tag->size == 5)
-            y = LE2HUI16(self->data->raw + tag->offset + 3);
+            y = LE2HUI16(pvalue);
         else
             return RC(rcAlign, rcRow, rcReading, rcData, rcInvalid);
         break;
     case 'i':
         if (tag->size == 7)
-            y = LE2HI32(self->data->raw + tag->offset + 3);
+            y = LE2HI32(pvalue);
         else
             return RC(rcAlign, rcRow, rcReading, rcData, rcInvalid);
         break;
     case 'I':
         if (tag->size == 7)
-            y = LE2HUI32(self->data->raw + tag->offset + 3);
+            y = LE2HUI32(pvalue);
         else
             return RC(rcAlign, rcRow, rcReading, rcData, rcInvalid);
         break;
     default:
         return RC(rcAlign, rcRow, rcReading, rcData, rcNotFound);
     }
-    *result = y;
-    return 0;
+    if (INT32_MIN <= y && y <= INT32_MAX) {
+        *result = (int32_t)y;
+        return 0;
+    }
+    return RC(rcAlign, rcRow, rcReading, rcData, rcInvalid);
 }
 
 LIB_EXPORT
@@ -2713,56 +2754,63 @@ rc_t CC BAMAlignmentGetCGSeqQual(BAMAlignment const *self,
     struct offset_size_s const *const GCi = get_CG_GC_info(self);
     struct offset_size_s const *const GSi = get_CG_GS_info(self);
     struct offset_size_s const *const GQi = get_CG_GQ_info(self);
-
+    
     if (GCi && GSi && GQi) {
         char const *const vGS = (char const *)&self->data->raw[GSi->offset + 3];
-        char const *const GQ = (char const *)&self->data->raw[GQi->offset + 3];
+        char const *const GQ  = (char const *)&self->data->raw[GQi->offset + 3];
         unsigned const GSsize = GSi->size - 4;
         unsigned const sn = getReadLen(self);
-        uint32_t cg_segs[2*CG_NUM_SEGS-1]; /** 4 segments + 3gaps **/
+        unsigned cg_segs[2*CG_NUM_SEGS-1]; /** 4 segments + 3gaps **/
         unsigned i,G,S;
-
+        
         if (GSi->size != GQi->size)
             return RC(rcAlign, rcRow, rcReading, rcData, rcInvalid);
+        
         if (SequenceLengthFromCIGAR(self) != sn)
             return RC(rcAlign, rcRow, rcReading, rcData, rcInvalid);
-        if (!BAMAlignmentParseCGTag(self, cg_segs,2*CG_NUM_SEGS-1))
-            return RC(rcAlign, rcRow, rcReading, rcData, rcInvalid);
 
-        for(S=cg_segs[0],G=0,i=1;i<CG_NUM_SEGS;i++){ /** sum all S and G **/
-                S += cg_segs[2*i];
-                G += cg_segs[2*i-1];
+        if (!BAMAlignmentParseCGTag(self, 2*CG_NUM_SEGS-1, cg_segs))
+            return RC(rcAlign, rcRow, rcReading, rcData, rcInvalid);
+        
+        for (S = cg_segs[0], G = 0, i = 1; i < CG_NUM_SEGS; ++i) { /** sum all S and G **/
+            S += cg_segs[2*i];
+            G += cg_segs[2*i-1];
         }
         if (G + G != GSsize || S + G > sn || sn + G != 35) {
             /*fprintf(stderr, "GSsize: %u; sn: %u; S: %u; G: %u\n", GSsize, sn, S, G);*/
             return RC(rcAlign, rcRow, rcReading, rcData, rcInvalid);
         }
-        if(G > 0){
-                int nsi=cg_segs[0];/** new index into sequence */
-                int osi=nsi+G;     /** old index into sequence */
-                int k;             /** index into inserted sequence **/
-                /***make room for inserts **/
-                memmove(sequence + osi, sequence + nsi, sn - nsi);
-                memmove(quality  + osi, quality  + nsi, sn - nsi);
-                for(i=1,k=0;i<CG_NUM_SEGS && nsi < osi;i++){/*** when osi and nsi meet we are done ***/
-                        int j;
-                        for(j = cg_segs[2*i-1];j>0;j--){/** insert mode **/
-                                sequence[nsi] = vGS[k];
-                                quality [nsi] = GQ[k] - 33;
-                                nsi++;k++;
-                                sequence[nsi] = vGS[k];
-                                quality [nsi] = GQ[k] - 33;
-                                nsi++;k++;
-                                osi++;
-                        }
-                        if(nsi < osi){
-                                for(j=cg_segs[2*i];j>0;j--){/** copy mode **/
-                                        sequence[nsi] = sequence[osi];
-                                        quality[nsi]  = quality[osi];
-                                        nsi++;osi++;
-                                }
-                        }
+        if (G > 0) {
+            unsigned nsi = cg_segs[0];   /** new index into sequence */
+            unsigned osi = nsi + G;      /** old index into sequence */
+            unsigned k;                  /** index into inserted sequence **/
+            
+            /***make room for inserts **/
+            memmove(sequence + osi, sequence + nsi, sn - nsi);
+            memmove(quality  + osi, quality  + nsi, sn - nsi);
+            
+            for (i = 1, k = 0; i < CG_NUM_SEGS && nsi < osi; ++i) {/*** when osi and nsi meet we are done ***/
+                unsigned j;
+                
+                for (j = cg_segs[2*i-1]; j > 0; --j) { /** insert mode **/
+                    sequence[nsi] = vGS[k];
+                    quality [nsi] = GQ[k] - 33;
+                    ++nsi; ++k;
+                    sequence[nsi] = vGS[k];
+                    quality [nsi] = GQ[k] - 33;
+                    ++nsi;
+                    ++osi;
+                    ++k;
                 }
+                if (nsi < osi){
+                    for (j = cg_segs[2*i]; j > 0; --j) { /** copy mode **/
+                        sequence[nsi] = sequence[osi];
+                        quality[nsi]  = quality[osi];
+                        ++nsi;
+                        ++osi;
+                    }
+                }
+            }
         }
         return 0;
     }
@@ -2781,14 +2829,14 @@ static unsigned splice(uint32_t cigar[], unsigned n, unsigned at, unsigned out, 
 
 #define OPCODE_2_FIX (0xF)
 
-static unsigned insert_B(unsigned S, unsigned G, uint32_t cigar[], unsigned n)
+static unsigned insert_B(unsigned S, unsigned G, unsigned const n, uint32_t cigar[/* n */])
 {
     unsigned i;
     unsigned pos;
-    unsigned T=S+G;
+    unsigned const T = S + G;
     
     for (pos = i = 0; i < n; ++i) {
-        unsigned const opcode = cigar[i] & 0xF;
+        int const opcode = cigar[i] & 0xF;
         
         switch (opcode) {
         case 0:
@@ -2820,8 +2868,7 @@ static unsigned insert_B(unsigned S, unsigned G, uint32_t cigar[], unsigned n)
                         --in;
                         --B;
                     }
-                    n = splice(cigar, n, i, 1, in, ops);
-                    return n;;
+                    return splice(cigar, n, i, 1, in, ops);
                 }
                 pos = nxt;
             }}
@@ -2940,6 +2987,33 @@ static void reverse(uint32_t cigar[], unsigned n)
     }
 }
 
+static unsigned GetCGCigar(BAMAlignment const *self, unsigned const N, uint32_t cigar[/* N */])
+{
+    unsigned i;
+    unsigned G;
+    unsigned S;
+    unsigned n = getCigarCount(self);
+    unsigned cg_segs[2*CG_NUM_SEGS-1]; /** 4 segments + 3 gaps **/
+    
+    if (!BAMAlignmentParseCGTag(self, 2*CG_NUM_SEGS-1, cg_segs))
+        return RC(rcAlign, rcRow, rcReading, rcData, rcInvalid);
+    
+    if (N < n + 5)
+        return RC(rcAlign, rcRow, rcReading, rcBuffer, rcInsufficient);
+    
+    memcpy(cigar, getCigarBase(self), n * 4);
+    n = canonicalize(cigar, n); /* just in case */
+    for (i = 0, S = 0; i < CG_NUM_SEGS - 1; ++i) {
+        S += cg_segs[2*i];
+        G  = cg_segs[2*i+1];
+        if (G > 0) {
+            n = insert_B(S, G, n, cigar);
+            S += G;
+        }
+    }
+    return n;
+}
+
 LIB_EXPORT
 rc_t CC BAMAlignmentGetCGCigar(BAMAlignment const *self,
                                uint32_t *cigar,
@@ -2947,30 +3021,11 @@ rc_t CC BAMAlignmentGetCGCigar(BAMAlignment const *self,
                                uint32_t *cig_act)
 {
     struct offset_size_s const *const GCi = get_CG_GC_info(self);
-
+    
     *cig_act = 0;
-
+    
     if (GCi) {
-        uint32_t i,G,S;
-        unsigned n = getCigarCount(self);
-        uint32_t cg_segs[2*CG_NUM_SEGS-1]; /** 4 segments + 3gaps **/
-
-        if (!BAMAlignmentParseCGTag(self, cg_segs, 2*CG_NUM_SEGS-1))
-            return RC(rcAlign, rcRow, rcReading, rcData, rcInvalid);
-        if (cig_max < n + 5)
-            return RC(rcAlign, rcRow, rcReading, rcBuffer, rcInsufficient);
-
-        memcpy(cigar, getCigarBase(self), n * 4);
-        n = canonicalize(cigar, n); /* just in case */
-        for(i=0,S=0; i< CG_NUM_SEGS-1;i++){
-                S+=cg_segs[2*i];
-                G=cg_segs[2*i+1];
-                if(G > 0){
-                        n = insert_B(S, G, cigar, n);
-                        S+=G;
-                }
-        }
-        *cig_act = n;
+        *cig_act = GetCGCigar(self, cig_max, cigar);
         return 0;
     }
     return RC(rcAlign, rcRow, rcReading, rcData, rcNotFound);

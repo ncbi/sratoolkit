@@ -47,7 +47,9 @@
 static
 uint32_t CC PBSTreeImplCount ( const PBSTree *self )
 {
-    return GET32 ( self -> pt -> num_nodes );
+    uint32_t n;
+    GET32 ( n, self -> pt -> num_nodes );
+    return n;
 }
 
 /* Depth
@@ -58,7 +60,7 @@ uint32_t CC PBSTreeImplDepth ( const PBSTree *self )
 {
     uint32_t depth, num_nodes;
 
-    num_nodes = GET32 ( self -> pt -> num_nodes );
+    GET32 ( num_nodes, self -> pt -> num_nodes );
 
     for ( depth = 0; num_nodes != 0; ++ depth )
         num_nodes >>= 1;
@@ -75,21 +77,25 @@ size_t CC PBSTreeImplSize ( const PBSTree *oself )
 {
     size_t bytes;
     const P_BSTree *self = oself -> pt;
+    uint32_t data_size, bytes32;
 
-    bytes = GET32( self -> num_nodes );
-    if (bytes == 0) /* empty tree */
+    GET32 ( bytes32, self -> num_nodes );
+    if ( bytes32 == 0 ) /* empty tree */
         return sizeof self -> num_nodes;
+    else
+        bytes = bytes32;
 
-    if ( GET32( self -> data_size ) > 256 )
+    GET32 ( data_size, self -> data_size );
+    if ( data_size > 256 )
     {
-        if ( GET32( self -> data_size ) <= 65536 )
+        if ( data_size <= 65536 )
             bytes += bytes;
         else
             bytes <<= 2;
     }
 
     return sizeof * self - sizeof self -> data_idx +
-        bytes + GET32( self -> data_size );
+        bytes + data_size;
 }
 
 /* GetNodeData
@@ -105,8 +111,8 @@ rc_t CC PBSTreeImplGetNodeData8 ( const PBSTree *oself,
     const uint8_t *data_start;
     uint32_t off, end;
 
-    num_nodes = GET32( self -> num_nodes );
-    end = GET32 ( self -> data_size );
+    GET32 ( num_nodes, self -> num_nodes );
+    GET32 ( end, self -> data_size );
 
     if ( id == 0 )
         return RC ( rcCont, rcTree, rcAccessing, rcId, rcNull );
@@ -130,12 +136,12 @@ rc_t CC PBSTreeImplGetNodeData16 ( const PBSTree *oself,
 {
     const P_BSTree *self = oself -> pt;
 
-    uint32_t num_nodes;
+    uint32_t num_nodes, end;
     const uint8_t *data_start;
-    uint32_t off, end;
+    uint16_t off;
 
-    num_nodes = GET32( self -> num_nodes );
-    end = GET32 ( self -> data_size );
+    GET32 ( num_nodes, self -> num_nodes );
+    GET32 ( end, self -> data_size );
 
     if ( id == 0 )
         return RC ( rcCont, rcTree, rcAccessing, rcId, rcNull );
@@ -144,9 +150,13 @@ rc_t CC PBSTreeImplGetNodeData16 ( const PBSTree *oself,
 
     data_start = ( const uint8_t* )
       & self -> data_idx . v16 [ num_nodes ];
-    off = GET16( self -> data_idx . v16 [ id - 1 ] );
+    GET16 ( off, self -> data_idx . v16 [ id - 1 ] );
     if ( id != num_nodes )
-      end = GET16( self -> data_idx . v16 [ id ] );
+    {
+      uint16_t end16;
+      GET16 ( end16, self -> data_idx . v16 [ id ] );
+      end = end16;
+    }
 
     * addr = & data_start [ off ];
     * size = end - off;
@@ -163,8 +173,8 @@ rc_t CC PBSTreeImplGetNodeData32 ( const PBSTree *oself,
     const uint8_t *data_start;
     uint32_t off, end;
 
-    num_nodes = GET32( self -> num_nodes );
-    end = GET32 ( self -> data_size );
+    GET32 ( num_nodes, self -> num_nodes );
+    GET32 ( end, self -> data_size );
 
     if ( id == 0 )
         return RC ( rcCont, rcTree, rcAccessing, rcId, rcNull );
@@ -173,9 +183,9 @@ rc_t CC PBSTreeImplGetNodeData32 ( const PBSTree *oself,
 
     data_start = ( const uint8_t* )
       & self -> data_idx . v32 [ num_nodes ];
-    off = GET32( self -> data_idx . v32 [ id - 1 ] );
+    GET32 ( off, self -> data_idx . v32 [ id - 1 ] );
     if ( id != num_nodes )
-      end = GET32( self -> data_idx . v32 [ id ] );
+      GET32 ( end, self -> data_idx . v32 [ id ] );
 
     * addr = & data_start [ off ];
     * size = end - off;
@@ -191,15 +201,17 @@ uint32_t CC PBSTreeImplFind8 ( const PBSTree *self, PBSTNode *n, const void *ite
     int ( CC * cmp ) ( const void *item, const PBSTNode *n, void * data ), void * data )
 {
     const P_BSTree *pt = self -> pt;
-    uint32_t right = GET32( pt -> num_nodes );
-    if ( pt -> num_nodes != 0 )
+    uint32_t right;
+    GET32 ( right, pt -> num_nodes );
+    if ( right != 0 )
     {
         int diff;
         const uint8_t *data_start;
-        uint32_t off, end = GET32( pt -> data_size );
+        uint32_t off, end;
         uint32_t id, left = 1;
         uint32_t max_right = right;
 
+        GET32 ( end, pt -> data_size );
 	data_start = & pt -> data_idx . v8 [ right ];
 	
 	do
@@ -233,28 +245,35 @@ uint32_t CC PBSTreeImplFind16 ( const PBSTree *self, PBSTNode *n, const void *it
     int ( CC * cmp ) ( const void *item, const PBSTNode *n, void * data ), void * data )
 {
     const P_BSTree *pt = self -> pt;
-    uint32_t right = GET32( pt -> num_nodes );
-    if ( pt -> num_nodes != 0 )
+    uint32_t right;
+    GET32 ( right, pt -> num_nodes );
+    if ( right != 0 )
     {
         int diff;
         const uint8_t *data_start;
-        uint32_t off, end = GET32( pt -> data_size );
+        uint32_t end;
         uint32_t id, left = 1;
         uint32_t max_right = right;
+        uint16_t off;
 
+        GET32 ( end, pt -> data_size );
 	data_start = ( const uint8_t* )
 	  & pt -> data_idx . v16 [ right ];
 	
 	do
 	  {
 	    id = ( left + right ) >> 1;
-	    off = GET16( pt -> data_idx . v16 [ id - 1 ] );
+	    GET16 ( off, pt -> data_idx . v16 [ id - 1 ] );
 	    n -> id = id;
 	    n -> data . addr = & data_start [ off ];
 	    if ( id == max_right )
 	      n -> data . size = end - off;
 	    else
-	      n -> data . size = GET16( pt -> data_idx . v16 [ id ] ) - off;
+	    {
+	      uint16_t size;
+	      GET16 ( size, pt -> data_idx . v16 [ id ] );
+	      n -> data . size = size - off;
+	    }
 	    diff = ( * cmp ) ( item, n, data );
 	    if ( diff == 0 )
 	      return id;
@@ -276,28 +295,33 @@ uint32_t CC PBSTreeImplFind32 ( const PBSTree *self, PBSTNode *n, const void *it
     int ( CC * cmp ) ( const void *item, const PBSTNode *n, void * data ), void * data )
 {
     const P_BSTree *pt = self -> pt;
-    uint32_t right = GET32( pt -> num_nodes );
-    if ( pt -> num_nodes != 0 )
+    uint32_t right;
+    GET32 ( right, pt -> num_nodes );
+    if ( right != 0 )
     {
         int diff;
         const uint8_t *data_start;
-        uint32_t off, end = GET32( pt -> data_size );
+        uint32_t off, end;
         uint32_t id, left = 1;
         uint32_t max_right = right;
 
+        GET32 ( end, pt -> data_size );
 	data_start = ( const uint8_t* )
 	  & pt -> data_idx . v32 [ right ];
 	
 	do
 	  {
 	    id = ( left + right ) >> 1;
-	    off = GET32( pt -> data_idx . v32 [ id - 1 ] );
+	    GET32 ( off, pt -> data_idx . v32 [ id - 1 ] );
 	    n -> id = id;
 	    n -> data . addr = & data_start [ off ];
 	    if ( id == max_right )
 	      n -> data . size = end - off;
 	    else
-	      n -> data . size = GET32( pt -> data_idx . v32 [ id ] ) - off;
+	    {
+	      GET32 ( n -> data . size, pt -> data_idx . v32 [ id ] );
+	      n -> data . size -= off;
+	    }
 	    diff = ( * cmp ) ( item, n, data );
 	    if ( diff == 0 )
 	      return id;
@@ -322,7 +346,8 @@ void CC PBSTreeImplForEach8 ( const PBSTree *self, bool reverse,
     void ( CC * f ) ( PBSTNode *n, void *data ), void *data )
 {
     const P_BSTree *pt = self -> pt;
-    uint32_t num_nodes = GET32( pt -> num_nodes );
+    uint32_t num_nodes;
+    GET32 ( num_nodes, pt -> num_nodes );
     if ( num_nodes != 0 )
     {
         PBSTNode n;
@@ -330,7 +355,7 @@ void CC PBSTreeImplForEach8 ( const PBSTree *self, bool reverse,
         uint32_t off, end;
         const uint8_t *data_start;
 
-        end = GET32( pt -> data_size );
+        GET32 ( end, pt -> data_size );
 
 	data_start = & pt -> data_idx . v8 [ num_nodes ];
 	
@@ -347,7 +372,7 @@ void CC PBSTreeImplForEach8 ( const PBSTree *self, bool reverse,
 		( * f ) ( & n, data );
 	      }
 	    
-	    end = GET32( pt -> data_size );
+	    GET32 ( end, pt -> data_size );
 	  }
 	
 	off = pt -> data_idx . v8 [ num_nodes - 1 ];
@@ -377,25 +402,28 @@ void CC PBSTreeImplForEach16 ( const PBSTree *self, bool reverse,
     void ( CC * f ) ( PBSTNode *n, void *data ), void *data )
 {
     const P_BSTree *pt = self -> pt;
-    uint32_t num_nodes = GET32( pt -> num_nodes );
+    uint32_t num_nodes;
+    GET32 ( num_nodes, pt -> num_nodes );
     if ( num_nodes != 0 )
     {
         PBSTNode n;
-        uint32_t id;
-        uint32_t off, end;
+        uint32_t id, end;
+        uint16_t off;
         const uint8_t *data_start;
 
-        end = GET32( pt -> data_size );
+        GET32 ( end, pt -> data_size );
 
 	data_start = ( const uint8_t* )
 	  & pt -> data_idx . v16 [ num_nodes ];
 	
 	if ( ! reverse )
 	  {
-	    for ( off = GET16( pt -> data_idx . v16 [ 0 ] ),
-		    id = 1; id < num_nodes; off = end, ++ id )
+	    GET16 ( off, pt -> data_idx . v16 [ 0 ] );
+	    for ( id = 1; id < num_nodes; off = end, ++ id )
 	      {
-		end = GET16( pt -> data_idx . v16 [ id ] );
+		uint16_t end16;
+		GET16 ( end16, pt -> data_idx . v16 [ id ] );
+		end = end16;
 		n . internal = pt;
 		n . id = id;
 		n . data . addr = & data_start [ off ];
@@ -403,10 +431,10 @@ void CC PBSTreeImplForEach16 ( const PBSTree *self, bool reverse,
 		( * f ) ( & n, data );
 	      }
 	    
-	    end = GET32( pt -> data_size );
+	    GET32 ( end, pt -> data_size );
 	  }
 	
-	off = GET16( pt -> data_idx . v16 [ num_nodes - 1 ] );
+	GET16 ( off, pt -> data_idx . v16 [ num_nodes - 1 ] );
 	n . internal = pt;
 	n . id = num_nodes;
 	n . data . addr = & data_start [ off ];
@@ -417,7 +445,7 @@ void CC PBSTreeImplForEach16 ( const PBSTree *self, bool reverse,
 	  {
 	    for ( end = off, id = num_nodes - 1; id > 0; end = off, -- id )
 	      {
-		off = GET16( pt -> data_idx . v16 [ id - 1 ] );
+		GET16 ( off, pt -> data_idx . v16 [ id - 1 ] );
 		n . internal = pt;
 		n . id = id;
 		n . data . addr = & data_start [ off ];
@@ -433,7 +461,8 @@ void CC PBSTreeImplForEach32 ( const PBSTree *self, bool reverse,
     void ( CC * f ) ( PBSTNode *n, void *data ), void *data )
 {
     const P_BSTree *pt = self -> pt;
-    uint32_t num_nodes = GET32( pt -> num_nodes );
+    uint32_t num_nodes;
+    GET32 ( num_nodes, pt -> num_nodes );
     if ( num_nodes != 0 )
     {
         PBSTNode n;
@@ -441,17 +470,17 @@ void CC PBSTreeImplForEach32 ( const PBSTree *self, bool reverse,
         uint32_t off, end;
         const uint8_t *data_start;
 
-        end = GET32( pt -> data_size );
+        GET32 ( end, pt -> data_size );
 
 	data_start = ( const uint8_t* )
 	  & pt -> data_idx . v32 [ num_nodes ];
 	
 	if ( ! reverse )
 	  {
-	    for ( off = GET32( pt -> data_idx . v32 [ 0 ] ),
-		    id = 1; id < num_nodes; off = end, ++ id )
+	    GET32 ( off, pt -> data_idx . v32 [ 0 ] );
+	    for ( id = 1; id < num_nodes; off = end, ++ id )
 	      {
-		end =GET32( pt -> data_idx . v32 [ id ] );
+		GET32( end, pt -> data_idx . v32 [ id ] );
 		n . internal = pt;
 		n . id = id;
 		n . data . addr = & data_start [ off ];
@@ -459,10 +488,10 @@ void CC PBSTreeImplForEach32 ( const PBSTree *self, bool reverse,
 		( * f ) ( & n, data );
 	      }
                 
-	    end = GET32( pt -> data_size );
+	    GET32 ( end, pt -> data_size );
 	  }
 
-	off = GET32( pt -> data_idx . v32 [ num_nodes - 1 ] );
+	GET32 ( off, pt -> data_idx . v32 [ num_nodes - 1 ] );
 	n . internal = pt;
 	n . id = num_nodes;
 	n . data . addr = & data_start [ off ];
@@ -473,7 +502,7 @@ void CC PBSTreeImplForEach32 ( const PBSTree *self, bool reverse,
 	  {
 	    for ( end = off, id = num_nodes - 1; id > 0; end = off, -- id )
 	      {
-		off = GET32( pt -> data_idx . v32 [ id - 1 ] );
+		GET32 ( off, pt -> data_idx . v32 [ id - 1 ] );
 		n . internal = pt;
 		n . id = id;
 		n . data . addr = & data_start [ off ];
@@ -493,15 +522,16 @@ bool CC PBSTreeImplDoUntil8 ( const PBSTree *self, bool reverse,
     bool ( CC * f ) ( PBSTNode *n, void *data ), void *data )
 {
     const P_BSTree *pt = self -> pt;
-    uint32_t num_nodes = GET32( pt -> num_nodes );
-    if ( pt -> num_nodes != 0 )
+    uint32_t num_nodes;
+    GET32 ( num_nodes, pt -> num_nodes );
+    if ( num_nodes != 0 )
     {
         PBSTNode n;
         uint32_t id;
         uint32_t off, end;
         const uint8_t *data_start;
 
-        end = GET32( pt -> data_size );
+        GET32 ( end, pt -> data_size );
 
         data_start = & pt -> data_idx . v8 [ num_nodes ];
 	
@@ -519,7 +549,7 @@ bool CC PBSTreeImplDoUntil8 ( const PBSTree *self, bool reverse,
                     return true;
             }
 	    
-            end = GET32( pt -> data_size );
+            GET32 ( end, pt -> data_size );
         }
 
         off = pt -> data_idx . v8 [ num_nodes - 1 ];
@@ -553,25 +583,28 @@ bool CC PBSTreeImplDoUntil16 ( const PBSTree *self, bool reverse,
     bool ( CC * f ) ( PBSTNode *n, void *data ), void *data )
 {
     const P_BSTree *pt = self -> pt;
-    uint32_t num_nodes = GET32( pt -> num_nodes );
-    if ( pt -> num_nodes != 0 )
+    uint32_t num_nodes;
+    GET32 ( num_nodes, pt -> num_nodes );
+    if ( num_nodes != 0 )
     {
         PBSTNode n;
-        uint32_t id;
-        uint32_t off, end;
+        uint32_t id, end;
+        uint16_t off;
         const uint8_t *data_start;
 
-        end = GET32( pt -> data_size );
+        GET32 ( end, pt -> data_size );
 
         data_start = ( const uint8_t* )
             & pt -> data_idx . v16 [ num_nodes ];
             
         if ( ! reverse )
         {
-            for ( off = GET16( pt -> data_idx . v16 [ 0 ] ),
-                  id = 1; id < num_nodes; off = end, ++ id )
+            GET16 ( off, pt -> data_idx . v16 [ 0 ] );
+            for ( id = 1; id < num_nodes; off = end, ++ id )
             {
-                end = GET16( pt -> data_idx . v16 [ id ] );
+                uint16_t end16;
+                GET16 ( end16, pt -> data_idx . v16 [ id ] );
+                end = end16;
                 n . internal = pt;
                 n . id = id;
                 n . data . addr = & data_start [ off ];
@@ -580,10 +613,10 @@ bool CC PBSTreeImplDoUntil16 ( const PBSTree *self, bool reverse,
                     return true;
             }
                 
-            end = GET32( pt -> data_size );
+            GET32 ( end, pt -> data_size );
         }
 
-        off = GET16( pt -> data_idx . v16 [ num_nodes - 1 ] );
+        GET16 ( off, pt -> data_idx . v16 [ num_nodes - 1 ] );
         n . internal = pt;
         n . id = num_nodes;
         n . data . addr = & data_start [ off ];
@@ -595,7 +628,7 @@ bool CC PBSTreeImplDoUntil16 ( const PBSTree *self, bool reverse,
         {
             for ( end = off, id = num_nodes - 1; id > 0; end = off, -- id )
             {
-                off = GET16( pt -> data_idx . v16 [ id - 1 ] );
+                GET16 ( off, pt -> data_idx . v16 [ id - 1 ] );
                 n . internal = pt;
                 n . id = id;
                 n . data . addr = & data_start [ off ];
@@ -613,25 +646,26 @@ bool CC PBSTreeImplDoUntil32 ( const PBSTree *self, bool reverse,
     bool ( CC * f ) ( PBSTNode *n, void *data ), void *data )
 {
     const P_BSTree *pt = self -> pt;
-    uint32_t num_nodes = GET32( pt -> num_nodes );
-    if ( pt -> num_nodes != 0 )
+    uint32_t num_nodes;
+    GET32 ( num_nodes, pt -> num_nodes );
+    if ( num_nodes != 0 )
     {
         PBSTNode n;
         uint32_t id;
         uint32_t off, end;
         const uint8_t *data_start;
 
-        end = GET32( pt -> data_size );
+        GET32 ( end, pt -> data_size );
 
         data_start = ( const uint8_t* )
             & pt -> data_idx . v32 [ num_nodes ];
             
         if ( ! reverse )
         {
-            for ( off = GET32( pt -> data_idx . v32 [ 0 ] ),
-                  id = 1; id < num_nodes; off = end, ++ id )
+            GET32 ( off, pt -> data_idx . v32 [ 0 ] );
+            for ( id = 1; id < num_nodes; off = end, ++ id )
             {
-                end = GET32( pt -> data_idx . v32 [ id ] );
+                GET32 ( end, pt -> data_idx . v32 [ id ] );
                 n . internal = pt;
                 n . id = id;
                 n . data . addr = & data_start [ off ];
@@ -640,10 +674,10 @@ bool CC PBSTreeImplDoUntil32 ( const PBSTree *self, bool reverse,
                     return true;
             }
                 
-            end = GET32( pt -> data_size );
+            GET32 ( end, pt -> data_size );
         }
             
-        off = GET32( pt -> data_idx . v32 [ num_nodes - 1 ] );
+        GET32 ( off, pt -> data_idx . v32 [ num_nodes - 1 ] );
         n . internal = pt;
         n . id = num_nodes;
         n . data . addr = & data_start [ off ];
@@ -655,7 +689,7 @@ bool CC PBSTreeImplDoUntil32 ( const PBSTree *self, bool reverse,
         {
             for ( end = off, id = num_nodes - 1; id > 0; end = off, -- id )
             {
-                off = GET32( pt -> data_idx . v32 [ id - 1 ] );
+                GET32 ( off, pt -> data_idx . v32 [ id - 1 ] );
                 n . internal = pt;
                 n . id = id;
                 n . data . addr = & data_start [ off ];
@@ -734,7 +768,8 @@ static PBSTree_vt_v1 vtPBSTreeImpl32 =
 static
 PBSTree_vt * CC PBSTreeImplGetVTable ( const P_BSTree *pt )
 {
-    uint32_t data_size = GET32 ( pt -> data_size );
+    uint32_t data_size;
+    GET32 ( data_size, pt -> data_size );
     if ( data_size <= 256 )
       return (PBSTree_vt *) & vtPBSTreeImpl8;
     if ( data_size <= 65536 )
@@ -758,19 +793,18 @@ rc_t CC PBSTreeImplCheckPersisted ( const P_BSTree *pt, size_t size )
     if ( size < sizeof pt -> num_nodes )
         return RC ( rcCont, rcTree, rcConstructing, rcData, rcInvalid );
 
-    num_nodes = GET32( pt -> num_nodes );
+    GET32 ( num_nodes, pt -> num_nodes );
     if ( num_nodes > 0 )
     {
         uint32_t data_size;
         const uint8_t *end, *data_start;
 
-        /* no need to byteswap a value of 0 */	
-        if ( size < sizeof * pt || pt -> data_size == 0 )
+        GET32 ( data_size, pt -> data_size );
+        if ( size < sizeof * pt || data_size == 0 )
             return RC ( rcCont, rcTree, rcConstructing, rcData, rcIncomplete );
 
         end = ( const uint8_t* ) pt + size;
 
-        data_size = GET32 ( pt -> data_size );
         if ( data_size <= 256 )
             data_start = & pt -> data_idx . v8 [ num_nodes ];
         else  if ( data_size <= 65536 )

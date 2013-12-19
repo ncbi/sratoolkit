@@ -253,7 +253,7 @@ LIB_EXPORT void CC RefIterRecordDestroy ( void *obj, void *data )
 
 
 LIB_EXPORT rc_t CC RefIterRecordSize ( struct VCursor const *curs,
-    int64_t row_id, size_t * size, void *data )
+    int64_t row_id, size_t * size, void *data, void * placement_ctx )
 {
     /* discover the size of the ref-iter-part to be allocated... */
     return AlignIteratorRecordSize ( curs, row_id, size, data );
@@ -262,7 +262,7 @@ LIB_EXPORT rc_t CC RefIterRecordSize ( struct VCursor const *curs,
 
 LIB_EXPORT rc_t CC RefIterRecordPopulate ( void *obj,
     const PlacementRecord *placement, struct VCursor const *curs,
-    INSDC_coord_zero ref_window_start, INSDC_coord_len ref_window_len, void *data )
+    INSDC_coord_zero ref_window_start, INSDC_coord_len ref_window_len, void *data, void * placement_ctx )
 {
     return AlignIteratorRecordPopulate ( obj, placement, curs, ref_window_start, ref_window_len, data );
 }
@@ -410,7 +410,7 @@ static rc_t prepare_align_cursor( struct VCursor const *align )
 LIB_EXPORT rc_t CC ReferenceIteratorAddPlacements( ReferenceIterator *self,
      struct ReferenceObj const *ref_obj, INSDC_coord_zero ref_pos, INSDC_coord_len ref_len,
      struct VCursor const *ref, struct VCursor const *align, align_id_src ids,
-     const char * spot_group )
+     const char * spot_group, void * placement_ctx )
 {
     rc_t rc = 0;
     if ( self == NULL )
@@ -429,7 +429,7 @@ LIB_EXPORT rc_t CC ReferenceIteratorAddPlacements( ReferenceIterator *self,
                 PlacementIterator *pi;
 
                 rc = ReferenceObj_MakePlacementIterator ( ref_obj, &pi, ref_pos, ref_len, self->min_mapq,
-                        ref, align, ids, &self->int_func, &self->ext_func, spot_group );
+                        ref, align, ids, &self->int_func, &self->ext_func, spot_group, placement_ctx );
                 if ( rc == 0 )
                 {
                     rc = PlacementSetIteratorAddPlacementIterator ( self->pl_set_iter, pi );

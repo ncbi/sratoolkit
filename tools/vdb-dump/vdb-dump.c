@@ -37,8 +37,10 @@
 #include <kdb/table.h>
 #include <kdb/column.h>
 #include <kdb/manager.h>
+#include <kdb/namelist.h>
 
 #include <kfs/directory.h>
+#include <kns/manager.h>
 
 #include <kapp/main.h>
 #include <kapp/args.h>
@@ -67,9 +69,8 @@
 #include "vdb-dump-helper.h"
 #include "vdb-dump-row-context.h"
 #include "vdb-dump-formats.h"
-
-
-#define CURSOR_CACHE_SIZE 256*1024*1024
+#include "vdb-dump-fastq.h"
+#include "vdb-dump-redir.h"
 
 static const char * row_id_on_usage[] = { "print row id", NULL };
 static const char * line_feed_usage[] = { "line-feed's inbetween rows", NULL };
@@ -87,7 +88,7 @@ static const char * dna_bases_usage[] = { "print dna-bases", NULL };
 static const char * max_line_len_usage[] = { "limits line length", NULL };
 static const char * line_indent_usage[] = { "indents the line", NULL };
 static const char * filter_usage[] = { "filters lines", NULL };
-static const char * format_usage[] = { "dump format (csv,xml,json,piped,tab)", NULL };
+static const char * format_usage[] = { "dump format (csv,xml,json,piped,tab,fastq,fasta)", NULL };
 static const char * id_range_usage[] = { "prints id-range", NULL };
 static const char * without_sra_usage[] = { "without sra-type-translation", NULL };
 static const char * without_accession_usage[] = { "without accession-test", NULL };
@@ -99,6 +100,14 @@ static const char * numelemsum_usage[] = { "sum element-count", NULL };
 static const char * show_blobbing_usage[] = { "show blobbing", NULL };
 static const char * enum_phys_usage[] = { "enumerate physical columns", NULL };
 static const char * objtype_usage[] = { "report type of object", NULL };
+static const char * idx_enum_usage[] = { "enumerate available index", NULL };
+static const char * idx_range_usage[] = { "show row-range of idx entry", NULL };
+static const char * cur_cache_usage[] = { "size of cursor cache", NULL };
+static const char * out_file_usage[] = { "write output to this file", NULL };
+static const char * gzip_usage[] = { "compress output using gzip", NULL };
+static const char * bzip2_usage[] = { "compress output using bzip2", NULL };
+static const char * outbuf_size_usage[] = { "size of output-buffer, 0...none", NULL };
+static const char * disable_mt_usage[] = { "disable multithreading", NULL };
 
 OptDef DumpOptions[] =
 {
@@ -129,8 +138,17 @@ OptDef DumpOptions[] =
     { OPTION_NUMELEMSUM, ALIAS_NUMELEMSUM, NULL, numelemsum_usage, 1, false, false },
     { OPTION_SHOW_BLOBBING, NULL, NULL, show_blobbing_usage, 1, false, false },
     { OPTION_ENUM_PHYS, NULL, NULL, enum_phys_usage, 1, false, false },
+    { OPTION_CHECK_CURL, NULL, NULL, NULL, 1, false, false },
     { OPTION_OBJVER, ALIAS_OBJVER, NULL, objver_usage, 1, false, false },
-    { OPTION_OBJTYPE, ALIAS_OBJTYPE, NULL, objtype_usage, 1, false, false }
+    { OPTION_OBJTYPE, ALIAS_OBJTYPE, NULL, objtype_usage, 1, false, false },
+    { OPTION_IDX_ENUM, NULL, NULL, idx_enum_usage, 1, false, false },
+    { OPTION_IDX_RANGE, NULL, NULL, idx_range_usage, 1, true, false },
+    { OPTION_CUR_CACHE, NULL, NULL, cur_cache_usage, 1, true, false },
+    { OPTION_OUT_FILE, NULL, NULL, out_file_usage, 1, true, false },
+    { OPTION_GZIP, NULL, NULL, gzip_usage, 1, false, false },
+    { OPTION_BZIP2, NULL, NULL, bzip2_usage, 1, false, false },
+    { OPTION_OUT_BUF_SIZE, NULL, NULL, outbuf_size_usage, 1, true, false },
+    { OPTION_NO_MULTITHREAD, NULL, NULL, disable_mt_usage, 1, false, false },
 };
 
 const char UsageDefaultName[] = "vdb-dump";
@@ -190,7 +208,15 @@ rc_t CC Usage ( const Args * args )
     HelpOptionLine ( ALIAS_NUMELEMSUM, OPTION_NUMELEMSUM, NULL, numelemsum_usage );
     HelpOptionLine ( NULL, OPTION_SHOW_BLOBBING, NULL, show_blobbing_usage );
     HelpOptionLine ( NULL, OPTION_ENUM_PHYS, NULL, enum_phys_usage );
-
+    HelpOptionLine ( NULL, OPTION_IDX_ENUM, NULL, idx_enum_usage );	
+    HelpOptionLine ( NULL, OPTION_IDX_RANGE, NULL, idx_range_usage );	
+    HelpOptionLine ( NULL, OPTION_CUR_CACHE, NULL, cur_cache_usage );	
+    HelpOptionLine ( NULL, OPTION_OUT_FILE, NULL, out_file_usage );
+    HelpOptionLine ( NULL, OPTION_GZIP, NULL, gzip_usage );
+    HelpOptionLine ( NULL, OPTION_BZIP2, NULL, bzip2_usage );
+    HelpOptionLine ( NULL, OPTION_OUT_BUF_SIZE, NULL, outbuf_size_usage );
+    HelpOptionLine ( NULL, OPTION_NO_MULTITHREAD, NULL, disable_mt_usage );
+    
     HelpOptionsStandard ();
 
     HelpVersion ( fullpath, KAppVersion() );
@@ -386,15 +412,19 @@ static rc_t vdm_dump_rows( p_row_context r_ctx )
                 break;
             r_ctx->rc = VCursorSetRowId( r_ctx->cursor, r_ctx->row_id );
             if ( r_ctx->rc != 0 )
+            {
                 vdm_row_error( "VCursorSetRowId( row#$(row_nr) ) failed", 
                                r_ctx->rc, r_ctx->row_id );
-            if ( r_ctx->rc == 0 )
+            }
+            else
             {
                 r_ctx->rc = VCursorOpenRow( r_ctx->cursor );
                 if ( r_ctx->rc != 0 )
+                {
                     vdm_row_error( "VCursorOpenRow( row#$(row_nr) ) failed", 
                                    r_ctx->rc, r_ctx->row_id );
-                if ( r_ctx->rc == 0 )
+                }
+                else
                 {
                     /* first reset the string and valid-flag for every column */
                     vdcd_reset_content( r_ctx->col_defs );
@@ -502,7 +532,7 @@ my_table  [IN] ... open table needed for vdb-calls
 static rc_t vdm_dump_opened_table( const p_dump_context ctx, const VTable *my_table )
 {
     row_context r_ctx;
-    rc_t rc = VTableCreateCachedCursorRead( my_table, &(r_ctx.cursor), CURSOR_CACHE_SIZE );
+    rc_t rc = VTableCreateCachedCursorRead( my_table, &(r_ctx.cursor), ctx->cur_cache_size );
     DISP_RC( rc, "VTableCreateCursorRead() failed" );
     if ( rc == 0 )
     {
@@ -619,12 +649,13 @@ my_database [IN] ... open database needed for vdb-calls
 static rc_t vdm_dump_tab_schema( const p_dump_context ctx,
                                  const VTable *my_table )
 {
-    const VSchema *my_schema;
+    const VSchema * my_schema;
     rc_t rc = VTableOpenSchema( my_table, &my_schema );
     DISP_RC( rc, "VTableOpenSchema() failed" );
     if ( rc == 0 )
     {
-        rc = VSchemaDump( my_schema, sdmPrint, NULL,
+        const char * decl = ctx->columns;
+        rc = VSchemaDump( my_schema, sdmPrint, decl,
                           vdm_schema_dump_flush, stdout );
         DISP_RC( rc, "VSchemaDump() failed" );
         VSchemaRelease( my_schema );
@@ -1040,6 +1071,167 @@ static rc_t vdm_print_db_id_range( const p_dump_context ctx, const VDatabase *my
     return rc;
 }
 
+
+
+/* ************************************************************************************ */
+
+static rc_t vdm_enum_index( const KTable * my_ktable, uint32_t idx_nr, const char * idx_name )
+{
+	rc_t rc = KOutMsg( "idx #%u: %s", idx_nr + 1, idx_name );
+	if ( rc == 0 )
+	{
+		const KIndex * my_idx;
+		rc = KTableOpenIndexRead ( my_ktable, &my_idx, idx_name );
+		if ( rc != 0 )
+			rc = KOutMsg( " (cannot open)" );
+		else
+		{
+			uint32_t idx_version;
+			rc = KIndexVersion ( my_idx, &idx_version );
+			if ( rc != 0 )
+				rc = KOutMsg( " V?.?.?" );
+			else
+				rc = KOutMsg( " V%V", idx_version );
+
+			if ( rc == 0 )
+			{
+				KIdxType idx_type;
+				rc = KIndexType ( my_idx, &idx_type );
+				if ( rc != 0 )
+					rc = KOutMsg( " type = ?" );
+				else
+				{
+					switch ( idx_type &~ kitProj )
+					{
+						case kitText : rc = KOutMsg( " type = Text" ); break;
+						case kitU64  : rc = KOutMsg( " type = U64" ); break;
+						default 	  : rc = KOutMsg( " type = unknown" ); break;
+					}
+					if ( rc == 0 && ( ( idx_type & kitProj ) == kitProj ) )
+						rc = KOutMsg( " reverse" );
+				}
+			}
+			
+			if ( rc == 0 )
+			{
+				bool locked = KIndexLocked ( my_idx );
+				if ( locked )
+					rc = KOutMsg( " locked" );
+			}
+			KIndexRelease( my_idx );
+		}
+	}
+	if ( rc == 0 )
+		rc = KOutMsg( "\n" );
+	return rc;
+}
+
+
+static rc_t vdm_enum_tab_index( const p_dump_context ctx, const VTable *my_table )
+{
+	const KTable * my_ktable;
+	rc_t rc = VTableOpenKTableRead( my_table, &my_ktable );
+	DISP_RC( rc, "VTableOpenKTableRead() failed" );
+	if ( rc == 0 )
+	{
+		KNamelist *idx_names;
+		rc = KTableListIdx ( my_ktable, &idx_names );
+		if ( rc == 0 )
+		{
+            uint32_t count;
+            rc = KNamelistCount( idx_names, &count );
+            if ( rc == 0 )
+            {
+                uint32_t i;
+                for ( i = 0; i < count && rc == 0; ++i )
+                {
+                    const char * idx_name = NULL;
+                    rc = KNamelistGet( idx_names, i, &idx_name );
+                    if ( rc == 0 && idx_name != NULL )
+						rc = vdm_enum_index( my_ktable, i, idx_name );
+                }
+            }
+			KNamelistRelease( idx_names );
+		}
+		else
+			rc = KOutMsg( "no index available\n" );
+		KTableRelease( my_ktable );
+	}
+	return rc;
+}
+
+static rc_t vdm_enum_db_index( const p_dump_context ctx, const VDatabase *my_database )
+{
+    rc_t rc;
+    const VTable *my_table;
+
+    rc = VDatabaseOpenTableRead( my_database, &my_table, ctx->table );
+    DISP_RC( rc, "VDatabaseOpenTableRead() failed" );
+    if ( rc == 0 )
+    {
+        rc = vdm_enum_tab_index( ctx, my_table );
+        VTableRelease( my_table );
+    }
+    return rc;
+}
+
+
+/* ************************************************************************************ */
+
+static rc_t CC on_index_range( int64_t start_id, uint64_t id_count, void * data )
+{
+	return KOutMsg( "from %lu to %lu\n", start_id, start_id + id_count - 1 );
+}
+
+static rc_t vdm_range_tab_index( const p_dump_context ctx, const VTable *my_table )
+{
+	const KTable * my_ktable;
+	rc_t rc = VTableOpenKTableRead( my_table, &my_ktable );
+	DISP_RC( rc, "VTableOpenKTableRead() failed" );
+	if ( rc == 0 )
+	{
+		size_t s = string_size( ctx->idx_range );
+		char * equal = string_chr ( ctx->idx_range, s, '=' );
+		if ( equal == NULL )
+			rc = KOutMsg( "usage: IDX_NAME=VALUE\n" );
+		else
+		{
+			const KIndex * my_idx;
+			char * idx_name = string_dup( ctx->idx_range, (size_t)( equal - ( ctx->idx_range ) ) );
+			rc = KTableOpenIndexRead ( my_ktable, &my_idx, idx_name );
+			if ( rc != 0 )
+				rc = KOutMsg( "cannot open index '%s'", idx_name );
+			else
+			{
+				KOutMsg( "index '%s' opened\n", idx_name );
+				rc = KIndexFindAllText ( my_idx, equal + 1, on_index_range, NULL );
+    			KIndexRelease( my_idx );
+			}
+			free( idx_name );
+		}
+		KTableRelease( my_ktable );
+	}
+	return rc;
+}
+
+
+static rc_t vdm_range_db_index( const p_dump_context ctx, const VDatabase *my_database )
+{
+    rc_t rc;
+    const VTable *my_table;
+
+    rc = VDatabaseOpenTableRead( my_database, &my_table, ctx->table );
+    DISP_RC( rc, "VDatabaseOpenTableRead() failed" );
+    if ( rc == 0 )
+    {
+        rc = vdm_range_tab_index( ctx, my_table );
+        VTableRelease( my_table );
+    }
+    return rc;
+}
+
+
+
 typedef rc_t (*db_tab_t)( const p_dump_context ctx, const VTable *a_tab );
 
 /*************************************************************************************
@@ -1075,7 +1267,7 @@ static rc_t vdm_dump_tab_fkt( const p_dump_context ctx,
         VTableRelease( my_table );
     }
 
-    if ( my_schema )
+    if ( my_schema != NULL )
         VSchemaRelease( my_schema );
 
     return rc;
@@ -1122,6 +1314,14 @@ static rc_t vdm_dump_table( const p_dump_context ctx, const VDBManager *my_manag
     else if ( ctx->id_range_requested )
     {
         rc = vdm_dump_tab_fkt( ctx, my_manager, vdm_print_tab_id_range );
+    }
+    else if ( ctx->idx_enum_requested )
+    {
+        rc = vdm_dump_tab_fkt( ctx, my_manager, vdm_enum_tab_index );
+    }
+    else if ( ctx->idx_range_requested )
+    {
+        rc = vdm_dump_tab_fkt( ctx, my_manager, vdm_range_tab_index );
     }
     else
     {
@@ -1224,6 +1424,14 @@ static rc_t vdm_dump_database( const p_dump_context ctx, const VDBManager *my_ma
     {
         rc = vdm_dump_db_fkt( ctx, my_manager, vdm_print_db_id_range );
     }
+    else if ( ctx->idx_enum_requested )
+    {
+        rc = vdm_dump_db_fkt( ctx, my_manager, vdm_enum_db_index );
+    }
+    else if ( ctx->idx_range_requested )
+    {
+        rc = vdm_dump_db_fkt( ctx, my_manager, vdm_range_db_index );
+    }
     else
     {
         rc = vdm_dump_db_fkt( ctx, my_manager, vdm_dump_opened_database );
@@ -1247,6 +1455,7 @@ static rc_t vdm_print_objver( const p_dump_context ctx, const VDBManager *mgr )
 static void vdm_print_objtype( const VDBManager *mgr, const char * acc_or_path )
 {
     int path_type = ( VDBManagerPathType ( mgr, acc_or_path ) & ~ kptAlias );
+    /* types defined in <kdb/manager.h> */
     switch ( path_type )
     {
     case kptDatabase      :   KOutMsg( "Database\n" ); break;
@@ -1269,14 +1478,12 @@ static void vdm_print_objtype( const VDBManager *mgr, const char * acc_or_path )
 }
 
 
-#define USE_PATHTYPE_TO_DETECT_DB_OR_TAB 1
-
 static rc_t vdb_main_one_obj_by_pathtype( const p_dump_context ctx,
-                                          const VDBManager *mgr,
-                                          const char * acc_or_path )
+                                          const VDBManager *mgr )
 {
     rc_t rc;
-    int path_type = ( VDBManagerPathType ( mgr, acc_or_path ) & ~ kptAlias );
+    int path_type = ( VDBManagerPathType ( mgr, ctx->path ) & ~ kptAlias );
+    /* types defined in <kdb/manager.h> */
     switch ( path_type )
     {
     case kptDatabase    :   rc = vdm_dump_database( ctx, mgr );
@@ -1303,8 +1510,7 @@ static rc_t vdb_main_one_obj_by_pathtype( const p_dump_context ctx,
 
 
 static rc_t vdb_main_one_obj_by_probing( const p_dump_context ctx,
-                                         const VDBManager *mgr,
-                                         const char * acc_or_path )
+                                         const VDBManager *mgr )
 {
     rc_t rc;
     if ( vdh_is_path_database( mgr, ctx->path, &(ctx->schema_list) ) )
@@ -1333,7 +1539,7 @@ static rc_t vdb_main_one_obj_by_probing( const p_dump_context ctx,
 
 
 static rc_t vdm_main_one_obj( const p_dump_context ctx,
-                        KDirectory *dir, const VDBManager *mgr,
+                        const VDBManager *mgr,
                         const char * acc_or_path )
 {
     rc_t rc = 0;
@@ -1350,19 +1556,47 @@ static rc_t vdm_main_one_obj( const p_dump_context ctx,
     }
     else
     {
-        if ( USE_PATHTYPE_TO_DETECT_DB_OR_TAB )
+        if ( USE_PATHTYPE_TO_DETECT_DB_OR_TAB ) /* in vdb-dump-context.h */
         {
-            rc = vdb_main_one_obj_by_pathtype( ctx, mgr, acc_or_path );
+            rc = vdb_main_one_obj_by_pathtype( ctx, mgr );
         }
         else
         {
-            rc = vdb_main_one_obj_by_probing( ctx, mgr, acc_or_path );
+            rc = vdb_main_one_obj_by_probing( ctx, mgr );
         }
     }
 
     free( (char*)ctx->path );
     ctx->path = NULL;
 
+    return rc;
+}
+
+
+static rc_t vdm_check_curl( void )
+{
+    struct KNSManager * knsmgr;
+    rc_t rc = KNSManagerMake( &knsmgr );
+    if ( rc == 0 )
+    {
+        rc = KNSManagerAvail( knsmgr );
+        if ( rc == 0 )
+        {
+            const char *vers = NULL;
+            rc = KNSManagerCurlVersion( knsmgr, &vers );
+            if ( rc == 0 )
+                KOutMsg( "libcurl-version = %s\n", vers );
+        }
+        else
+        {
+            rc = KOutMsg( "libcurl not available... %R\n", rc );
+        }
+        KNSManagerRelease( knsmgr );
+    }
+    else
+    {
+        rc = KOutMsg( "cannot create knsmgr... %R\n", rc );
+    }
     return rc;
 }
 
@@ -1396,11 +1630,22 @@ static rc_t vdm_main( const p_dump_context ctx, Args * args )
         DISP_RC( rc, "VDBManagerMakeRead() failed" );
         if ( rc == 0 )
         {
+            if ( ctx->disable_multithreading )
+            {
+                rc = VDBManagerDisablePagemapThread ( mgr );
+                DISP_RC( rc, "VDBManagerDisablePagemapThread() failed" );
+                rc = 0;
+            }
+            
             /* show manager is independend form db or tab */
             if ( ctx->version_requested )
             {
                 rc = vdh_show_manager_version( mgr );
                 DISP_RC( rc, "show_manager_version() failed" );
+            }
+            else if ( ctx->check_curl )
+            {
+                rc = vdm_check_curl();
             }
             else
             {
@@ -1419,7 +1664,12 @@ static rc_t vdm_main( const p_dump_context ctx, Args * args )
                             DISP_RC( rc, "ArgsParamValue() failed" );
                             if ( rc == 0 )
                             {
-                                rc = vdm_main_one_obj( ctx, dir, mgr, value );
+                                switch( ctx->format )
+                                {
+                                    case df_fastq : ;
+                                    case df_fasta : vdf_main( ctx, mgr, value ); break;                                    
+                                    default : rc = vdm_main_one_obj( ctx, mgr, value ); break;
+                                }
                             }
                         }
                     }
@@ -1478,8 +1728,18 @@ rc_t CC KMain ( int argc, char *argv [] )
             rc = vdco_capture_arguments_and_options( args, ctx );
             if ( rc == 0 )
             {
+                out_redir redir; /* vdb-dump-redir.h */
+
                 KLogHandlerSetStdErr();
-                rc = vdm_main( ctx, args );
+                rc = init_out_redir( &redir,
+                                     ctx->compress_mode,
+                                     ctx->output_file,
+                                     ctx->output_buffer_size ); /* vdb-dump-redir.c */
+                if ( rc == 0 )
+                {
+                    rc = vdm_main( ctx, args );
+                    release_out_redir( &redir ); /* vdb-dump-redir.c */
+                }
             }
             vdco_destroy( ctx );
         }

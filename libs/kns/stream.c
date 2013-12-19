@@ -88,7 +88,7 @@ LIB_EXPORT rc_t CC KStreamRelease ( const KStream *self )
         {
         case krefWhack:
             return KStreamDestroy ( ( KStream* ) self );
-        case krefLimit:
+        case krefNegative:
             return RC ( rcNS, rcStream, rcReleasing, rcRange, rcExcessive );
         default:
             break;

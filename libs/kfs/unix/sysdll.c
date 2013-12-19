@@ -173,7 +173,7 @@ LIB_EXPORT rc_t CC KDyldRelease ( const KDyld *self )
         {
         case krefWhack:
             return KDyldWhack ( ( KDyld* ) self );
-        case krefLimit:
+        case krefNegative:
             return RC ( rcFS, rcDylib, rcReleasing, rcRange, rcExcessive );
         }
     }
@@ -207,7 +207,7 @@ rc_t KDyldSever ( const KDyld *self )
         {
         case krefWhack:
             return KDyldWhack ( ( KDyld* ) self );
-        case krefLimit:
+        case krefNegative:
             return RC ( rcFS, rcDylib, rcReleasing, rcRange, rcExcessive );
         }
     }
@@ -728,7 +728,7 @@ LIB_EXPORT rc_t CC KDylibRelease ( const KDylib *self )
         {
         case krefWhack:
             return KDylibWhack ( ( KDylib* ) self );
-        case krefLimit:
+        case krefNegative:
             return RC ( rcFS, rcDylib, rcReleasing, rcRange, rcExcessive );
         }
     }
@@ -769,7 +769,7 @@ rc_t KDylibSever ( const KDylib *self )
         {
         case krefWhack:
             return KDylibWhack ( ( KDylib* ) self );
-        case krefLimit:
+        case krefNegative:
             return RC ( rcFS, rcDylib, rcReleasing, rcRange, rcExcessive );
         }
     }
@@ -941,7 +941,7 @@ LIB_EXPORT rc_t CC KDlsetRelease ( const KDlset *self )
         {
         case krefWhack:
             return KDlsetWhack ( ( KDlset* ) self );
-        case krefLimit:
+        case krefNegative:
             return RC ( rcFS, rcDylib, rcReleasing, rcRange, rcExcessive );
         }
     }
@@ -1105,7 +1105,7 @@ LIB_EXPORT rc_t CC KSymAddrRelease ( const KSymAddr *self )
         {
         case krefWhack:
             return KSymAddrWhack ( ( KSymAddr* ) self );
-        case krefLimit:
+        case krefNegative:
             return RC ( rcFS, rcDylib, rcReleasing, rcRange, rcExcessive );
         }
     }

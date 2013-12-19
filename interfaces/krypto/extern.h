@@ -27,40 +27,17 @@
 #ifndef _h_krypto_extern_
 #define _h_krypto_extern_
 
-#ifndef _h_klib_callconv_
-#include <klib/callconv.h>
-#endif
-
-#if ! defined EXPORT_LATCH && _LIBRARY
-
+#if ! defined EXPORT_LATCH && defined _LIBRARY
 #define KRYPTO_EXTERN LIB_EXPORT
-#define KRYPTO_EXTERN_DATA extern LIB_EXPORT
+#define KRYPTO_EXTERN_DATA LIB_EXPORT_DATA
 #define EXPORT_LATCH 1
-
 #else
-
 #define KRYPTO_EXTERN LIB_IMPORT
-#define KRYPTO_EXTERN_DATA LIB_IMPORT
-
+#define KRYPTO_EXTERN_DATA LIB_IMPORT_DATA
 #endif
 
-#if defined _MSC_VER && ! _STATIC
-
-/* __declspec ( dllimport ) will cause creation of
-   function pointers rather than thunks, which makes
-   the code that imports unable to link statically
-   against a library. we leave this symbol defined as
-   "extern" to use thunks instead. as a result, all
-   function addresses resolve to the thunk and not
-   the actual function. */
-#define LIB_IMPORT extern
-#define LIB_EXPORT __declspec ( dllexport )
-
-#else
-
-#define LIB_IMPORT extern
-#define LIB_EXPORT
-
+#ifndef _h_klib_extern_
+#include <klib/extern.h>
 #endif
 
 #endif /* _h_krypto_extern_ */

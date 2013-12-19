@@ -90,21 +90,8 @@ SRA_DBCC_OBJ = \
 	$(addsuffix .$(OBJX),$(SRA_DBCC_SRC))
 
 SRA_DBCC_LIB = \
-	-dalign-reader \
-	$(READONLY_SCHEMA_LIBS) \
-	-dksrch \
-	-lsradb \
-	-lvdb \
-	-lkdb \
 	-lkapp \
-	-lvfs \
-	-lkurl \
-	-lkrypto \
-	-lkfg \
-	-lkfs \
-	-lkproc \
-	-lklib \
-	-lm
+	-lncbi-vdb \
 
 sra-dbcc.vers.h: sra-dbcc.vers
 	$(TOP)/build/make-vers-inc.sh SRA_DBCC_VERS $^ > $@

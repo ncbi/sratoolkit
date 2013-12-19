@@ -34,6 +34,7 @@
 #include <kfg/config.h>
 #include <vfs/manager.h>
 #include <vfs/resolver.h>
+#include <vfs/path.h>
 #include <kdb/manager.h>
 #include <kdb/kdb-priv.h>
 #include <vdb/manager.h>
@@ -95,7 +96,7 @@ LIB_EXPORT rc_t CC SRAMgrRelease ( const SRAMgr *self )
         {
         case krefWhack:
             return SRAMgrWhack ( ( SRAMgr* ) self );
-        case krefLimit:
+        case krefNegative:
             return RC ( rcSRA, rcMgr, rcReleasing, rcRange, rcExcessive );
         }
     }
@@ -144,7 +145,7 @@ rc_t SRAMgrSever ( const SRAMgr *self )
         {
         case krefWhack:
             return SRAMgrWhack ( ( SRAMgr* ) self );
-        case krefLimit:
+        case krefNegative:
             return RC ( rcSRA, rcMgr, rcReleasing, rcRange, rcExcessive );
         }
     }
@@ -155,39 +156,20 @@ rc_t SRAMgrSever ( const SRAMgr *self )
 /* Make
  */
 static
-rc_t SRAMgrInitPath ( SRAMgr *mgr, const KDirectory *wd )
+rc_t SRAMgrInitPath ( SRAMgr *mgr, KConfig *kfg, const KDirectory *wd )
 {
-#if OLD_SRAPATH_MGR
-    /* try to make the path manager */
-    rc_t rc = SRAPathMake ( & mgr -> _pmgr, wd );
-
-    if ( GetRCState ( rc ) == rcNotFound && GetRCTarget ( rc ) == rcDylib )
-    {
-        /* we are operating outside of the archive */
-        assert ( mgr -> _pmgr == NULL );
-        rc = 0;
-    }
-
-    return rc;
-#else
-    KConfig *kfg;
-    rc_t rc = KConfigMake ( & kfg, NULL );
+    VFSManager *vfs;
+    rc_t rc = VFSManagerMake ( & vfs );
     if ( rc == 0 )
     {
-        VFSManager *vfs;
-        rc = VFSManagerMake ( & vfs );
-        if ( rc == 0 )
-        {
-            rc = VFSManagerMakeResolver ( vfs, ( VResolver** ) & mgr -> _pmgr, kfg );
-            VFSManagerRelease ( vfs );
-        }
-        KConfigRelease ( kfg );
+        rc = VFSManagerMakeResolver ( vfs, ( VResolver** ) & mgr -> _pmgr, kfg );
+        VFSManagerRelease ( vfs );
     }
+
     if ( rc != 0 )
         mgr -> _pmgr = NULL;
 
     return 0;
-#endif
 }
 
 rc_t SRAMgrMake ( SRAMgr **mgrp,
@@ -205,20 +187,27 @@ rc_t SRAMgrMake ( SRAMgr **mgrp,
         rc = VDBManagerMakeSRASchema ( vmgr, & schema );
         if ( rc == 0 )
         {
-            rc = SRAMgrInitPath ( mgr, wd );
+            KConfig* kfg;
+            rc = KConfigMake ( & kfg, wd );
             if ( rc == 0 )
             {
-                rc = SRACacheInit ( & mgr -> cache );
+                rc = SRAMgrInitPath ( mgr, kfg, wd );
                 if ( rc == 0 )
                 {
-                    KRefcountInit ( & mgr -> refcount, 1, "SRAMgr", "SRAMgrMake", "sramgr" );
-                    mgr -> vmgr = vmgr;
-                    mgr -> schema = schema;
-                    mgr -> mode = kcmCreate; /* TBD - should this include parents? */
-                    mgr -> read_only = true;
-                    * mgrp = mgr;
-                    return 0;
+                    rc = SRACacheInit ( & mgr -> cache, kfg );
+                    if ( rc == 0 )
+                    {
+                        KRefcountInit ( & mgr -> refcount, 1, "SRAMgr", "SRAMgrMake", "sramgr" );
+                        mgr -> vmgr = vmgr;
+                        mgr -> schema = schema;
+                        mgr -> mode = kcmCreate; /* TBD - should this include parents? */
+                        mgr -> read_only = true;
+                        * mgrp = mgr;
+                        KConfigRelease ( kfg );
+                        return 0;
+                    }
                 }
+                KConfigRelease ( kfg );
             }
 
             VSchemaRelease ( schema );
@@ -262,97 +251,44 @@ LIB_EXPORT rc_t CC SRAMgrWritable ( const SRAMgr *self,
     return rc;
 }
 
-
-/* AccessSRAPath
- *  returns a new reference to SRAPath
- *  do NOT access "pmgr" directly
- */
-SRAPath *SRAMgrAccessSRAPath ( const SRAMgr *cself )
+LIB_EXPORT rc_t CC SRAMgrResolve( const SRAMgr *self, const char* acc, char* buf, size_t buf_size )
 {
-    SRAMgr *self = ( SRAMgr* ) cself;
-    if ( self != NULL )
-    {
-#if OLD_SRAPATH_MGR
-        /* get a pointer to object - read is expected to be atomic */
-        SRAPath *pold = self -> _pmgr;
-#endif
-    }
-    return NULL;
-}
-
-
-/* GetSRAPath
- *  retrieve a reference to SRAPath object in use - may be NULL
- * UseSRAPath
- *  provide an SRAPath object for use - attaches a new reference
- */
-LIB_EXPORT rc_t CC SRAMgrGetSRAPath ( const SRAMgr *self,
-        SRAPath **path )
-{
-    rc_t rc = 0;
-
-    if ( path == NULL )
-        rc = RC ( rcSRA, rcMgr, rcAccessing, rcParam, rcNull );
-    else
-    {
-        if ( self == NULL )
-            rc = RC ( rcSRA, rcMgr, rcAccessing, rcSelf, rcNull );
-#if OLD_SRAPATH_MGR
-        else if ( self -> _pmgr == NULL )
-            rc = 0;
-        else
-        {
-            rc = SRAPathAddRef ( self -> _pmgr );
-            if ( rc == 0 )
-            {
-                * path = self -> _pmgr;
-                return 0;
-            }
-        }
-#else
-        else
-#endif
-
-        * path = NULL;
-    }
-
-    return rc;
-}
-
-LIB_EXPORT rc_t CC SRAMgrUseSRAPath ( const SRAMgr *cself, SRAPath *path )
-{
-    rc_t rc;
-    SRAMgr *self = ( SRAMgr* ) cself;
-
     if ( self == NULL )
-        rc = RC ( rcSRA, rcMgr, rcUpdating, rcSelf, rcNull );
-#if OLD_SRAPATH_MGR
-    else if ( path == self -> _pmgr )
-        rc = 0;
-    else if ( path == NULL )
-    {
-        rc = 0;
-        if ( self -> _pmgr != NULL )
-        {
-            SRAPathRelease ( self -> _pmgr );
-            self -> _pmgr = NULL;
-        }
-    }
+        return RC ( rcSRA, rcMgr, rcResolving, rcSelf, rcNull );
+    if ( acc == NULL || buf == NULL)
+        return RC ( rcSRA, rcMgr, rcResolving, rcParam, rcNull );
     else
     {
-        rc = SRAPathAddRef ( path );
-        if ( rc == 0 )
+        VFSManager *vfs;
+        rc_t rc = VFSManagerMake ( & vfs );
+        if (rc == 0)
         {
-            SRAPathRelease ( self -> _pmgr );
-            self -> _pmgr = path;
+			rc_t rc2;
+            VPath* path;
+            rc = VFSManagerMakePath(vfs, &path, "ncbi-acc:%s", acc);
+            if (rc == 0)
+            {
+                const VPath* resolved;
+                rc = VResolverQuery ( (const struct VResolver*)self->_pmgr, eProtocolHttp, path, &resolved, NULL, NULL );
+                if (rc == 0)
+                {
+                    rc = VPathReadPath ( resolved, buf, buf_size, NULL );
+                    rc2 = VPathRelease(resolved);
+                    if (rc == 0)
+                        rc = rc2;
+                }
+                
+                rc2 = VPathRelease(path);
+                if (rc == 0)
+                    rc = rc2;
+            }
+            rc2 = VFSManagerRelease(vfs);
+            if (rc == 0)
+                rc = rc2;
         }
+        
+        return rc;
     }
-#else
-    else
-        rc = 0;
-#endif
-
-    return rc;
 }
 
 LIB_EXPORT rc_t CC SRAMgrConfigReload( const SRAMgr *cself, const KDirectory *wd )
@@ -525,24 +461,47 @@ LIB_EXPORT rc_t CC SRAMgrSingleFileArchiveExt(const SRAMgr *self, const char* sp
     return rc;
 }
 
-/* FlushPath
+/* 
+ * FlushPath
  * FlushRun
  * RunBGTasks
  *  stubbed functions to manipulate a cache, if implemented
  */
-LIB_EXPORT rc_t CC SRAMgrFlushRepPath ( const SRAMgr *self, const char *path )
+LIB_EXPORT rc_t CC SRAMgrGetCacheUsage( const SRAMgr *self, struct SRACacheUsage* stats )
 {
-    return 0;
+    rc_t rc = 0;
+    if ( self == NULL || stats == NULL || self->cache == NULL)
+        rc = RC(rcSRA, rcMgr, rcAccessing, rcParam, rcNull);
+    else
+        rc = SRACacheGetUsage(self->cache, stats);
+    return rc;
 }
-
-LIB_EXPORT rc_t CC SRAMgrFlushVolPath ( const SRAMgr *self, const char *path )
+ 
+LIB_EXPORT rc_t CC SRAMgrFlush ( struct SRAMgr const *self, const struct SRACacheMetrics* thr )
 {
-    return 0;
-}
-
-LIB_EXPORT rc_t CC SRAMgrFlushRun ( const SRAMgr *self, const char *accession )
-{
-    return 0;
+    rc_t rc = 0;
+    if( self == NULL  || self->cache == NULL)
+        rc = RC(rcSRA, rcFile, rcProcessing, rcSelf, rcNull);
+    else if( thr == NULL )
+        rc = RC(rcSRA, rcFile, rcProcessing, rcParam, rcNull);
+    else 
+    {
+        SRACacheMetrics saved;
+        rc = SRACacheGetSoftThreshold(self->cache, &saved);
+        if (rc == 0)
+        {
+            rc = SRACacheSetSoftThreshold(self->cache, thr);
+            if (rc == 0)
+            {
+                rc_t rc2;
+                rc = SRACacheFlush(self->cache);
+                rc2 = SRACacheSetSoftThreshold(self->cache, &saved);
+                if (rc == 0)
+                    rc = rc2;
+            }
+        }
+    }
+    return rc;
 }
 
 LIB_EXPORT rc_t CC SRAMgrRunBGTasks ( const SRAMgr *self )
@@ -550,13 +509,41 @@ LIB_EXPORT rc_t CC SRAMgrRunBGTasks ( const SRAMgr *self )
     rc_t rc;
 
     if( self == NULL  )
-        rc = RC(rcSRA, rcFile, rcProcessing, rcSelf, rcNull);
+        rc = RC(rcSRA, rcMgr, rcProcessing, rcSelf, rcNull);
         
     rc = SRACacheFlush(self->cache);
     
     return rc;
 }
 
+LIB_EXPORT rc_t CC SRAMgrConfigureCache( const SRAMgr *self,  int32_t soft_threshold, int32_t hard_threshold )
+{
+    rc_t rc = 0;
+    if( self == NULL  || self->cache == NULL)
+        rc = RC(rcSRA, rcFile, rcProcessing, rcSelf, rcNull);
+    else if( soft_threshold < -1  || hard_threshold < -1 )
+        rc = RC(rcSRA, rcFile, rcProcessing, rcParam, rcNull);
+    else 
+    {
+        if ( soft_threshold > -1 )
+        {
+            SRACacheMetrics metrics;
+            memset(&metrics, 0, sizeof(metrics));
+            metrics.elements = soft_threshold;
+            rc = SRACacheSetSoftThreshold(self->cache, &metrics);
+        }
+        if ( rc == 0 && hard_threshold > -1 )
+        {
+            SRACacheMetrics metrics;
+            memset(&metrics, 0, sizeof(metrics));
+            metrics.elements = hard_threshold;
+            rc = SRACacheSetHardThreshold(self->cache, &metrics);
+        }
+        /* if a new threshold is low enough to cause a flush, do it right away */
+        rc = SRACacheFlush(self->cache);
+    }
+    return rc;
+}
 
 /*--------------------------------------------------------------------------
  * SRANamelist

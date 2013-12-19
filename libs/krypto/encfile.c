@@ -1340,7 +1340,7 @@ rc_t KEncFileV1WriteInt (KEncFileV1 *self, uint64_t block_id, uint32_t block_off
         memmove (self->block.data + block_offset, buffer, bsize);
         self->dirty = true;
         if (block_offset + bsize > self->block.u.valid)
-            self->block.u.valid = block_offset + bsize;
+            self->block.u.valid = (KEncFileBlockValid) ( block_offset + bsize );
         *pnum_writ = bsize;
         return 0;
     }
@@ -1423,7 +1423,7 @@ rc_t KEncFileV1WriteInt (KEncFileV1 *self, uint64_t block_id, uint32_t block_off
         memmove (self->block.data, pb, bsize);
 
         if (bsize > self->block.u.valid)
-            self->block.u.valid = bsize;
+            self->block.u.valid = (KEncFileBlockValid) bsize;
 
         self->dirty = true;
         tot_writ += bsize;

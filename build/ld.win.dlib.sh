@@ -56,7 +56,7 @@ link)
 esac
 
 # DLIB_CMD was started in tool-specific source
-CMD="$DLIB_CMD $LDFLAGS OLE32.lib"
+CMD="$DLIB_CMD $LDFLAGS OLE32.lib Ws2_32.lib"
 
 # function to convert static libraries to individual COFF files
 convert-static ()

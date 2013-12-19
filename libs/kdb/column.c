@@ -121,7 +121,7 @@ LIB_EXPORT rc_t CC KColumnRelease ( const KColumn *self )
         {
         case krefWhack:
             return KColumnWhack ( ( KColumn* ) self );
-        case krefLimit:
+        case krefNegative:
             return RC ( rcDB, rcColumn, rcReleasing, rcRange, rcExcessive );
         }
     }
@@ -152,7 +152,7 @@ rc_t KColumnSever ( const KColumn *self )
         {
         case krefWhack:
             return KColumnWhack ( ( KColumn* ) self );
-        case krefLimit:
+        case krefNegative:
             return RC ( rcDB, rcColumn, rcReleasing, rcRange, rcExcessive );
         }
     }
@@ -169,12 +169,9 @@ rc_t KColumnMake ( KColumn **colp, const KDirectory *dir, const char *path )
     if ( col == NULL )
         return RC ( rcDB, rcColumn, rcConstructing, rcMemory, rcExhausted );
 
-    col -> tbl = NULL;
-    col -> mgr = NULL;
+    memset ( col, 0, sizeof * col );
     col -> dir = dir;
     KRefcountInit ( & col -> refcount, 1, "KColumn", "make", path );
-    col -> csbytes = 0;
-    col -> checksum = 0;
     strcpy ( col -> path, path );
 
     * colp = col;
@@ -602,7 +599,7 @@ rc_t KColumnBlobMake ( KColumnBlob **blobp, bool bswap )
     if ( blob == NULL )
         return RC ( rcDB, rcBlob, rcConstructing, rcMemory, rcExhausted );
 
-    blob -> col = NULL;
+    memset ( blob, 0, sizeof * blob );
     atomic32_set ( & blob -> refcount, 1 );
     blob -> bswap = bswap;
 

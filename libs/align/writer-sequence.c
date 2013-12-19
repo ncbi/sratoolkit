@@ -273,12 +273,13 @@ static rc_t TableWriterSeq_CollectStatistics(TableWriterSeq *self, const TableWr
 }
 
 LIB_EXPORT rc_t CC TableWriterSeq_Make(const TableWriterSeq** cself, VDatabase* db,
-                                       uint32_t const options, char const qual_quantization[])
+                                       uint32_t options, char const qual_quantization[])
 {
     rc_t rc = 0;
     TableWriterSeq* self = NULL;
     char const *tblName = (options & ewseq_co_ColorSpace) ? "CS_SEQUENCE" : "SEQUENCE";
 
+    options |= ewseq_co_SaveQual; /* TODO: remove when ready */
     if( cself == NULL || db == NULL ) {
         rc = RC(rcAlign, rcFormatter, rcConstructing, rcParam, rcNull);
     } else {
@@ -449,7 +450,8 @@ LIB_EXPORT rc_t CC TableWriterSeq_Write(const TableWriterSeq* cself, const Table
         }
         if( cself->options & ewseq_co_SaveRead ) {
             TW_COL_WRITE(cself->base, cself->cols[ewseq_cn_READ], data->sequence);
-        } else {
+        }
+        else {
             uint32_t i;
             const char* seq = data->sequence.buffer;
             const uint8_t* ac = data->alignment_count.buffer;
@@ -493,7 +495,26 @@ LIB_EXPORT rc_t CC TableWriterSeq_Write(const TableWriterSeq* cself, const Table
                     cself->qual_buf[i] = cself->discrete_qual[b[i]];
                 }
             }
-            TW_COL_WRITE_BUF(cself->base, cself->cols[ewseq_cn_QUALITY], cself->qual_buf, data->quality.elements);
+            if (cself->options & ewseq_co_SaveQual) {
+                TW_COL_WRITE_BUF(cself->base, cself->cols[ewseq_cn_QUALITY], cself->qual_buf, data->quality.elements);
+            }
+            else {
+                uint32_t i;
+                uint8_t const *const qual = data->sequence.buffer;
+                uint8_t const *const aligned = data->alignment_count.buffer;
+                INSDC_coord_zero const *const rs = data->read_start.buffer;
+                INSDC_coord_len const *const rl = data->read_len.buffer;
+                
+                TW_COL_WRITE_BUF(cself->base, cself->cols[ewseq_cn_QUALITY], NULL, 0);
+                for (i = 0; i < data->nreads; ++i) {
+                    if (!aligned[i]) {
+                        INSDC_coord_zero const readStart = rs[i];
+                        INSDC_coord_len const readLen = rl[i];
+                        
+                        TW_COL_WRITE_BUF(cself->base, cself->cols[ewseq_cn_QUALITY], &qual[readStart], readLen);
+                    }
+                }
+            }
         }
         if( !(cself->options & ewseq_co_NoLabelData) ) {
             TW_COL_WRITE(cself->base, cself->cols[ewseq_cn_LABEL], data->label);

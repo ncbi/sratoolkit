@@ -469,7 +469,7 @@ uint32_t MyersUnlimitedFindFirst ( MyersUnlimitedSearch *self,
     
     for(j = 0; j < n; j++) {
 #ifdef DEBUG
-        printf("%d j loop\n");
+        printf("%d j loop\n", j);
 #endif
         Eq = self->PEq[utext[j]];
 #ifdef DEBUG
@@ -717,7 +717,7 @@ void MyersUnlimitedFindAll ( const AgrepCallArgs *args )
     
     for(j = 0; j < n; j++) {
 #ifdef DEBUG
-        printf("%d j loop\n");
+        printf("%d j loop\n", j);
 #endif
         Eq = self->PEq[utext[j]];
 #ifdef DEBUG
@@ -890,7 +890,7 @@ LIB_EXPORT int32_t CC MyersUnlimitedFindBest ( MyersUnlimitedSearch *self,
     
     for(j = 0; j < n; j++) {
 #ifdef DEBUG
-        printf("%d j loop\n");
+        printf("%d j loop\n", j);
 #endif
         Eq = self->PEq[utext[j]];
 #ifdef DEBUG

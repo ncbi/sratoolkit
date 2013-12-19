@@ -415,7 +415,11 @@ rc_t KDBOpenFileGetPassword (char * pw, size_t pwz)
 
             pwf [pwfz] = '\0'; /* force to ASCIZ */
 
+#if 0
             rc = VPathMakeSysPath (&pwp, pwf);
+#else
+            rc = VFSManagerMakePath (mgr, &pwp, pwf);
+#endif
 
             if (rc)
                 ;       /* failure to construct a path from the string */
@@ -630,7 +634,7 @@ static rc_t KDBOpenPathTypeReadInt ( const KDBManager * mgr, const KDirectory * 
          * accession
          *
          */
-        rc = VPathMakeDirectoryRelative ( &vpath, dir, path, NULL );
+        rc = VPathMakeDirectoryRelative ( &vpath, dir, path );
         if ( rc == 0 )
         {
             rc = VFSManagerOpenDirectoryReadDirectoryRelativeDecrypt ( vmgr, dir, &ldir, vpath );

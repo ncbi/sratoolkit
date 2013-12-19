@@ -73,6 +73,6 @@ rc_t ReferenceAddAlignId(Reference *self,
 rc_t ReferenceRead(Reference *self, AlignmentRecord *data, uint64_t const pos,
                    uint32_t const rawCigar[], uint32_t const cigCount,
                    char const seqDNA[], uint32_t const seqLen, uint32_t *matches, bool acceptNoMatch, unsigned minMatchCount, uint32_t maxSeqLen);
-rc_t ReferenceWhack(Reference *self, bool commit, uint32_t maxSeqLen);
+rc_t ReferenceWhack(Reference *self, bool commit, uint32_t maxSeqLen, rc_t (*const quitting)(void));
 
 #endif

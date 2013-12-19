@@ -943,7 +943,6 @@ rc_t KXTocFileDestroy ( KXTocFile *self )
     assert (self);
     KFileRelease (self->base);
     XTocCacheRelease (self->cache);
-    self->cache->file = NULL;
     free (self);
     return 0;
 }
@@ -1782,7 +1781,6 @@ rc_t CC KXTocDirDestroy (KXTocDir *self)
     assert (self);
 
     XTocCacheRelease (self->cache);
-    self->cache->file = NULL;
     KDirectoryRelease (self->base);
     free (self);
     return 0;
@@ -2174,7 +2172,7 @@ static rc_t CC KXTocDirResolvePath (const KXTocDir *self,
             if (rsize < (path_sz - 1))
                 rc = RC(rcFS, rcDirectory, rcResolving, rcBuffer, rcInsufficient);
             else
-                string_copy(resolved, rsize, path, rsize);
+                string_copy(resolved, rsize, path, path_sz);
         }
         if (path)
             free ((void*)path);

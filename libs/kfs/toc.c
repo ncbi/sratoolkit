@@ -52,6 +52,9 @@
  * Defines relevant to the whole compilation unit.
  */
 
+/* !!!!!!!! WHY ISN'T THIS IN A COMMON PRIVATE HEADER FILE? !!!!!!! */
+rc_t SraHeaderMake (KSraHeader ** pself, size_t treesize, KSRAFileAlignment alignment);
+
 /* ======================================================================
  * KTocEntryStack
  *
@@ -359,7 +362,7 @@ int CC KTocEntryIndexCmpOffset (const void * item /* offset */, const BSTNode * 
     }
     po = ugly->offset;
 
-    TOC_DEBUG (("%s: %ju %ju %ju\n", __func__, po, nos, noe));
+    TOC_DEBUG (("%s: %lu %lu %lu\n", __func__, po, nos, noe));
 
     ugly->foffset = 0;
     if (po < nos)
@@ -1386,7 +1389,7 @@ rc_t KTocResolvePathTocEntry ( const KToc *self,
     KTocEntryType 	type = ktocentrytype_unknown;	/* type of a entry found for a facet (init to kill a warning */
     bool		is_last_facet = false;
     bool		is_facet_dir = false; /* if the path ends in / we know the last facet is a dir */
-
+    int                 outer_loopcount;
     /* -----
      * point to one character past the path - usually it will be a NUL but we
      * are not making that a requirement here
@@ -1412,8 +1415,10 @@ rc_t KTocResolvePathTocEntry ( const KToc *self,
     /* -----
      * now start wending our way down through subdirectories
      */
-    while (next_facet < end)
+    for (outer_loopcount = 0; next_facet < end; ++ outer_loopcount)
     {
+        TOC_DEBUG (("%s: stepping through subs (%d) (%s)\n", __func__, outer_loopcount, next_facet));
+
 	/* -----
 	 * look for the end of the next facet in the path
 	 */
@@ -1460,6 +1465,9 @@ rc_t KTocResolvePathTocEntry ( const KToc *self,
 	    *pentry = NULL;		/* if we couldn't make it fail */
 	    *unusedpath = next_facet;	/* the name we couldn't find */
 	    *ptype = ktocentrytype_notfound;
+
+            TOC_DEBUG (("%s: couldn't find (%s)\n", __func__, next_facet));
+
 	    return RC (rcFS, rcArc, rcResolving, rcParam, rcNotFound);
 	}
 

@@ -282,7 +282,7 @@ KLIB_EXTERN rc_t CC vLogLibErr ( KLogLevel lvl, rc_t rc, const char *msg, const 
  * But we can't HAVE a pony...
  */
 #define LOGMSG(lvl,msg)         \
-    (rc_t)((((unsigned)lvl) <= KLogLevelGet()) ? LogLibMsg (lvl, msg) : 0)
+    ((((unsigned)lvl) <= KLogLevelGet()) ? LogLibMsg (lvl, msg) : (rc_t)0)
 
 /*
  * fmt is  two fmt strings plus parameters 
@@ -290,7 +290,7 @@ KLIB_EXTERN rc_t CC vLogLibErr ( KLogLevel lvl, rc_t rc, const char *msg, const 
  *   PLOGMSG (logWarn, (logWarn, "message with $(PARAM)", "PARAM=%s", "parameter"));
  */
 #define PLOGMSG(lvl,msg)        \
-    (rc_t)((((unsigned)lvl) <= KLogLevelGet()) ? pLogLibMsg msg : 0)
+    ((((unsigned)lvl) <= KLogLevelGet()) ? pLogLibMsg msg : (rc_t)0)
 
 /*
  * fmt is  two fmt strings plus parameters 
@@ -298,14 +298,14 @@ KLIB_EXTERN rc_t CC vLogLibErr ( KLogLevel lvl, rc_t rc, const char *msg, const 
  *   VLOGMSG (logWarn, (logWarn, "message with $(PARAM)", "PARAM=%s", args));
  */
 #define VLOGMSG(lvl,msg)        \
-    (rc_t)((((unsigned)lvl) <= KLogLevelGet()) ? vLogLibMsg msg : 0)
+    ((((unsigned)lvl) <= KLogLevelGet()) ? vLogLibMsg msg : (rc_t)0)
 
 /*
  * Usage:
  *  LOGMSG (logWarn, rc, "Something wicked this way comes");
  */
 #define LOGERR(lvl,rc,msg)        \
-    (rc_t)((((unsigned)lvl) <= KLogLevelGet()) ? LogLibErr (lvl,rc,msg) : 0)
+    ((((unsigned)lvl) <= KLogLevelGet()) ? LogLibErr (lvl,rc,msg) : (rc_t)0)
 
 /*
  * fmt is  two fmt strings plus parameters 
@@ -313,7 +313,7 @@ KLIB_EXTERN rc_t CC vLogLibErr ( KLogLevel lvl, rc_t rc, const char *msg, const 
  *   PLOGERR (logWarn, (logWarn, rc, "message with $(PARAM)", "PARAM=%s", "parameter"));
  */
 #define PLOGERR(lvl,msg)        \
-    (rc_t)((((unsigned)lvl) <= KLogLevelGet()) ? pLogLibErr msg : 0)
+    ((((unsigned)lvl) <= KLogLevelGet()) ? pLogLibErr msg : (rc_t)0)
 
 /*
  * fmt is  two fmt strings plus parameters 
@@ -321,7 +321,7 @@ KLIB_EXTERN rc_t CC vLogLibErr ( KLogLevel lvl, rc_t rc, const char *msg, const 
  *   VLOGERR (logWarn, (logWarn, rc, "message with $(PARAM)", "PARAM=%s", args));
  */
 #define VLOGERR(lvl,msg)        \
-    (rc_t)((((unsigned)lvl) <= KLogLevelGet()) ? vLogLibErr msg : 0)
+    ((((unsigned)lvl) <= KLogLevelGet()) ? vLogLibErr msg : (rc_t)0)
 
 #else
 
@@ -330,7 +330,7 @@ KLIB_EXTERN rc_t CC vLogLibErr ( KLogLevel lvl, rc_t rc, const char *msg, const 
  *  LOGMSG (logWarn, "Something happened");
  */
 #define LOGMSG(lvl,msg)         \
-    (rc_t)((((unsigned)lvl) <= KLogLevelGet()) ? LogMsg (lvl,msg) : 0)
+    ((((unsigned)lvl) <= KLogLevelGet()) ? LogMsg (lvl,msg) : (rc_t)0)
 
 /*
  * fmt is  two fmt strings plus parameters 
@@ -338,7 +338,7 @@ KLIB_EXTERN rc_t CC vLogLibErr ( KLogLevel lvl, rc_t rc, const char *msg, const 
  *   PLOGMSG (logWarn, (logWarn, "message with $(PARAM)", "PARAM=%s", "parameter"));
  */
 #define PLOGMSG(lvl,msg)        \
-    (rc_t)((((unsigned)lvl) <= KLogLevelGet()) ? pLogMsg msg : 0)
+    ((((unsigned)lvl) <= KLogLevelGet()) ? pLogMsg msg : (rc_t)0)
 
 /*
  * fmt is  two fmt strings plus parameters 
@@ -346,14 +346,14 @@ KLIB_EXTERN rc_t CC vLogLibErr ( KLogLevel lvl, rc_t rc, const char *msg, const 
  *   VLOGMSG (logWarn, (logWarn, "message with $(PARAM)", "PARAM=%s", args));
  */
 #define VLOGMSG(lvl,msg)        \
-    (rc_t)((((unsigned)lvl) <= KLogLevelGet()) ? vLogMsg msg : 0)
+    ((((unsigned)lvl) <= KLogLevelGet()) ? vLogMsg msg : (rc_t)0)
 
 /*
  * Usage:
  *  LOGMSG (logWarn, rc, "Something wicked this way comes");
  */
 #define LOGERR(lvl,rc,msg)        \
-    (rc_t)((((unsigned)lvl) <= KLogLevelGet()) ? LogErr (lvl,rc,msg) : 0)
+    ((((unsigned)lvl) <= KLogLevelGet()) ? LogErr (lvl,rc,msg) : (rc_t)0)
 
 /*
  * fmt is  two fmt strings plus parameters 
@@ -361,7 +361,7 @@ KLIB_EXTERN rc_t CC vLogLibErr ( KLogLevel lvl, rc_t rc, const char *msg, const 
  *   PLOGERR (logWarn, (logWarn, rc, "message with $(PARAM)", "PARAM=%s", "parameter"));
  */
 #define PLOGERR(lvl,msg)        \
-    (rc_t)((((unsigned)lvl) <= KLogLevelGet()) ? pLogErr msg : 0)
+    ((((unsigned)lvl) <= KLogLevelGet()) ? pLogErr msg : (rc_t)0)
 
 /*
  * fmt is  two fmt strings plus parameters 
@@ -369,7 +369,7 @@ KLIB_EXTERN rc_t CC vLogLibErr ( KLogLevel lvl, rc_t rc, const char *msg, const 
  *   VLOGERR (logWarn, (logWarn, rc, "message with $(PARAM)", "PARAM=%s", args));
  */
 #define VLOGERR(lvl,msg)        \
-    (rc_t)((((unsigned)lvl) <= KLogLevelGet()) ? vLogErr msg : 0)
+    ((((unsigned)lvl) <= KLogLevelGet()) ? vLogErr msg : (rc_t)0)
 
 #endif
 

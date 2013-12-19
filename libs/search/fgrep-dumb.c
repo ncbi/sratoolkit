@@ -67,7 +67,7 @@ static
 void print_trie_node(struct trie *self, char *car)
 {
     printf("%s: %s: %s hasmatch %d\n",
-           car, self->debugs, self->s);
+           car, self->debugs, self->s, 0);
 }
 
 static

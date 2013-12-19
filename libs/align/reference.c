@@ -75,7 +75,7 @@ const TableReaderColumn ReferenceList_cols[] =
     { 0, "(INSDC:4na:bin)READ",     { NULL }, 0, ercol_Skip },
     { 0, "SEQ_LEN",                 { NULL }, 0, 0 },
     { 0, "PRIMARY_ALIGNMENT_IDS",   { NULL }, 0, ercol_Skip },
-    { 0, "SECONDARY_ALIGNMENT_IDS", { NULL }, 0, ercol_Skip },
+    { 0, "SECONDARY_ALIGNMENT_IDS", { NULL }, 0, ercol_Skip | ercol_Optional },
     { 0, "EVIDENCE_INTERVAL_IDS",   { NULL }, 0, ercol_Skip | ercol_Optional },
     { 0, "OVERLAP_REF_POS",         { NULL }, 0, ercol_Optional },
     { 0, "OVERLAP_REF_LEN",         { NULL }, 0, ercol_Optional },
@@ -1197,6 +1197,7 @@ struct PlacementIterator
     int32_t min_mapq;
 
     const VCursor* align_curs;
+    void * placement_ctx;           /* source-specific context */
 };
 
 
@@ -1282,7 +1283,7 @@ LIB_EXPORT rc_t CC ReferenceObj_MakePlacementIterator ( const ReferenceObj* csel
     int32_t min_mapq,
     struct VCursor const *ref_cur, struct VCursor const *align_cur, align_id_src ids,
     const PlacementRecordExtendFuncs *ext_0, const PlacementRecordExtendFuncs *ext_1,
-    const char * spot_group )
+    const char * spot_group, void * placement_ctx )
 {
     rc_t rc = 0;
     PlacementIterator* o = NULL;
@@ -1308,6 +1309,7 @@ LIB_EXPORT rc_t CC ReferenceObj_MakePlacementIterator ( const ReferenceObj* csel
             /* o->wrapped_around = false; */
             ReferenceObj_AddRef( o->obj );
             o->min_mapq = min_mapq;
+            o->placement_ctx = placement_ctx;
 
             if ( ext_0 != NULL )
             {
@@ -1381,7 +1383,7 @@ LIB_EXPORT rc_t CC ReferenceObj_MakePlacementIterator ( const ReferenceObj* csel
                 o->last_ref_row_of_window_rel = ref_window_start;
                 o->last_ref_row_of_window_rel += ref_window_len;
                 o->last_ref_row_of_window_rel /= mgr->max_seq_len;
-                o->rowcount_of_ref = ( cself->end_rowid - cself->start_rowid );
+                o->rowcount_of_ref = ( cself->end_rowid - cself->start_rowid ) + 1;
 
                 /* get effective starting offset based on overlap
                    from alignments which started before the requested pos */
@@ -1389,7 +1391,7 @@ LIB_EXPORT rc_t CC ReferenceObj_MakePlacementIterator ( const ReferenceObj* csel
                 if ( rc == 0 )
                 {
                     int64_t ref_pos_overlapped = calc_overlaped( o, ids );
-                    ALIGN_DBG( "ref_pos_overlapped: %li", ref_pos_overlapped );
+                    ALIGN_DBG( "ref_pos_overlapped: %,li", ref_pos_overlapped );
 
                     /* the absolute row where we are reading from */
                     o->cur_ref_row_rel = ( ref_pos_overlapped / mgr->max_seq_len ) - 1;
@@ -1399,9 +1401,9 @@ LIB_EXPORT rc_t CC ReferenceObj_MakePlacementIterator ( const ReferenceObj* csel
                     o->ids_col = &o->ref_cols[ids == primary_align_ids ? ereflst_cn_PRIMARY_ALIGNMENT_IDS :
                             ( ids == secondary_align_ids ? ereflst_cn_SECONDARY_ALIGNMENT_IDS : ereflst_cn_EVIDENCE_INTERVAL_IDS ) ];
 
-                    ALIGN_DBG( "iter.last_ref_row_of_window_rel: %li", o->last_ref_row_of_window_rel );
-                    ALIGN_DBG( "iter.rowcount_of_ref: %li", o->rowcount_of_ref );
-                    ALIGN_DBG( "iter.cur_ref_row_rel: %li", o->cur_ref_row_rel );
+                    ALIGN_DBG( "iter.last_ref_row_of_window_rel: %,li", o->last_ref_row_of_window_rel );
+                    ALIGN_DBG( "iter.rowcount_of_ref: %,li", o->rowcount_of_ref );
+                    ALIGN_DBG( "iter.cur_ref_row_rel: %,li", o->cur_ref_row_rel );
                 }
             }
 
@@ -1416,7 +1418,7 @@ LIB_EXPORT rc_t CC ReferenceObj_MakePlacementIterator ( const ReferenceObj* csel
     {
         enter_spotgroup ( o, spot_group );
         *iter = o;
-/*        ALIGN_DBG( "iter for %s:%s opened 0x%p", cself->seqid, cself->name, o ); */
+        ALIGN_DBG( "iter for %s:%s opened 0x%p", cself->seqid, cself->name, o );
     }
     else
     {
@@ -1510,7 +1512,7 @@ LIB_EXPORT rc_t CC PlacementIteratorRefObj( const PlacementIterator * self,
 static void CC PlacementRecordVector_dump( void *item, void *data )
 {
     const PlacementRecord* i = ( const PlacementRecord* )item;
-    ALIGN_DBG( " {%u, %u, %li}", i->pos, i->len, i->id );
+    ALIGN_DBG( " {pos:%,u, len:%,u, id:%,li}", i->pos, i->len, i->id );
 }
 #endif
 
@@ -1580,7 +1582,7 @@ static rc_t allocate_populate_rec( const PlacementIterator *cself,
         /* use callback or fixed size to discover the size of portions 0 and 1 */
         if ( cself->ext_0.alloc_size != NULL )
         {
-            rc = cself->ext_0.alloc_size( curs, id, &size0, cself->ext_0.data );
+            rc = cself->ext_0.alloc_size( curs, id, &size0, cself->ext_0.data, cself->placement_ctx );
             if ( rc != 0 )
                 return rc;
         }
@@ -1589,7 +1591,7 @@ static rc_t allocate_populate_rec( const PlacementIterator *cself,
 
         if ( cself->ext_1.alloc_size != NULL )
         {
-            rc = cself->ext_1.alloc_size( curs, id, &size1, cself->ext_1.data );
+            rc = cself->ext_1.alloc_size( curs, id, &size1, cself->ext_1.data, cself->placement_ctx );
             if ( rc != 0 )
                 return rc;
         }
@@ -1651,7 +1653,8 @@ static rc_t allocate_populate_rec( const PlacementIterator *cself,
                 rc = cself->ext_0.populate( obj, pr, curs,
                                             cself->ref_window_start,
                                             cself->ref_window_len,
-                                            cself->ext_0.data );
+                                            cself->ext_0.data,
+                                            cself->placement_ctx );
                 if ( rc != 0 && cself->ext_0.destroy != NULL )
                 {
                     void *obj = PlacementRecordCast ( pr, placementRecordExtension0 );
@@ -1665,7 +1668,8 @@ static rc_t allocate_populate_rec( const PlacementIterator *cself,
                 rc = cself->ext_1.populate( obj, pr, curs, 
                                             cself->ref_window_start,
                                             cself->ref_window_len,
-                                            cself->ext_1.data );
+                                            cself->ext_1.data,
+                                            cself->placement_ctx );
                 if ( rc != 0 )
                 {
                     if ( cself->ext_1.destroy != NULL )
@@ -1729,15 +1733,16 @@ static rc_t read_alignments( PlacementIterator *self )
     /*ALIGN_DBG("align rows: %u", cself->ids_col->len);*/
     for ( i = 0; rc == 0 && i < self->ids_col->len; i++ )
     {
-        rc = TableReader_ReadRow( self->align_reader, self->ids_col->base.i64[ i ] );
+        int64_t row_id = self->ids_col->base.i64[ i ];
+        rc = TableReader_ReadRow( self->align_reader, row_id );
         if ( rc == 0 )
         {
             INSDC_coord_zero apos = self->align_cols[ eplacementiter_cn_REF_POS ].base.coord0[ 0 ];
             INSDC_coord_len alen  = self->align_cols[ eplacementiter_cn_REF_LEN ].base.coord_len[ 0 ];
-            /*ALIGN_DBG("align row: {%li, %u, %u}", cself->ids_col->base.i64[i], apos, alen);*/
 
-            if ( self->cur_ref_row_rel < 0 )
-                apos -= self->obj->seq_len;
+#if 0
+            ALIGN_DBG( "alignment read: {row_id:%,li, apos:%,d, alen:%u}", row_id, apos, alen );
+#endif
 
             /* at this point we have the position of the alignment.
                we want it to intersect with the window */
@@ -1777,19 +1782,21 @@ static rc_t read_alignments( PlacementIterator *self )
                     continue;
 
             }
-            else if ( ( self->obj->circular )&&( apos + alen > self->obj->seq_len ) ) 
+            else if ( ( self->obj->circular )&&
+                       ( apos + alen > self->obj->seq_len )&&
+                       ( self->cur_ref_row_rel < 0 ) ) 
             {
                 /* the end of the alignment sticks over the end of the reference! 
                    ---> we have the rare case of an alignment that wraps arround !
                    let as insert the alignment 2 times!
                    ( one with neg. position, one at real position ) */
-                rc =  make_alignment( self, self->ids_col->base.i64[i], apos - self->obj->seq_len, alen );
+                rc =  make_alignment( self, row_id, apos - self->obj->seq_len, alen );
             }
 
             /* having arrived here, we know the alignment intersects our window
                apos MAY be < 0 if the alignment wrapped around */
-            if ( rc == 0 )
-                rc =  make_alignment( self, self->ids_col->base.i64[i], apos, alen );
+            if ( rc == 0 && self->cur_ref_row_rel >= 0 )
+                rc =  make_alignment( self, row_id, apos, alen );
         }
     }
     return rc;
@@ -1814,8 +1821,10 @@ LIB_EXPORT rc_t CC PlacementIteratorNextAvailPos( const PlacementIterator *cself
 
             self->cur_ref_row_rel++;   /* increment row offset */
 
-            ALIGN_DBG( "ref row: %li-%li-%li",
+#if 0
+            ALIGN_DBG( "ref row: ref-start-row-id:%,li - curr-rel-row:%,li - of:%,li",
                        self->obj->start_rowid, self->cur_ref_row_rel, self->last_ref_row_of_window_rel );
+#endif
 
             if ( self->cur_ref_row_rel > self->last_ref_row_of_window_rel )
                 rc = SILENT_RC( rcAlign, rcType, rcSelecting, rcRange, rcDone );
@@ -1846,12 +1855,15 @@ LIB_EXPORT rc_t CC PlacementIteratorNextAvailPos( const PlacementIterator *cself
             uint32_t count = VectorLength( &cself->ids );
             if ( count > 0 )
             {
-                PlacementRecord* r = VectorLast( &cself->ids );
+                PlacementRecord * r = VectorLast( &cself->ids );
                 rc = 0;
                 if ( pos != NULL ) { *pos = r->pos; }
                 if ( len != NULL ) { *len = r->len; }
 
-/*                ALIGN_DBG( "PlacementIteratorNextAvailPos( pos=%u, n=%u )", r->pos, count ); */
+#if 0
+                ALIGN_DBG( "PlacementIteratorNextAvailPos( id=%,li, pos=%,d, len=%,u, n=%,u )", r->id, r->pos, r->len, count );
+#endif
+
                 if ( !( cself->obj->circular ) && ( r->pos >= ( cself->ref_window_start + cself->ref_window_len ) ) )
                 {
                     /* the alignment !starts! after the end of the of the requested window! */
@@ -1859,7 +1871,9 @@ LIB_EXPORT rc_t CC PlacementIteratorNextAvailPos( const PlacementIterator *cself
                 }
             }
             else
+            {
                 ALIGN_DBG( "PlacementIteratorNextAvailPos( no placements )", 0 );
+            }
         }
     }
 

@@ -83,7 +83,7 @@ LIB_EXPORT rc_t CC KTaskRelease ( const KTask *self )
         {
         case krefWhack:
             return KTaskWhack ( ( KTask* ) self );
-        case krefLimit:
+        case krefNegative:
             return RC ( rcPS, rcTask, rcReleasing, rcRange, rcExcessive );
         }
     }

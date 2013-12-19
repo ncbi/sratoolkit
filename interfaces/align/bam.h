@@ -194,7 +194,7 @@ ALIGN_EXTERN rc_t CC BAMAlignmentGetReadGroupName ( const BAMAlignment *self, co
  * GetReadName2
  *  get the read name and length in bytes
  *
- *  "name" [ OUT ] - return param for NUL-terminated read group name
+ *  "name" [ OUT ] - return param for NUL-terminated read name
  *   held internally, validity is guaranteed for the life of the BAMAlignment
  *
  *  "length" [ OUT ] - return the number of bytes in "name"
@@ -202,6 +202,18 @@ ALIGN_EXTERN rc_t CC BAMAlignmentGetReadGroupName ( const BAMAlignment *self, co
  */
 ALIGN_EXTERN rc_t CC BAMAlignmentGetReadName ( const BAMAlignment *self, const char **name );
 ALIGN_EXTERN rc_t CC BAMAlignmentGetReadName2 ( const BAMAlignment *self, const char **name, size_t *length );
+    
+    
+/* GetReadName3
+ *  get the read name and length in bytes
+ *  applies fixups to name
+ *
+ *  "name" [ OUT ] - return param for read name
+ *   held internally, validity is guaranteed for the life of the BAMAlignment
+ *
+ *  "length" [ OUT ] - return the number of bytes in "name"
+ */
+ALIGN_EXTERN rc_t CC BAMAlignmentGetReadName3 ( const BAMAlignment *self, const char **name, size_t *length );
 
 /* HasColorSpace
  *  Does the alignment have colorspace info

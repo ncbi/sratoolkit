@@ -141,7 +141,7 @@ ALIGN_EXTERN rc_t CC ReferenceObj_MakePlacementIterator ( const ReferenceObj* cs
     INSDC_coord_len ref_window_len, int32_t min_mapq,
     struct VCursor const *ref_cur, struct VCursor const *align_cur, align_id_src ids,
     const PlacementRecordExtendFuncs *ext_0, const PlacementRecordExtendFuncs *ext_1,
-    const char * rd_group );
+    const char * rd_group, void * placement_ctx );
 
 #ifdef __cplusplus
 }

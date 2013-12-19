@@ -30,11 +30,8 @@ MODULE = libs/loader
 INT_LIBS = \
 	libloader
 
-EXT_LIBS = \
-
 ALL_LIBS = \
-	$(INT_LIBS) \
-	$(EXT_LIBS)
+	$(INT_LIBS)
 
 TEST_TOOLS = 
 
@@ -49,9 +46,6 @@ all std: makedirs
 $(INT_LIBS): makedirs
 	@ $(MAKE_CMD) $(ILIBDIR)/$@
 
-$(EXT_LIBS): makedirs
-	@ $(MAKE_CMD) $(LIBDIR)/$@
-
 $(TEST_TOOLS): std makedirs
 	@ $(MAKE_CMD) $(TEST_BINDIR)/$@
 
@@ -61,8 +55,7 @@ $(TEST_TOOLS): std makedirs
 # std
 #
 $(TARGDIR)/std: \
-	$(addprefix $(ILIBDIR)/,$(INT_LIBS)) \
-	$(addprefix $(LIBDIR)/,$(EXT_LIBS))
+	$(addprefix $(ILIBDIR)/,$(INT_LIBS))
 
 .PHONY: $(TARGDIR)/std
 
@@ -88,11 +81,6 @@ LOADER_SRC = \
 
 LOADER_OBJ = \
 	$(addsuffix .$(LOBX),$(LOADER_SRC))
-
-LOADER_LIB = \
-
-$(ILIBDIR)/libloader.$(SHLX): $(LOADER_OBJ)
-	$(LD) --dlib -o $@ $^ $(LOADER_LIB)
 
 $(ILIBDIR)/libloader.$(LIBX): $(LOADER_OBJ)
 	$(LD) --slib -o $@ $^ $(LOADER_LIB)

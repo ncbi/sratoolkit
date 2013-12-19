@@ -57,6 +57,7 @@ extern "C" {
 /*--------------------------------------------------------------------------
  * forwards
  */
+struct Vector;
 struct VDBManager;
 struct VSchema;
 struct SColumn;
@@ -126,6 +127,8 @@ rc_t VColumnReadBlob ( const VColumn *self, struct VBlob const **blob, int64_t r
 
 rc_t VColumnReadCachedBlob ( const VColumn *self, struct VBlob const *blob, int64_t row_id,
    uint32_t *elem_bits, const void **base, uint32_t *boff, uint32_t *row_len );
+
+rc_t VColumnIsStatic ( const VColumn *self, bool *is_static );
 
 /*--------------------------------------------------------------------------
  * WColumn
@@ -203,7 +206,7 @@ struct WColumnRowMap
 
 rc_t WColumnMake ( VColumn **col, struct VSchema const *schema,
     struct SColumn const *scol, struct SExpression const *dflt_limit,
-    struct VDBManager *mgr );
+    struct VDBManager *mgr, struct Vector *cx_bind );
 
 rc_t WColumnSetDefault ( VColumn *self,
     bitsz_t elem_bits, const void *buffer, bitsz_t boff, uint64_t len );

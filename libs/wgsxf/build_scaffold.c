@@ -81,40 +81,87 @@ void CC whack(void *vp)
     }
 }
 
-static
-rc_t init_self(self_t *self, VTable const *const srctbl, char const column[])
-{
-    VDatabase const *db;
-    rc_t rc = VTableOpenParentRead(srctbl, &db);
 
-    if (rc == 0) {
-        VTable const *tbl;
-        
-        rc = VDatabaseOpenTableRead(db, &tbl, "SEQUENCE");
-        VDatabaseRelease(db);
-        if (rc == 0) {
-            VCursor const *curs;
-#if CURSOR_CACHE_SIZE
-            rc = VTableCreateCachedCursorRead(tbl, &curs, CURSOR_CACHE_SIZE);
-#else
-            rc = VTableCreateCursorRead(tbl, &curs);
-#endif
-            VTableRelease(tbl);
-            if (rc == 0) {
-                uint32_t col_idx;
-                
-                rc = VCursorAddColumn(curs, &col_idx, column);
-                if (rc == 0) {
-                    rc = VCursorOpen(curs);
-                    if (rc == 0) {
-                        self->curs = curs;
-                        self->col_idx = col_idx;
-                        return 0;
-                    }
-                    if (GetRCObject(rc) == rcColumn && GetRCState(rc) == rcUndefined)
-                        rc = 0;
+static bool does_table_have_column( VTable const * tbl, char const column[] )
+{
+    KNamelist * column_names;
+    bool res = false;
+    rc_t rc = VTableListReadableColumns ( tbl, &column_names );
+    if ( rc == 0 )
+    {
+        uint32_t count;
+        rc = KNamelistCount ( column_names, &count );
+        if ( rc == 0 && count > 0 )
+        {
+            uint32_t idx;
+            size_t col_name_size;
+            const char * col_name = string_chr ( column, string_size( column ), ')' );
+            if ( col_name == NULL )
+                col_name = column;
+            else
+                col_name++;
+            col_name_size = string_size( col_name );
+            for ( idx = 0; idx < count && rc == 0 && !res; ++idx )
+            {
+                const char * name;
+                rc = KNamelistGet ( column_names, idx, &name );
+                if ( rc == 0 && name != NULL )
+                {
+                    int cmp = string_cmp( col_name, col_name_size,
+                                          name, string_size( name ), 0xFFFF );
+                    if ( cmp == 0 )
+                        res = true;
                 }
-                VCursorRelease(curs);
+            }
+        }
+        KNamelistRelease ( column_names );
+    }
+    return res;
+}
+
+
+static
+rc_t init_self( self_t *self, VTable const * const srctbl, char const column[] )
+{
+    VDatabase const * db;
+    rc_t rc = VTableOpenParentRead( srctbl, &db );
+    if ( rc == 0 )
+    {
+        VTable const * tbl;
+        rc = VDatabaseOpenTableRead( db, &tbl, "SEQUENCE" );
+        VDatabaseRelease( db );
+        if ( rc == 0 )
+        {
+            bool has_column = does_table_have_column( tbl, column );
+            if ( !has_column )
+                VTableRelease( tbl );
+            else
+            {
+                VCursor const * curs;
+#if CURSOR_CACHE_SIZE
+                rc = VTableCreateCachedCursorRead( tbl, &curs, CURSOR_CACHE_SIZE );
+#else
+                rc = VTableCreateCursorRead( tbl, &curs );
+#endif
+                VTableRelease( tbl );
+                if ( rc == 0 )
+                {
+                    uint32_t col_idx;
+                    rc = VCursorAddColumn( curs, &col_idx, column );
+                    if ( rc == 0 )
+                    {
+                        rc = VCursorOpen( curs );
+                        if ( rc == 0 )
+                        {
+                            self->curs = curs;
+                            self->col_idx = col_idx;
+                            return 0;
+                        }
+                        if ( GetRCObject( rc ) == rcColumn && GetRCState( rc ) == rcUndefined )
+                            rc = 0;
+                    }
+                    VCursorRelease( curs );
+                }
             }
         }
     }

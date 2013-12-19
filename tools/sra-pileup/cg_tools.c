@@ -30,16 +30,9 @@
 #include <klib/printf.h>
 #include <sysalloc.h>
 #include <ctype.h>
+#include <stdlib.h>
 #include <string.h>
 #include <assert.h>
-
-typedef struct CigOps
-{
-    char op;
-    int8_t   ref_sign; /* 0;+1;-1; ref_offset = ref_sign * offset */
-    int8_t   seq_sign; /* 0;+1;-1; seq_offset = seq_sign * offset */
-    uint32_t oplen;
-} CigOps;
 
 
 static void SetCigOp( CigOps * dst, char op, uint32_t oplen )
@@ -81,7 +74,7 @@ static void SetCigOp( CigOps * dst, char op, uint32_t oplen )
 }
 
 
-static int32_t ExplodeCIGAR( CigOps dst[], uint32_t len, char const cigar[], uint32_t ciglen )
+int32_t ExplodeCIGAR( CigOps dst[], uint32_t len, char const cigar[], uint32_t ciglen )
 {
     uint32_t i;
     uint32_t j;
@@ -162,20 +155,21 @@ static rc_t CIGAR_to_CG_Ops( const cg_cigar_input * input,
 
     tmp->opCnt = 0;
     tmp->S_adjust = 0;
-    for ( i = 0; i < input->cigar_len; ++ops )
+    tmp->CG_adjust = 0;
+    for ( i = 0; i < input->p_cigar.len; ++ops )
     {
         char opChar = 0;
         int opLen = 0;
         int n;
 
-        for ( n = 0; ( ( n + i ) < input->cigar_len ) && ( isdigit( input->cigar[ n + i ] ) ); n++ )
+        for ( n = 0; ( ( n + i ) < input->p_cigar.len ) && ( isdigit( input->p_cigar.ptr[ n + i ] ) ); n++ )
         {
-            opLen = opLen * 10 + input->cigar[ n + i ] - '0';
+            opLen = opLen * 10 + input->p_cigar.ptr[ n + i ] - '0';
         }
 
-        if ( ( n + i ) < input->cigar_len )
+        if ( ( n + i ) < input->p_cigar.len )
         {
-            opChar = input->cigar[ n + i ];
+            opChar = input->p_cigar.ptr[ n + i ];
             n++;
         }
 
@@ -208,6 +202,7 @@ static rc_t CIGAR_to_CG_Ops( const cg_cigar_input * input,
     tmp->opCnt = ops;
     tmp->gap[ 0 ] = tmp->gap[ 1 ] = tmp->gap[ 2 ] = ops;
     print_CG_cigar( __LINE__, tmp->cigOp, ops, NULL );
+
 
     if ( ops < 3 )
         return RC( rcExe, rcData, rcReading, rcFormat, rcNotFound ); /* CG pattern not found */
@@ -458,7 +453,6 @@ static rc_t adjust_cigar( const cg_cigar_input * input, cg_cigar_temp * tmp, cg_
 {
     rc_t rc = 0;
     unsigned i, j;
-    size_t sz;
 
     print_CG_cigar( __LINE__, tmp->cigOp, tmp->opCnt, NULL );
 
@@ -501,6 +495,7 @@ static rc_t adjust_cigar( const cg_cigar_input * input, cg_cigar_temp * tmp, cg_
     print_CG_cigar( __LINE__, tmp->cigOp, tmp->opCnt, NULL );
     for ( i = j = 0; i < tmp->opCnt && rc == 0; ++i )
     {
+        size_t sz;
         rc = string_printf( &output->cigar[ j ], sizeof( output->cigar ) - j, &sz, "%u%c", tmp->cigOp[ i ].length, tmp->cigOp[ i ].code );
         j += sz;
     }
@@ -518,15 +513,472 @@ rc_t make_cg_cigar( const cg_cigar_input * input, cg_cigar_output * output )
     rc = CIGAR_to_CG_Ops( input, &tmp );
     if ( GetRCState( rc ) == rcNotFound && GetRCObject( rc ) == rcFormat )
     {
-        memmove( &output->cigar[ 0 ], &input->cigar[ 0 ], input->cigar_len );
-        output->cigar_len = input->cigar_len;
+        memmove( &output->cigar[ 0 ], &input->p_cigar.ptr[ 0 ], input->p_cigar.len );
+        output->cigar_len = input->p_cigar.len;
+        output->cigar[ output->cigar_len ] = 0;
+        output->edit_dist = input->edit_dist;
+        output->p_cigar.ptr = output->cigar;
+        output->p_cigar.len = output->cigar_len;
+        rc = 0;
+    }
+    else if ( rc == 0 )
+    {
+        if ( tmp.CG_adjust == 0 )
+        {
+            if ( tmp.gap[ 0 ] < tmp.opCnt )
+                tmp.CG_adjust = tmp.cigOp[ tmp.gap[ 0 ] ].length;
+
+            if ( tmp.gap[ 1 ] < tmp.opCnt )
+                tmp.CG_adjust += tmp.cigOp[ tmp.gap[ 1 ] ].length;
+
+            if ( tmp.gap[ 2 ] < tmp.opCnt )
+                tmp.CG_adjust += tmp.cigOp[ tmp.gap[ 2 ] ].length;
+        }
+
+        rc = adjust_cigar( input, &tmp, output );
+    }
+    return rc;
+}
+
+
+static char merge_M_type_ops( char a, char b )
+{ /*MX=*/
+    char c = 0;
+    switch( b )
+    {
+        case 'X' :  switch( a )
+                    {
+                        case '=' : c = 'X'; break;
+                        case 'X' : c = 'M'; break; /**we don't know - 2X may create '=' **/
+                        case 'M' : c = 'M'; break;
+                    }
+                    break;
+        case 'M' :  c = 'M'; break;
+        case '=' :  c = a; break;
+    }
+    assert( c != 0 );
+    return c;
+}
+
+
+static size_t fmt_cigar_elem( char * dst, uint32_t cig_oplen, char cig_op )
+{
+    size_t num_writ;
+    rc_t rc = string_printf ( dst, 11, &num_writ, "%d%c", cig_oplen, cig_op );
+    assert ( rc == 0 && num_writ > 1 );
+    return num_writ;
+}
+
+uint32_t CombineCIGAR( char dst[], CigOps const seqOp[], uint32_t seq_len,
+                       uint32_t refPos, CigOps const refOp[], uint32_t ref_len )
+{
+    bool done = false;
+    uint32_t ciglen = 0, last_ciglen = 0, last_cig_oplen = 0;
+    int32_t si = 0, ri = 0;
+    char last_cig_op = '0'; /* never used operation, forces a mismatch in MACRO_BUILD_CIGAR */
+    CigOps seq_cop = { 0, 0, 0, 0 }, ref_cop = { 0, 0, 0, 0 };
+    int32_t seq_pos = 0;        /** seq_pos is tracked roughly - with every extraction from seqOp **/
+    int32_t ref_pos = 0;        /** ref_pos is tracked precisely - with every delta and consumption in cigar **/
+    int32_t delta = refPos;     /*** delta in relative positions of seq and ref **/
+                                /*** when delta < 0 - rewind or extend the reference ***/
+                                /*** wher delta > 0 - skip reference  ***/
+#define MACRO_BUILD_CIGAR(OP,OPLEN) \
+	if( last_cig_oplen > 0 && last_cig_op == OP){							\
+                last_cig_oplen += OPLEN;								\
+                ciglen = last_ciglen + fmt_cigar_elem( dst + last_ciglen, last_cig_oplen,last_cig_op );	\
+        } else {											\
+                last_ciglen = ciglen;									\
+                last_cig_oplen = OPLEN;									\
+                last_cig_op    = OP;									\
+                ciglen = ciglen      + fmt_cigar_elem( dst + last_ciglen, last_cig_oplen, last_cig_op );	\
+        }
+    while( !done )
+    {
+        while ( delta < 0 )
+        { 
+            ref_pos += delta; /** we will make it to back up this way **/
+            if( ri > 0 )
+            { /** backing up on ref if possible ***/
+                int avail_oplen = refOp[ ri - 1 ].oplen - ref_cop.oplen;
+                if ( avail_oplen > 0 )
+                {
+                    if ( ( -delta ) <= avail_oplen * ref_cop.ref_sign )
+                    { /*** rewind within last operation **/
+                        ref_cop.oplen -= delta;
+                        delta -= delta * ref_cop.ref_sign;
+                    }
+                    else
+                    { /*** rewind the whole ***/
+                        ref_cop.oplen += avail_oplen;
+                        delta += avail_oplen * ref_cop.ref_sign;
+                    }
+                }
+                else
+                {
+                    ri--;
+                    /** pick the previous as used up **/
+                    ref_cop = refOp[ri-1];
+                    ref_cop.oplen =0; 
+                }
+            }
+            else
+            { /** extending the reference **/
+                SetCigOp( &ref_cop, '=', ref_cop.oplen - delta );
+                delta = 0;
+            }
+            ref_pos -= delta; 
+        }
+        if ( ref_cop.oplen == 0 )
+        { /*** advance the reference ***/
+            ref_cop = refOp[ri++];
+            if ( ref_cop.oplen == 0 )
+            { /** extending beyond the reference **/
+                SetCigOp( &ref_cop,'=', 1000 );
+            }
+            assert( ref_cop.oplen > 0 );
+        }
+        if ( delta > 0 )
+        { /***  skip refOps ***/
+            ref_pos += delta; /** may need to back up **/
+            if ( delta >=  ref_cop.oplen )
+            { /** full **/
+                delta -= ref_cop.oplen * ref_cop.ref_sign;
+                ref_cop.oplen = 0;
+            }
+            else
+            { /** partial **/
+                ref_cop.oplen -= delta;
+                delta -= delta * ref_cop.ref_sign;
+            }
+            ref_pos -= delta; /** if something left - restore ***/
+            continue;
+        }
+
+        /*** seq and ref should be synchronized here **/
+        assert( delta == 0 );
+        if ( seq_cop.oplen == 0 )
+        { /*** advance sequence ***/
+            if ( seq_pos < seq_len )
+            {
+                seq_cop = seqOp[ si++ ];
+                assert( seq_cop.oplen > 0 );
+                seq_pos += seq_cop.oplen * seq_cop.seq_sign;
+            }
+            else
+            {
+                done=true;
+            }
+        }
+
+        if( !done )
+        {
+            int seq_seq_step = seq_cop.oplen * seq_cop.seq_sign; /** sequence movement**/
+            int seq_ref_step = seq_cop.oplen * seq_cop.ref_sign; /** influence of sequence movement on intermediate reference **/
+            int ref_seq_step = ref_cop.oplen * ref_cop.seq_sign; /** movement of the intermediate reference ***/
+            int ref_ref_step = ref_cop.oplen * ref_cop.ref_sign; /** influence of the intermediate reference movement on final reference ***/
+            assert( ref_ref_step >= 0 ); /** no B in the reference **/
+            if ( seq_ref_step <= 0 )
+            { /** BSIPH in the sequence against anything ***/
+                MACRO_BUILD_CIGAR( seq_cop.op, seq_cop.oplen );
+                seq_cop.oplen = 0;
+                delta = seq_ref_step; /** if negative - will force rewind next cycle **/
+            }
+            else if ( ref_ref_step <= 0 )
+            { /** MX=DN against SIPH in the reference***/
+                if ( ref_seq_step == 0 )
+                { /** MX=DN against PH **/
+                    MACRO_BUILD_CIGAR( ref_cop.op,ref_cop.oplen);
+                    ref_cop.oplen = 0;
+                }
+                else
+                {
+                    int min_len = ( seq_cop.oplen < ref_cop.oplen ) ? seq_cop.oplen : ref_cop.oplen;
+                    if( seq_seq_step == 0 )
+                    { /** DN agains SI **/
+                        MACRO_BUILD_CIGAR( 'P', min_len );
+                    }
+                    else
+                    { /** MX= agains SI ***/
+                        MACRO_BUILD_CIGAR( ref_cop.op,min_len );
+                    }
+                    seq_cop.oplen -= min_len;
+                    ref_cop.oplen -= min_len;
+                }
+            }
+            else
+            {
+                /*MX=DN  against MX=DN*/
+                int min_len = ( seq_cop.oplen < ref_cop.oplen ) ? seq_cop.oplen : ref_cop.oplen;
+                if ( seq_seq_step == 0 )
+                { /* DN against MX=DN */
+                    if ( ref_seq_step == 0 )
+                    { /** padding DN against DN **/
+                        MACRO_BUILD_CIGAR( 'P', min_len );
+                        ref_cop.oplen -= min_len;
+                        seq_cop.oplen -= min_len;
+                    }
+                    else
+                    { /* DN against MX= **/
+                        MACRO_BUILD_CIGAR( seq_cop.op, min_len );
+                        seq_cop.oplen -= min_len;
+                    }
+                }
+                else if ( ref_cop.seq_sign == 0 )
+                { /* MX= against DN - always wins */
+                    MACRO_BUILD_CIGAR( ref_cop.op, min_len );
+                    ref_cop.oplen -= min_len;
+                }
+                else
+                { /** MX= against MX= ***/
+                    char curr_op = merge_M_type_ops( seq_cop.op, ref_cop.op );
+                    /* or otherwise merge_M_type_ops() will be called twice by the macro! */
+                    MACRO_BUILD_CIGAR( curr_op, min_len );
+                    ref_cop.oplen -= min_len;
+                    seq_cop.oplen -= min_len;
+                }
+                ref_pos += min_len;
+            }
+        }
+    }
+    return ciglen;
+}
+
+
+typedef struct cg_merger
+{
+    char newSeq[ MAX_READ_LEN ];
+    char newQual[ MAX_READ_LEN ];
+    char tags[ MAX_CG_CIGAR_LEN * 2 ];
+} cg_merger;
+
+
+rc_t merge_cg_cigar( const cg_cigar_input * input, cg_cigar_output * output )
+{
+    rc_t rc;
+    cg_cigar_temp tmp;
+    memset( &tmp, 0, sizeof tmp );
+
+    rc = CIGAR_to_CG_Ops( input, &tmp );
+    if ( GetRCState( rc ) == rcNotFound && GetRCObject( rc ) == rcFormat )
+    {
+        memmove( &output->cigar[ 0 ], &input->p_cigar.ptr[ 0 ], input->p_cigar.len );
+        output->cigar_len = input->p_cigar.len;
         output->cigar[ output->cigar_len ] = 0;
         output->edit_dist = input->edit_dist;
         rc = 0;
     }
     else if ( rc == 0 )
     {
+
+        if ( tmp.CG_adjust == 0 )
+        {
+            if ( tmp.gap[ 0 ] < tmp.opCnt )
+                tmp.CG_adjust = tmp.cigOp[ tmp.gap[ 0 ] ].length;
+
+            if ( tmp.gap[ 1 ] < tmp.opCnt )
+                tmp.CG_adjust += tmp.cigOp[ tmp.gap[ 1 ] ].length;
+
+            if ( tmp.gap[ 2 ] < tmp.opCnt )
+                tmp.CG_adjust += tmp.cigOp[ tmp.gap[ 2 ] ].length;
+        }
+
         rc = adjust_cigar( input, &tmp, output );
+
+    }
+    return rc;
+}
+
+
+rc_t make_cg_merge( const cg_cigar_input * input, cg_cigar_output * output )
+{
+    rc_t rc;
+    cg_cigar_temp tmp;
+    memset( &tmp, 0, sizeof tmp );
+
+    rc = CIGAR_to_CG_Ops( input, &tmp );
+    if ( GetRCState( rc ) == rcNotFound && GetRCObject( rc ) == rcFormat )
+    {
+        memmove( &output->cigar[ 0 ], &input->p_cigar.ptr[ 0 ], input->p_cigar.len );
+        output->cigar_len = input->p_cigar.len;
+        output->cigar[ output->cigar_len ] = 0;
+        output->edit_dist = input->edit_dist;
+        rc = 0;
+    }
+    else if ( rc == 0 )
+    {
+
+        if ( tmp.CG_adjust == 0 )
+        {
+            if ( tmp.gap[ 0 ] < tmp.opCnt )
+                tmp.CG_adjust = tmp.cigOp[ tmp.gap[ 0 ] ].length;
+
+            if ( tmp.gap[ 1 ] < tmp.opCnt )
+                tmp.CG_adjust += tmp.cigOp[ tmp.gap[ 1 ] ].length;
+
+            if ( tmp.gap[ 2 ] < tmp.opCnt )
+                tmp.CG_adjust += tmp.cigOp[ tmp.gap[ 2 ] ].length;
+        }
+    }
+
+    if ( rc == 0 )
+    {
+        uint32_t const B_len = tmp.cigOp[ tmp.gap[ 0 ] ].length;
+        uint32_t const B_at = tmp.gap[ 0 ] < tmp.gap[ 2 ] ? 5 : 30;
+            
+        if ( 0 < B_len && B_len < 5 )
+        {
+            memcpy( output->newSeq,  input->p_read.ptr, MAX_READ_LEN );
+            memcpy( output->newQual, input->p_quality.ptr, MAX_READ_LEN );
+            
+            output->p_read.ptr = output->newSeq;
+            output->p_read.len = ( MAX_READ_LEN - B_len );
+            
+            output->p_quality.ptr = output->newQual;
+            output->p_quality.len = ( MAX_READ_LEN - B_len );
+            
+            output->p_tags.ptr = output->tags;
+            output->p_tags.len = 0;
+
+            /* nBnM -> nB0M */
+            tmp.cigOp[ tmp.gap[ 0 ] + 1 ].length -= B_len;
+            if ( tmp.gap[ 0 ] < tmp.gap[ 2 ] )
+            {
+                size_t written;
+                rc = string_printf( output->tags, sizeof( output->tags ), &written,
+                                    "GC:Z:%uS%uG%uS\tGS:Z:%.*s\tGQ:Z:%.*s",
+                                    5 - B_len, B_len, 30 - B_len, 2 * B_len, &output->newSeq[ 5 - B_len ], 2 * B_len, &output->newQual[ 5 - B_len ] );
+                if ( rc == 0 )
+                    output->p_tags.len = written;
+                memmove( &tmp.cigOp[ tmp.gap[ 0 ] ],
+                         &tmp.cigOp[ tmp.gap[ 0 ] + 1 ],
+                         ( tmp.opCnt - ( tmp.gap[ 0 ] + 1 ) ) * sizeof( tmp.cigOp[ 0 ] ) );
+                --tmp.opCnt;
+            }
+            else
+            {
+                size_t written;
+                rc = string_printf( output->tags, sizeof( output->tags ), &written,
+                                    "GC:Z:%uS%uG%uS\tGS:Z:%.*s\tGQ:Z:%.*s",
+                                    30 - B_len, B_len, 5 - B_len, 2 * B_len, &output->newSeq[ 30 - B_len ], 2 * B_len, &output->newQual[ 30 - B_len ] );
+                if ( rc == 0 )
+                    output->p_tags.len = written;
+                memmove( &tmp.cigOp[ tmp.gap[ 0 ] ],
+                         &tmp.cigOp[ tmp.gap[ 0 ] + 1 ],
+                         ( tmp.opCnt - ( tmp.gap[ 0 ] + 1 ) ) * sizeof( tmp.cigOp[ 0 ] ) );
+                --tmp.opCnt;
+            }
+            if ( rc == 0 )
+            {
+                uint32_t i;
+                for ( i = B_at; i < B_at + B_len; ++i )
+                {
+                    uint32_t const Lq = output->newQual[ i - B_len ];
+                    uint32_t const Rq = output->newQual[ i ];
+
+                    if ( Lq <= Rq )
+                    {
+                        output->newSeq[ i - B_len ] = output->newSeq[ i ];
+                        output->newQual[ i - B_len ] = Rq;
+                    }
+                    else
+                    {
+                        output->newSeq[ i ] = output->newSeq[ i - B_len ];
+                        output->newQual[ i ] = Lq;
+                    }
+                }
+                memmove( &output->newSeq [ B_at ], &output->newSeq [ B_at + B_len ], MAX_READ_LEN - B_at - B_len );
+                memmove( &output->newQual[ B_at ], &output->newQual[ B_at + B_len ], MAX_READ_LEN - B_at - B_len );
+            }
+        }
+        else
+        {
+            uint32_t i, len = tmp.cigOp[ tmp.gap[ 0 ] ].length;
+            
+            tmp.cigOp[ tmp.gap[ 0 ] ].code = 'I';
+            for ( i = tmp.gap[ 0 ] + 1; i < tmp.opCnt && len > 0; ++i )
+            {
+                if ( tmp.cigOp[ i ].length <= len )
+                {
+                    len -= tmp.cigOp[ i ].length;
+                    tmp.cigOp[ i ].length = 0;
+                }
+                else
+                {
+                    tmp.cigOp[ i ].length -= len;
+                    len = 0;
+                }
+            }
+            tmp.CG_adjust -= tmp.cigOp[ tmp.gap[ 0 ] ].length;
+        }
+    }
+
+    if ( rc == 0 )
+        rc = adjust_cigar( input, &tmp, output );
+
+    return rc;
+}
+
+#define MAX_RNA_SPLICE_CIGOPS 200
+
+rc_t discover_rna_splicing_candidates( uint32_t cigar_len, const char * cigar, uint32_t min_len, rna_splice_candidates * candidates )
+{
+    rc_t rc = 0;
+    uint32_t cigops_len = cigar_len / 2 + 1;
+    CigOps * cigops = malloc( ( sizeof * cigops ) * cigops_len );
+    if ( cigops == NULL )
+        rc = RC( rcExe, rcNoTarg, rcConstructing, rcMemory, rcExhausted );
+    else
+    {
+        int32_t op_idx;
+        uint32_t offset = 0;
+        int32_t n_cigops = ExplodeCIGAR( cigops, cigops_len, cigar, cigar_len );
+        candidates->count = 0;
+        for ( op_idx = 0; op_idx < ( n_cigops - 1 ); op_idx++ )
+        {
+            char op_code = cigops[ op_idx ].op;
+            uint32_t op_len = cigops[ op_idx ].oplen;
+            if ( op_code == 'D' && op_len >= min_len && candidates->count < MAX_RNA_SPLICE_CANDIDATES )
+            {
+                rna_splice_candidate * rsc = &candidates->candidates[ candidates->count++ ];
+                rsc->offset = offset;
+                rsc->len = op_len;
+                rsc->op_idx = op_idx;
+                rsc->matched = 0;
+            }
+            if ( op_code == 'M' || op_code == 'X' || op_code == '=' || op_code == 'D' || op_code == 'N' )
+                offset += op_len;
+        }
+        free( cigops );
+    }
+    return rc;
+}
+
+
+rc_t change_rna_splicing_cigar( uint32_t cigar_len, char * cigar, rna_splice_candidates * candidates )
+{
+    rc_t rc = 0;
+    uint32_t cigops_len = cigar_len / 2;
+    CigOps * cigops = malloc( ( sizeof * cigops ) * cigops_len );
+    if ( cigops == NULL )
+        rc = RC( rcExe, rcNoTarg, rcConstructing, rcMemory, rcExhausted );
+    else
+    {
+        int32_t idx, dst;
+        int32_t n_cigops = ExplodeCIGAR( cigops, MAX_RNA_SPLICE_CIGOPS, cigar, cigar_len );
+        for ( idx = 0; idx < candidates->count; ++idx )    
+        {
+            rna_splice_candidate * rsc = &candidates->candidates[ idx ];
+            if ( rsc->matched != 0 && cigops[ rsc->op_idx ].op == 'D' )
+                cigops[ rsc->op_idx ].op = 'N';
+        }
+
+        for ( idx = 0, dst = 0; idx < ( n_cigops - 1 ) && rc == 0; ++idx )
+        {
+            size_t sz;
+            rc = string_printf( &cigar[ dst ], cigar_len + 1 - dst, &sz, "%u%c", cigops[ idx ].oplen, cigops[ idx ].op );
+            dst += sz;
+        }
+        free( cigops );
     }
     return rc;
 }

@@ -183,11 +183,12 @@ rc_t CC KRamFileRead	(const KRamFile *self,
         *num_read = 0;
         return 0;
     }
-    else if (pos + bsize > self->max_pos)
+
+    if (pos + bsize > self->max_pos)
         bsize = self->max_pos - pos;
 
     /* if we are trying to read outside the current window */
-    else if (self->pos > pos)
+    if (self->pos > pos)
     {
         /* get some zeros */
         size_t left_zeroes;
@@ -395,9 +396,17 @@ rc_t KRamFileMake (KRamFile ** pself, char * buffer, size_t buffer_size, bool r,
 }
 
 
-LIB_EXPORT rc_t CC KRamFileMakeRead (const KFile ** self,char * buffer, size_t buffer_size)
+LIB_EXPORT rc_t CC KRamFileMakeRead (const KFile ** selfp,char * buffer, size_t buffer_size)
 {
-    return KRamFileMake ((KRamFile **)self, buffer, buffer_size, true, false);
+    KRamFile *self;
+    rc_t rc = KRamFileMake ( & self, buffer, buffer_size, true, false);
+    if ( rc == 0 )
+    {
+        self -> max_pos = buffer_size;
+        self -> bsize = buffer_size;
+        * selfp = & self -> dad;
+    }
+    return rc;
 }
 
 LIB_EXPORT rc_t CC KRamFileMakeWrite (KFile ** self, char * buffer, size_t buffer_size)

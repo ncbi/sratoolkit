@@ -65,7 +65,12 @@ ALIGN_EXTERN rc_t CC ReferenceMgr_Make(const ReferenceMgr** cself, VDatabase* db
                                        const uint32_t options, const char* conf, const char* path, uint32_t max_seq_len,
                                        size_t cache, uint32_t num_open);
 
-ALIGN_EXTERN rc_t CC ReferenceMgr_Release(const ReferenceMgr* cself, bool commit, uint64_t* const rows, bool build_coverage);
+ALIGN_EXTERN rc_t CC ReferenceMgr_Release(const ReferenceMgr *cself,
+                                          const bool commit,
+                                          uint64_t *const Rows,
+                                          const bool build_coverage,
+                                          rc_t (*const quitting)(void)
+                                          );
 
 ALIGN_EXTERN rc_t CC ReferenceMgr_SetCache(ReferenceMgr const *const self, size_t cache, uint32_t num_open);
 
@@ -92,6 +97,13 @@ ALIGN_EXTERN rc_t CC ReferenceMgr_Compress(const ReferenceMgr* cself, uint32_t o
                                            INSDC_coord_zero allele_offset, const char* allele, INSDC_coord_len allele_len,INSDC_coord_zero offset_in_allele,
                                            const void* allele_cigar, uint32_t allele_cigar_len,
                                            TableWriterAlgnData* data);
+
+/* After calling ReferenceMgr_Compress, ReferenceMgr_CompressHelper
+ * can be used to compress other byte-sized arrays
+ */
+ALIGN_EXTERN size_t CC ReferenceMgr_CompressHelper(uint8_t cmp_rslt[],
+                                                   TableWriterAlgnData const *const data,
+                                                   uint8_t const input[]);
 
 /* Read refseq chunk of 'len' bases into provided 'buffer' (must be enough big for len);
    ref_len - on return has number of bases written to the buffer

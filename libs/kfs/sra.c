@@ -33,12 +33,13 @@
 #include <kfs/sra.h>
 /* #include <kfs/toc.h> */
 #include <klib/log.h>
-#include <sysalloc.h>
 #include "toc-priv.h"
 
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+
+#include <sysalloc.h>
 
 
 struct KToc;

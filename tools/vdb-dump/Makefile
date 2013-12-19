@@ -93,6 +93,8 @@ VDB_DUMP_SRC = \
 	vdb-dump-helper \
 	vdb-dump-filter \
 	vdb-dump-formats \
+	vdb-dump-redir \
+	vdb-dump-fastq \
 	vdb-dump
 
 VDB_DUMP_OBJ = \
@@ -100,19 +102,8 @@ VDB_DUMP_OBJ = \
 
 VDB_DUMP_LIB = \
 	-lkapp \
-	-ssraschema \
-	-dalign-reader \
-	$(READONLY_SCHEMA_LIBS) \
-	-lvdb \
-	-lkdb \
-	-lvfs \
-	-lkurl \
-	-lkrypto \
-	-lkfg \
-	-lkfs \
-	-lksrch \
-	-lkproc \
-	-lklib \
+	-lncbi-vdb \
+	-lxml2 \
 	-lm
 
 $(BINDIR)/vdb-dump: $(VDB_DUMP_OBJ)

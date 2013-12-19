@@ -70,8 +70,11 @@ ALIGN_EXTERN rc_t CC TableWriterRefSeq_Make(const TableWriterRefSeq** cself, VDB
 
 /* rows optional here, app signature is mandatory */
 ALIGN_EXTERN rc_t CC TableWriterRefSeq_Whack(const TableWriterRefSeq* cself, bool commit, uint64_t* rows,
-                                             const char* argv0, const char* argv0_date,
-                                             const char* app_name, ver_t app_version);
+                                             const char loader_name[],
+                                             const ver_t loader_version,
+                                             const char loader_date[],
+                                             const char app_name[],
+                                             const ver_t app_version);
 
 ALIGN_EXTERN rc_t CC TableWriterRefSeq_WriteDefault(const TableWriterRefSeq* cself,
                                                     enum ETableWriterRefSeq_ColNames col, const TableWriterData* data);

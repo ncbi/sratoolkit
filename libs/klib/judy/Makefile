@@ -31,11 +31,8 @@ MODULE = libs/klib/judy
 INT_LIBS = \
 	libjudy
 
-EXT_LIBS = \
-
 ALL_LIBS = \
-	$(INT_LIBS) \
-	$(EXT_LIBS)
+	$(INT_LIBS)
 
 include $(TOP)/build/Makefile.env
 
@@ -95,9 +92,6 @@ all std: makedirs
 $(INT_LIBS): makedirs
 	@ $(MAKE_CMD) $(ILIBDIR)/$@
 
-$(EXT_LIBS): makedirs
-	@ $(MAKE_CMD) $(LIBDIR)/$@
-
 .PHONY: all std $(ALL_LIBS)
 
 #-------------------------------------------------------------------------------
@@ -115,14 +109,6 @@ $(TARGDIR)/std: \
 clean: stdclean
 
 .PHONY: clean
-
-#-------------------------------------------------------------------------------
-# tag
-#
-tag: \
-	$(addsuffix _tag,$(ALL_LIBS))
-
-.PHONY: tag $(addsuffix _tag,$(ALL_LIBS))
 
 
 #-------------------------------------------------------------------------------
@@ -202,6 +188,3 @@ JUDY_OBJ = \
 
 $(ILIBDIR)/libjudy.$(LIBX): $(JUDY_OBJ)
 	$(LD) --slib -o $@ $^
-
-libjudy_tag:
-	@ true

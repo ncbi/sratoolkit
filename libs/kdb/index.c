@@ -174,7 +174,7 @@ LIB_EXPORT rc_t CC KIndexRelease ( const KIndex *self )
         {
         case krefWhack:
             return KIndexWhack ( ( KIndex* ) self );
-        case krefLimit:
+        case krefNegative:
             return RC ( rcDB, rcIndex, rcReleasing, rcRange, rcExcessive );
         }
     }

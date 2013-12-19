@@ -30,3 +30,7 @@
 #ifndef rcStream
 #define rcStream rcFile
 #endif
+
+#ifndef rcUrl
+#define rcUrl rcPath
+#endif

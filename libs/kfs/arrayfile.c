@@ -260,6 +260,47 @@ LIB_EXPORT rc_t CC KArrayFileRead ( const KArrayFile *self, uint8_t dim,
 }
 
 
+/* Read_v
+ *  read one element of variable length from n-dimensional position
+ *
+ *  "dim" [ IN ] - the dimensionality of all vectors
+ *
+ *  "pos"  [ IN ] - n-dimensional starting position in elements
+ *
+ *  "buffer" [ OUT ] and "elem_count" [ IN ] - return buffer for read
+ *  where "elem_count" is length of buffer in elements
+ *
+ *  "num_read" [ OUT ] - return parameter giving back
+ *      the number of read elements in every dimension
+ */
+LIB_EXPORT rc_t CC KArrayFileRead_v ( const KArrayFile *self, uint8_t dim,
+    const uint64_t *pos, void *buffer, const uint64_t elem_count,
+    uint64_t *num_read )
+{
+    if ( num_read == NULL || pos == NULL || elem_count == 0 || dim == 0 )
+        return RC ( rcFS, rcFile, rcReading, rcParam, rcNull );
+
+    *num_read = 0;
+
+    if ( self == NULL )
+        return RC ( rcFS, rcFile, rcReading, rcSelf, rcNull );
+
+    if ( ! self -> read_enabled )
+        return RC ( rcFS, rcFile, rcReading, rcFile, rcNoPerm );
+
+    if ( buffer == NULL )
+        return RC ( rcFS, rcFile, rcReading, rcBuffer, rcNull );
+
+    switch ( self -> vt -> v1 . maj )
+    {
+    case 1:
+        return ( * self -> vt -> v1 . read_v ) ( self, dim, pos, buffer, elem_count, num_read );
+    }
+
+    return RC ( rcFS, rcFile, rcReading, rcInterface, rcBadVersion );
+}
+
+
 /* Write
  *  write into n-dimensional position
  *

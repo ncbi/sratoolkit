@@ -251,7 +251,7 @@ ver_t CC KAppVersion(void) { return VDB_PASSWD_VERS; }
 
 rc_t CC KMain(int argc, char *argv[]) {
     Args *args;
-    rc_t rc, orc;
+    rc_t rc; /*, orc; */
 
     rc = ArgsMakeAndHandle(&args, argc, argv, 0);
     if (rc == 0)

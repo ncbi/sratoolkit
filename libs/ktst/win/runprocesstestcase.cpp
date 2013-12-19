@@ -27,9 +27,11 @@
 #include <ktst/unit_test_suite.hpp>
 
 #include <csignal> 
+#include <sstream> 
 #include <windows.h>
 #include <process.h>
 
+using namespace std;
 using namespace ncbi::NK;
 
 /* signal handlers for a single-test case thread */
@@ -78,6 +80,7 @@ void ThreadProc(void* call)
 int TestEnv::RunProcessTestCase(TestCase& obj, void(TestCase::*meth)(), int timeout)
 {
     TestCaseCall call(obj, meth);
+    TestEnv::in_child_process = true;
     HANDLE thread = (HANDLE)_beginthread( ThreadProc, 0, &call );
     if (thread == NULL)
     {
@@ -119,6 +122,7 @@ int TestEnv::RunProcessTestCase(TestCase& obj, void(TestCase::*meth)(), int time
     }
 #undef CALL_FAILED
     set_handlers(); 
+    in_child_process = false;
     return (int)rc;
 }
 
@@ -137,5 +141,12 @@ void TestEnv::set_handlers(void)
     signal(SIGSEGV, SigHandler);
     signal(SIGTERM, SigHandler);
     set_terminate(TermHandler);
+}
+
+string TestEnv::GetPidString()
+{
+    ostringstream str;
+    str << GetCurrentProcessId();
+    return str.str();
 }
 

@@ -328,7 +328,7 @@ static __inline__ row_count_t PageMapIteratorRepeatCount(const PageMapIterator *
 		switch ((*self->rgns)[self->cur_rgn].type){
 		 case PM_REGION_EXPAND_FULL:
 			if((*self->rgns)[self->cur_rgn].expanded){
-				int i;
+				row_count_t i;
 				elem_count_t* base = (*self->exp_base) + (*self->rgns)[self->cur_rgn].data_offset;
 				self->repeat_count = 1;
 				for(i=self->cur_rgn_row+1;i<(*self->rgns)[self->cur_rgn].numrows;i++){
@@ -341,7 +341,7 @@ static __inline__ row_count_t PageMapIteratorRepeatCount(const PageMapIterator *
 			break;
 		 case PM_REGION_EXPAND_SAMELEN:
 			if((*self->rgns)[self->cur_rgn].expanded){
-				int i;
+				row_count_t i;
 				elem_count_t* base = (*self->exp_base) + (*self->rgns)[self->cur_rgn].data_offset;
 				self->repeat_count = 1;
 				for(i=self->cur_rgn_row+1;i<(*self->rgns)[self->cur_rgn].numrows;i++){

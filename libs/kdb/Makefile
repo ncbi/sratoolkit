@@ -29,28 +29,22 @@ TOP ?= $(shell ../../build/abspath.sh ../..)
 MODULE = libs/kdb
 
 INT_LIBS = \
-
-EXT_LIBS = \
 	libkdb \
 	libwkdb
 
 ALL_LIBS = \
-	$(INT_LIBS) \
-	$(EXT_LIBS)
+	$(INT_LIBS)
 
 include $(TOP)/build/Makefile.env
 
 #-------------------------------------------------------------------------------
 # outer targets
 #
-all std: vers-includes
+all std: makedirs
 	@ $(MAKE_CMD) $(TARGDIR)/std
 
-$(INT_LIBS): vers-includes
+$(INT_LIBS): makedirs
 	@ $(MAKE_CMD) $(ILIBDIR)/$@
-
-$(EXT_LIBS): vers-includes
-	@ $(MAKE_CMD) $(LIBDIR)/$@
 
 .PHONY: all std $(ALL_LIBS) $(ALL_DEFS)
 
@@ -59,17 +53,9 @@ $(EXT_LIBS): vers-includes
 # std
 #
 $(TARGDIR)/std: \
-	$(addprefix $(ILIBDIR)/,$(INT_LIBS)) \
-	$(addprefix $(LIBDIR)/,$(EXT_LIBS))
+	$(addprefix $(ILIBDIR)/,$(INT_LIBS))
 
 .PHONY: $(TARGDIR)/std
-
-#-------------------------------------------------------------------------------
-# vers-includes
-#
-$(TARGDIR)/vers-includes: $(addsuffix .vers.h,$(EXT_LIBS))
-
-.PHONY: $(TARGDIR)/vers-includes
 
 #-------------------------------------------------------------------------------
 # clean
@@ -79,17 +65,9 @@ clean: stdclean
 .PHONY: clean
 
 #-------------------------------------------------------------------------------
-# tag
-#
-tag: \
-	$(addsuffix _tag,$(ALL_LIBS))
-
-.PHONY: tag $(addsuffix _tag,$(ALL_LIBS))
-
-#-------------------------------------------------------------------------------
 # kdb
 #
-$(LIBDIR)/libkdb: $(addprefix $(LIBDIR)/libkdb.,$(LIBEXT))
+$(ILIBDIR)/libkdb: $(addprefix $(ILIBDIR)/libkdb.,$(ILIBEXT))
 
 KDB_CMN = \
 	btree \
@@ -133,20 +111,14 @@ KDB_LIB = \
 	-dkfs \
 	-dklib
 
-$(LIBDIR)/libkdb.$(SHLX): $(KDB_OBJ)
-	$(LD) --dlib --vers $(SRCDIR) -o $@ $^ $(KDB_LIB)
-
-$(LIBDIR)/libkdb.$(LIBX): $(KDB_OBJ)
-	$(LD) --slib --vers $(SRCDIR) -o $@ $^ $(KDB_LIB)
-
-libkdb_tag:
-	@ $(TOP)/build/tag-module.sh $(MODULE) libkdb $(KDB_OBJ)
+$(ILIBDIR)/libkdb.$(LIBX): $(KDB_OBJ)
+	$(LD) --slib -o $@ $^ $(KDB_LIB)
 
 
 #-------------------------------------------------------------------------------
 # wkdb
 #
-$(LIBDIR)/libwkdb: $(addprefix $(LIBDIR)/libwkdb.,$(LIBEXT))
+$(ILIBDIR)/libwkdb: $(addprefix $(ILIBDIR)/libwkdb.,$(ILIBEXT))
 
 WKDB_SRC = \
 	$(KDB_CMN) \
@@ -177,11 +149,5 @@ WKDB_LIB = \
 	-dkfs \
 	-dklib
 
-$(LIBDIR)/libwkdb.$(SHLX): $(WKDB_OBJ)
-	$(LD) --dlib --vers $(SRCDIR) -o $@ $^ $(WKDB_LIB)
-
-$(LIBDIR)/libwkdb.$(LIBX): $(WKDB_OBJ)
-	$(LD) --slib --vers $(SRCDIR) -o $@ $^ $(WKDB_LIB)
-
-libwkdb_tag:
-	@ $(TOP)/build/tag-module.sh $(MODULE) libwkdb $(WKDB_OBJ)
+$(ILIBDIR)/libwkdb.$(LIBX): $(WKDB_OBJ)
+	$(LD) --slib -o $@ $^ $(WKDB_LIB)

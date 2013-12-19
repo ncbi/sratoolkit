@@ -45,7 +45,7 @@ extern "C" {
  */
 char *strdup ( const char *str );
 
-#if !defined(__MAC_10_7) || (__MAC_OS_X_VERSION_MIN_REQUIRED < __MAC_10_7)
+#if !defined(__MAC_10_6) || (__MAC_OS_X_VERSION_MIN_REQUIRED < __MAC_10_6)
 static __inline__
 char *strndup ( const char *str, size_t n )
 {

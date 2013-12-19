@@ -88,23 +88,27 @@ LIB_EXPORT rc_t CC TableWriterRefSeq_Make(const TableWriterRefSeq** cself, VDBMa
             *cself = self;
             ALIGN_DBG("table %s created", table_path);
         } else {
-            TableWriterRefSeq_Whack(self, false, NULL, NULL, NULL, NULL, 0);
+            TableWriterRefSeq_Whack(self, false, NULL, 0, 0, NULL, NULL, 0);
             ALIGN_DBGERRP("table %s", rc, table_path);
         }
     }
     return rc;
 }
 
-LIB_EXPORT rc_t CC TableWriterRefSeq_Whack(const TableWriterRefSeq* cself, bool commit, uint64_t* rows,
-                                           const char* argv0, const char* argv0_date,
-                                           const char* app_name, ver_t app_version)
+LIB_EXPORT rc_t CC TableWriterRefSeq_Whack(const TableWriterRefSeq* cself,
+                                           bool commit, uint64_t* rows,
+                                           const char loader_name[],
+                                           const ver_t loader_version,
+                                           const char loader_date[],
+                                           const char app_name[],
+                                           const ver_t app_version)
 {
     rc_t rc = 0;
 
     if( cself != NULL ) {
         rc_t rc1;
         if( commit ) {
-            rc = TableWriter_Sign(cself->base, argv0, argv0_date, app_name, app_version);
+            rc = TableWriter_Sign(cself->base, loader_name, loader_version, loader_date, app_name, app_version);
         }
         rc1 = TableWriter_Whack(cself->base, rc ? false : commit, rows);
         rc = rc ? rc : rc1;

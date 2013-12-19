@@ -244,6 +244,7 @@ static rc_t add_to_pi_window( pi_window * pw, PlacementIterator *pi )
         {
             PlacementIteratorAddRef ( pi );
             DLListPushTail ( &pw->pi_entries, ( DLNode * )pie );
+            pw->count += 1;
         }
         else
         {
@@ -299,6 +300,20 @@ static rc_t add_to_pi_ref( pi_ref * pr, window * w, PlacementIterator *pi )
                 pr->outer.first = w->first;
             if ( w->first + w->len > pr->outer.first + pr->outer.len )
                 pr->outer.len = ( ( w->first + w->len ) - pr->outer.first ) + 1;
+        }
+    }
+    else if ( ( pw != NULL )&&( GetRCState( rc ) == rcDone ) )
+    {
+        /* add_to_pi_window() was not successful because iterator has no
+           alignments int the requested window, that means we have to delete
+           the window if it is empty */
+        if ( pw->count == 0 )
+        {
+            /* first we have to take the pw out of the pr->pi_windows - list...
+               it was pushed at the tail of it, so we pop it from there */
+            DLListPopTail( &pr->pi_windows );
+            /* because it is empty ( count == 0 ) we can just free it now */
+            free( pw );
         }
     }
     return rc;

@@ -64,7 +64,7 @@ extern "C" {
 #define VCURSOR_WRITE_MODES_SUPPORTED 0
 
 /* temporary - until the full kproc for Windows is operational */
-#if WINDOWS
+#if defined(WINDOWS) || defined(_WIN32) || defined(NCBI_WITHOUT_MT)
 #define VCURSOR_FLUSH_THREAD 0
 #else
 #define VCURSOR_FLUSH_THREAD 1
@@ -167,7 +167,7 @@ struct VCursor
     struct STable SKONST *stbl;
 
     /* background flush thread objects */
-    int64_t   launch_cnt;
+    int64_t launch_cnt;
     struct KThread *flush_thread;
     struct KLock *flush_lock;
     struct KCondition *flush_cond;
@@ -182,6 +182,7 @@ struct VCursor
 
     /* external named cursor parameters */    
     BSTree named_params;
+
     /* linked cursors */
     BSTree linked_cursors;
 
@@ -196,7 +197,7 @@ struct VCursor
 
     /* physical columns by cid ( owned ) */
     VCursorCache phys;
-    uint32_t	phys_cnt;
+    uint32_t phys_cnt;
 
     /* productions by cid ( not-owned ) */
     VCursorCache prod;
@@ -250,7 +251,7 @@ rc_t VCursorSupplementSchema ( struct VCursor const *self );
 /* MakeColumn
  */
 rc_t VCursorMakeColumn ( struct VCursor *self,
-    struct VColumn **col, struct SColumn const *scol );
+    struct VColumn **col, struct SColumn const *scol, Vector *cx_bind );
 
 /* SetRowIdRead - PRIVATE
  *  seek to given row id

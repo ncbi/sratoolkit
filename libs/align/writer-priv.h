@@ -60,7 +60,12 @@ rc_t CC TableWriter_AddCursor(const TableWriter* cself, TableWriterColumn* cols,
 
 rc_t CC TableWriter_GetVTable(const TableWriter* cself, VTable** vtbl);
 
-rc_t CC TableWriter_Sign(const TableWriter* cself, const char* argv0, const char* argv0_date, const char* app_name, ver_t app_version);
+rc_t CC TableWriter_Sign(const TableWriter *const cself,
+                         const char loader_name[],
+                         const ver_t loader_version,
+                         const char loader_date[],
+                         const char app_name[],
+                         const ver_t app_version);
 
 /* optionally return internal vtbl still open but committed */
 rc_t CC TableWriter_Whack(const TableWriter* cself, bool commit, uint64_t* rows);

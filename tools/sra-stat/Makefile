@@ -84,19 +84,8 @@ SRASTAT_OBJ = \
 
 SRASTAT_LIB = \
 	-lkapp \
-	-dalign-reader \
-	-lsradb \
-	$(READONLY_SCHEMA_LIBS) \
-	-lvdb \
-	-lkdb \
-	-lvfs \
-	-lkurl \
-	-lkrypto \
-	-lkfg \
-	-lkfs \
-	-dksrch \
-	-lkproc \
-	-lklib \
+	-lncbi-vdb \
+	-lxml2 \
 	-lm
 
 $(BINDIR)/sra-stat: $(SRASTAT_OBJ)

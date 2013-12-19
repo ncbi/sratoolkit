@@ -301,6 +301,8 @@ T diff #1.0 < * T k > ( T a * T b )
  *  return the 1st derivative of an input row
  * integral
  *  return the integral of an input row
+ *   integral   -> starts with 1st value
+ *   integral_0 -> starts with 0
  *
  *  "T" [ TYPE ] - input and output data type
  *  must be signed integer of any size
@@ -314,7 +316,7 @@ T diff #1.0 < * T k > ( T a * T b )
 
 function < type T > T deriv #1.0  ( T in ) = vdb:deriv;
 function < type T > T integral #1.0  ( T in ) = vdb:integral;
-
+function < type T > T integral_0 #1.0  ( T in ) = vdb:integral_0;
 
 /* delta
  *  return the 1st derivative of a whole blob

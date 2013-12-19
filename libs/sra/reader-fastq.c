@@ -389,7 +389,7 @@ LIB_EXPORT rc_t CC FastqReaderBase(const FastqReader* self, uint32_t readId, cha
         }
     } else if( (rc = FastqReader_SpotInfo(self, NULL, NULL, NULL, NULL, &read_len, &num_reads)) != 0 ) {
         return rc;
-    } else if( (me->dad.options & eColorSpace) && num_reads > 1 ) {
+    } else if( (me->dad.options & eColorSpace) && num_reads > 2 ) {
         return RC(rcSRA, rcFormatter, rcConstructing, rcFormat, rcUnsupported);
     }
     if( me->dad.options & eColorSpace ) {

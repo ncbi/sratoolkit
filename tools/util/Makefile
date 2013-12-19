@@ -86,15 +86,6 @@ clean: stdclean
 .PHONY: clean
 
 #-------------------------------------------------------------------------------
-# tag
-#
-tag: \
-	$(addsuffix _tag,$(ALL_TOOLS))
-
-.PHONY: tag $(addsuffix _tag,$(ALL_TOOLS))
-
-
-#-------------------------------------------------------------------------------
 # rcexplain - explain a return code observed in debugger
 #
 RCEXPLAIN_SRC = \
@@ -105,13 +96,7 @@ RCEXPLAIN_OBJ = \
 
 RCEXPLAIN_LIB = \
 	-skapp \
-	-svfs \
-	-skurl \
-	-skrypto \
-	-skfg \
-	-skfs \
-	-sksproc \
-	-sklib
+	-lncbi-vdb \
 
 $(BINDIR)/rcexplain: $(RCEXPLAIN_OBJ)
 	$(LD) --exe --vers $(SRCDIR) -o $@ $^ $(RCEXPLAIN_LIB)
@@ -128,14 +113,9 @@ KDBMETA_OBJ = \
 
 KDBMETA_LIB = \
 	-skapp \
-	-lwkdb \
-	-lvfs \
-	-lkurl \
-	-lkrypto \
-	-lkfg \
-	-lkfs \
-	-lkproc \
-	-lklib
+	-lncbi-wvdb \
+	-lxml2 \
+	-lm
 
 $(BINDIR)/kdbmeta: $(KDBMETA_OBJ)
 	$(LD) --exe --vers $(SRCDIR) -o $@ $^ $(KDBMETA_LIB)
@@ -153,15 +133,8 @@ VDB_LOCK_OBJ = \
 
 VDB_LOCK_LIB = \
 	-skapp \
-	-lwvdb \
-	-lwkdb \
-	-lvfs \
-	-lkurl \
-	-lkrypto \
-	-lkfg \
-	-lkfs \
-	-lkproc \
-	-lklib \
+	-lncbi-wvdb \
+	-lxml2 \
 	-lm
 
 $(BINDIR)/vdb-lock: $(VDB_LOCK_OBJ)
@@ -180,15 +153,8 @@ VDB_UNLOCK_OBJ = \
 
 VDB_UNLOCK_LIB = \
 	-skapp \
-	-lwvdb \
-	-lwkdb \
-	-lvfs \
-	-lkurl \
-	-lkrypto \
-	-lkfg \
-	-lkfs \
-	-lkproc \
-	-lklib \
+	-lncbi-wvdb \
+	-lxml2 \
 	-lm
 
 $(BINDIR)/vdb-unlock: $(VDB_UNLOCK_OBJ)
@@ -199,26 +165,16 @@ $(BINDIR)/vdb-unlock: $(VDB_UNLOCK_OBJ)
 #
 
 T_SRC = \
-	test-sra
+	PrintOS \
+	test-sra \
 
 T_OBJ = \
 	$(addsuffix .$(OBJX),$(T_SRC))
 
 T_LIB = \
 	-lkapp \
-	-dalign-reader \
-	$(READONLY_SCHEMA_LIBS) \
-	-lsradb \
-	-lvdb \
-	-lkdb \
-	-lvfs \
-	-lkurl \
-	-lkrypto \
-	-lkfg \
-	-lkfs \
-	-dksrch \
-	-lkproc \
-	-lklib \
+	-lncbi-vdb \
+	-lxml2 \
 	-lm
 
 $(BINDIR)/test-sra: $(T_OBJ)
@@ -236,13 +192,8 @@ VDB_PASSWD_OBJ = \
 
 VDB_PASSWD_LIB = \
 	-skapp \
-	-lvfs \
-	-lkurl \
-	-lkrypto \
-	-lkfg \
-	-lkfs \
-	-sksproc \
-	-lklib
+	-lncbi-vdb \
+
 
 $(BINDIR)/vdb-passwd: $(VDB_PASSWD_OBJ)
 	$(LD) --exe --vers $(SRCDIR) -o $@ $^ $(VDB_PASSWD_LIB)

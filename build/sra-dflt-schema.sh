@@ -45,11 +45,12 @@ fi
 
 if [[ "$OS" == "rwin" ]]
 then # for rwin, $CC is a multi-word string; extract server location data from it:
-#                $(TOP)/build/run_remotely.sh $(PROXY_TOOL) $(RHOST) $(RPORT) $(RHOME) $(LHOME) $(TOP) $(SCHEMA_EXE)
+#                $(TOP)/build/run_remotely.sh $(PROXY_TOOL) $(RHOST) $(RPORT) $(RHOME) $(LHOME) $(TOP) $(ROUTDIR) $(LOUTDIR) $(SCHEMA_EXE)
     PARMS=($CC)
     RHOME=${PARMS[4]}
     LHOME=${PARMS[5]}
-    TOP=${PARMS[6]}
+    ROUTDIR=${PARMS[7]}
+    LOUTDIR=${PARMS[8]}
 fi
 
 # state
@@ -58,16 +59,33 @@ unset DEPENDENCIES
 unset DEPTARG
 unset TARG
 
-function convert_path
+function convert_src_path
 {
     if [[ "$OS" != "rwin" ]]
     then
         convert_path_result="$(cygpath -w $1)"
-    else
+    elif [ "$1" != "${1#$LHOME}" ] 
+    then
         convert_path_result="$RHOME${1#$LHOME}"
         convert_path_result="$(echo $convert_path_result | tr '/' '\\')"
+    else
+        convert_path_result="$1"
     fi
 }
+function convert_out_path
+{
+    if [[ "$OS" != "rwin" ]]
+    then
+        convert_path_result="$(cygpath -w $1)"
+    elif [ "$1" != "${1#$LOUTDIR}" ] 
+    then
+        convert_path_result="$ROUTDIR${1#$LOUTDIR}"
+        convert_path_result="$(echo $convert_path_result | tr '/' '\\')"
+    else
+        convert_path_result="$1"
+    fi
+}
+
 
 # process parameters for windows
 while [ $# -ne 0 ]
@@ -82,7 +100,7 @@ do
             shift
         fi
         TARG="$ARG"
-        convert_path $ARG
+        convert_out_path $ARG
         ARGS="$ARGS -o${convert_path_result}"
         ;;
 
@@ -94,7 +112,7 @@ do
             shift
         fi
         
-        convert_path $ARG
+        convert_src_path $ARG
         ARGS="$ARGS -I${convert_path_result}"
         ;;
 
@@ -107,12 +125,19 @@ do
         fi
         DEPTARG="$ARG"
         DEPENDENCIES=1
-        convert_path $ARG
+        convert_out_path $ARG
         ARGS="$ARGS -T${convert_path_result}"
         ;;
 
+    -L*)
+        LHOME="${1#-L}"
+        ;;
+    -R*)
+        RHOME="${1#-R}"
+        ;;
+    
     *)
-        convert_path $1
+        convert_src_path $1
         ARGS="$ARGS ${convert_path_result}"
         ;;
 

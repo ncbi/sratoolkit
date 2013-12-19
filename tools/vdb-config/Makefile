@@ -73,14 +73,6 @@ clean: stdclean
 .PHONY: clean
 
 #-------------------------------------------------------------------------------
-# tag
-#
-tag: \
-	$(addsuffix _tag,$(ALL_TOOLS))
-
-.PHONY: tag $(addsuffix _tag,$(ALL_TOOLS))
-
-#-------------------------------------------------------------------------------
 # vdb-config
 #
 VDB_CONFIG_SRC = \
@@ -91,20 +83,10 @@ VDB_CONFIG_OBJ = \
 
 VDB_CONFIG_LIB = \
 	-lkapp \
-	-lsraschema \
-	-lvdb \
-	-lkdb \
-	-lvfs \
-	-lkurl \
-	-lkrypto \
-	-lkfg \
-	-lkfs \
-	-lkproc \
-	-lklib \
-    -lm
+	-lncbi-vdb \
+	-lxml2 \
+	-lm
 
 $(BINDIR)/vdb-config: $(VDB_CONFIG_OBJ)
 	$(LD) --exe --vers $(SRCDIR) -o $@ $^ $(VDB_CONFIG_LIB)
 
-vdb_config_tag:
-	@ $(TOP)/build/tag-module.sh $(MODULE) vdb-config $(VDB_CONFIG_OBJ)

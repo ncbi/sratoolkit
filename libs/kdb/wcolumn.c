@@ -204,8 +204,7 @@ rc_t KColumnMake ( KColumn **colp, const KDirectory *dir, const char *path,
         return RC ( rcDB, rcColumn, rcConstructing, rcMemory, rcExhausted );
     }
 
-    col -> tbl = NULL;
-    col -> mgr = NULL;
+    memset ( col, 0, sizeof * col );
     col -> dir = ( KDirectory* ) dir;
     col -> md5 = md5;
     rc = KMD5SumFmtAddRef ( md5 );
@@ -213,14 +212,10 @@ rc_t KColumnMake ( KColumn **colp, const KDirectory *dir, const char *path,
     col -> opencount = 1;
     col -> commit_freq = 1;
     col -> read_only = read_only;
-    col -> checksum = 0;
-    col -> csbytes = 0;
-    memset ( &col->idx, 0, sizeof(col->idx));
 
     strcpy ( col -> path, path );
 
     col->sym.u.obj = col;
-    col->sym.dad = NULL;   /* not strictly needed */
     StringInitCString (&col->sym.name, col->path);
     col->sym.type = kptColumn;
 
@@ -1820,10 +1815,8 @@ rc_t KColumnBlobMake ( KColumnBlob **blobp, bool bswap )
     if ( blob == NULL )
         return RC ( rcDB, rcBlob, rcConstructing, rcMemory, rcExhausted );
 
-    blob -> col = NULL;
+    memset ( blob, 0, sizeof * blob );
     atomic32_set ( & blob -> refcount, 1 );
-    blob -> num_writ = 0;
-    blob -> read_only = false;
     blob -> bswap = bswap;
 
     * blobp = blob;

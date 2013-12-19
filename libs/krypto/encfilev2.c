@@ -1412,7 +1412,7 @@ rc_t KEncFileSetSizeBlockPartial (KEncFile *self, uint64_t block_id, uint32_t va
 static
 rc_t KEncFileSetSizeInt (KEncFile *self, uint64_t dec_size)
 {
-    uint64_t trim_size;
+    uint64_t trim_size = 0;
     uint64_t enc_size;
     bool do_size = true;
 
@@ -1801,7 +1801,7 @@ rc_t CC KEncFileWrite (KEncFile *self, uint64_t pos,
             self->dirty = true;
             *pnum_writ = to_copy;
 
-            new_valid = offset + to_copy;
+            new_valid = (uint32_t) ( offset + to_copy );
             if (new_valid > self->block.u.valid)
             {
                 uint64_t new_size;

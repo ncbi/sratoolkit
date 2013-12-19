@@ -59,8 +59,8 @@ typedef union YYSTYPE
 {
 
 
-	KFGParseBlock		pb;
-	const VNamelist*	namelist;
+    KFGParseBlock       pb;
+    const VNamelist*    namelist;
 
 
 

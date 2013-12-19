@@ -220,8 +220,7 @@ rc_t KTableMake ( KTable **tblp, const KDirectory *dir, const char *path,
         return RC ( rcDB, rcTable, rcConstructing, rcMemory, rcExhausted );
     }
 
-    tbl -> mgr = NULL;
-    tbl -> db = NULL;
+    memset ( tbl, 0, sizeof * tbl );
     tbl -> dir = ( KDirectory* ) dir;
     KRefcountInit ( & tbl -> refcount, 1, "KTable", "make", path );
     tbl -> opencount = 1;
@@ -229,11 +228,9 @@ rc_t KTableMake ( KTable **tblp, const KDirectory *dir, const char *path,
     KMD5SumFmtAddRef ( md5 );
     tbl -> use_md5 = ( md5 == NULL ) ? false : true;
     tbl -> read_only = read_only;
-    tbl -> prerelease = false;
     strcpy ( tbl -> path, path );
 
     tbl->sym.u.obj = tbl;
-    tbl->sym.dad = NULL;   /* not strictly needed */
     StringInitCString (&tbl->sym.name, tbl->path);
     tbl->sym.type = kptTable;
 

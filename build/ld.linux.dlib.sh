@@ -69,7 +69,7 @@ CMD="$CMD $OBJS"
 SLIBS=''
 
 # initial dependency upon Makefile and vers file
-DEPS="$SRCDIR/Makefile $VERSFILE"
+DEPS="$SRCDIR/Makefile"
 if [ "$LIBS" != "" ]
 then
     # tack on paths
@@ -272,6 +272,18 @@ load-dynamic
 if [ $THREADS -ne 0 ]
 then
     CMD="$CMD -lpthread"
+fi
+
+# add in xml
+if [ $HAVE_XML -ne 0 ]
+then
+    CMD="$CMD -lxml2"
+fi
+
+# add in math library
+if [ $HAVE_M -ne 0 ]
+then
+    CMD="$CMD -lm"
 fi
 
 # produce shared library

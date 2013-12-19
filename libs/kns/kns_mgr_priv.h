@@ -26,10 +26,15 @@
 #ifndef _h_kns_mgr_priv_
 #define _h_kns_mgr_priv_
 
+#ifndef _h_klib_refcount_
+#include <klib/refcount.h>
+#endif
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+#include <klib/rc.h>
 
 #include "curlhdr/curl.h"
 #include "curlhdr/easy.h"
@@ -40,7 +45,7 @@ struct KNSManager
     KRefcount refcount;
 
     rc_t create_rc;
-
+    
     /* curl-easy-function-pointers... */
     CURL*    ( CC * curl_easy_init_fkt )    ( void );
     void     ( CC * curl_easy_cleanup_fkt ) ( CURL * handle );
@@ -50,7 +55,14 @@ struct KNSManager
     char *   ( CC * curl_version_fkt )      ( void );
     struct curl_slist* ( CC * curl_slist_append_fkt ) ( struct curl_slist * list, const char * string );
     void ( CC * curl_slist_free_all_fkt ) ( struct curl_slist * list );
+    
+    bool verbose;
 };
+
+
+rc_t KNSManagerInit ( struct KNSManager *self );    /* in kns/unix/sysmgr.c or kns/win/sysmgr.c */
+void KNSManagerCleanup ( struct KNSManager *self );
+
 
 #ifdef __cplusplus
 }

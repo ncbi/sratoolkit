@@ -40,6 +40,26 @@
 extern VTRANSFACT_DECL ( meta_write );
 extern VTRANSFACT_DECL ( meta_attr_write );
 
+/* newly imported things */
+extern VTRANSFACT_DECL ( NCBI_SRA_cmp_stats_trigger );
+extern VTRANSFACT_DECL ( NCBI_SRA_cmpf_stats_trigger );
+extern VTRANSFACT_DECL ( NCBI_SRA_extract_name_fmt );
+extern VTRANSFACT_DECL ( NCBI_SRA_extract_spot_name );
+extern VTRANSFACT_DECL ( NCBI_SRA_phred_stats_trigger );
+extern VTRANSFACT_DECL ( NCBI_SRA_qual4_encode );
+extern VTRANSFACT_DECL ( NCBI_SRA_stats_trigger );
+#if HAVE_ALIGN_STATS_TRIGGER
+extern VTRANSFACT_DECL ( NCBI_align_stats_trigger );
+extern VTRANSFACT_DECL ( NCBI_seq_stats_trigger );
+#endif
+extern VTRANSFACT_DECL ( NCBI_refSeq_stats );
+extern VTRANSFACT_DECL ( idx_text_insert );
+extern VTRANSFACT_DECL ( vdb_bzip );
+extern VTRANSFACT_DECL ( vdb_checksum );
+extern VTRANSFACT_DECL ( vdb_fzip );
+extern VTRANSFACT_DECL ( vdb_rlencode );
+extern VTRANSFACT_DECL ( vdb_zip );
+
 /* InitFactories
  */
 rc_t VLinkerInitFactories ( VLinker *self, struct KSymTable *tbl, struct SchemaEnv const *env )
@@ -47,7 +67,26 @@ rc_t VLinkerInitFactories ( VLinker *self, struct KSymTable *tbl, struct SchemaE
     static VLinkerIntFactory fact [] =
     {
         { meta_write, "meta:write" },
-        { meta_attr_write, "meta:attr:write" }
+        { meta_attr_write, "meta:attr:write" },
+
+        { NCBI_SRA_cmp_stats_trigger, "NCBI:SRA:cmp_stats_trigger" },
+        { NCBI_SRA_cmpf_stats_trigger, "NCBI:SRA:cmpf_stats_trigger" },
+        { NCBI_SRA_extract_name_fmt, "NCBI:SRA:extract_name_fmt" },
+        { NCBI_SRA_extract_spot_name, "NCBI:SRA:extract_spot_name" },
+        { NCBI_SRA_phred_stats_trigger, "NCBI:SRA:phred_stats_trigger" },
+        { NCBI_SRA_qual4_encode, "NCBI:SRA:qual4_encode" },
+        { NCBI_SRA_stats_trigger, "NCBI:SRA:stats_trigger" },
+#if HAVE_ALIGN_STATS_TRIGGER
+        { NCBI_align_stats_trigger, "NCBI:align:stats_trigger" },
+        { NCBI_seq_stats_trigger, "NCBI:seq:stats_trigger" },
+#endif
+        { NCBI_refSeq_stats, "NCBI:refSeq:stats" },
+        { idx_text_insert, "idx:text:insert" },
+        { vdb_bzip, "vdb:bzip" },
+        { vdb_checksum, "vdb:checksum" },
+        { vdb_fzip, "vdb:fzip" },
+        { vdb_rlencode, "vdb:rlencode" },
+        { vdb_zip, "vdb:zip" }
     };
 
     rc_t rc = VLinkerInitFactoriesRead ( self, tbl, env );

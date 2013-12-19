@@ -233,6 +233,11 @@ uint32_t VProductionFixedRowLength ( const VProduction *self, int64_t row_id, bo
  */
 rc_t VProductionReadBlob ( const VProduction *self, struct VBlob **vblob, int64_t id , uint32_t cnt, struct VBlobMRUCacheCursorContext* cctx);
 
+/* IsStatic
+ *  trace all the way to a physical production
+ */
+rc_t VProductionIsStatic ( const VProduction *self, bool *is_static );
+
 
 /*--------------------------------------------------------------------------
  * VSimpleProd

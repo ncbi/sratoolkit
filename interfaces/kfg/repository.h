@@ -45,7 +45,6 @@ extern "C" {
  */
 struct KConfig;
 
-
 /*--------------------------------------------------------------------------
  * KRepository
  *  presents structured access to a storage repository
@@ -137,6 +136,15 @@ KFG_EXTERN rc_t CC KRepositoryRoot ( const KRepository *self,
  */
 KFG_EXTERN bool CC KRepositoryDisabled ( const KRepository *self );
 
+
+/* Set Disabled
+ *  changes the status of a repository, writes status into kfg-file on disk
+ *  disabled = true  ... disables the repository
+ *  disabled = false ... enables the repository
+ */
+KFG_EXTERN rc_t CC KRepositorySetDisabled ( const KRepository *self, bool disabled );
+
+
 /* CacheEnabled
  *  discover whether the repository supports caching
  */
@@ -198,6 +206,11 @@ KFG_EXTERN rc_t CC KRepositoryEncryptionKeyFile ( const KRepository *self,
 KFG_EXTERN rc_t CC KRepositoryDescription ( const KRepository *self,
     char *buffer, size_t bsize, size_t *desc_size );
 
+/* Description
+ *  register an encrypted object in association with the repository's encryption key
+ */
+KFG_EXTERN rc_t CC KRepositoryRegisterObject ( const KRepository *self, const char* object_id );
+
 
 /*--------------------------------------------------------------------------
  * KRepositoryVector
@@ -223,11 +236,11 @@ typedef struct KRepositoryMgr KRepositoryMgr;
 /* Make
  *  create a repository manager
  *  uses values from "self"
+ *
+ *  mgr [ OUT ] 
  */
-KFG_EXTERN rc_t CC KConfigMakeRepositoryMgrRead ( struct KConfig const *self,
-    const KRepositoryMgr **mgr );
-KFG_EXTERN rc_t CC KConfigMakeRepositoryMgrUpdate ( struct KConfig *self,
-    KRepositoryMgr **mgr );
+KFG_EXTERN rc_t CC KConfigMakeRepositoryMgrRead ( struct KConfig const *self, const KRepositoryMgr **mgr );
+KFG_EXTERN rc_t CC KConfigMakeRepositoryMgrUpdate ( struct KConfig *self, KRepositoryMgr **mgr );
 
 
 /* AddRef
@@ -261,8 +274,14 @@ KFG_EXTERN rc_t CC KRepositoryMgrRemoteRepositories ( const KRepositoryMgr *self
  *  returns the currently active user protected repository
  */
 KFG_EXTERN rc_t CC KRepositoryMgrCurrentProtectedRepository ( const KRepositoryMgr *self,
-    const KRepository **protected );
+    const KRepository **p_protected );
 
+/* GetProtectedRepository
+ *  retrieves a (read-only) user protected repository by its associated project-id
+ */
+KFG_EXTERN rc_t CC KRepositoryMgrGetProtectedRepository ( const KRepositoryMgr *self, 
+    uint32_t projectId, 
+    const KRepository **p_protected );
 
 #ifdef __cplusplus
 }

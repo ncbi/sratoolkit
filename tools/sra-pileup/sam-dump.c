@@ -33,6 +33,7 @@
 #include <klib/vector.h>
 #include <klib/printf.h>
 #include <klib/data-buffer.h>
+#include <vfs/manager.h>
 #include <vfs/path.h>
 #include <vfs/path-priv.h>
 #include <kfs/file.h>
@@ -3870,28 +3871,26 @@ static rc_t ProcessPath( VDBManager const *mgr, char const Path[] )
 
     char * pc;
     rc_t rc = 0;
+    size_t pathlen = string_size ( Path );
 
-    pc = strchr (Path, ':');
+    /* look for scheme */
+    pc = string_chr ( Path, pathlen, ':' );
     if (pc == NULL)
     {
-        unsigned pathlen;
         char *readGroup;
         char *path;
-        unsigned i;
+        size_t i;
 
-    old:
-        pathlen = string_size( Path );
+        /* no scheme found - must be simple fs path */
+    /* old: ---unused label */
         readGroup = NULL;
         path = NULL;
     
-        /* strip trailing path seperators */
-        for ( i = pathlen; i > 0; )
+        /* strip trailing path separators */
+        for ( i = pathlen; i > 0; -- pathlen )
         {
             int const ch = Path[ --i ];
-        
-            if ( ch == '/' || ch == '\\' )
-                --pathlen;
-            else
+            if ( ch != '/' && ch != '\\' )
                 break;
         }
 
@@ -3902,8 +3901,8 @@ static rc_t ProcessPath( VDBManager const *mgr, char const Path[] )
         
             if ( ch == '=' )
             {
-                unsigned const pos = i + 1;
-                unsigned const len = pathlen - pos;
+                size_t const pos = i + 1;
+                size_t const len = pathlen - pos;
             
                 pathlen = i;
             
@@ -3963,100 +3962,80 @@ static rc_t ProcessPath( VDBManager const *mgr, char const Path[] )
     }
     else
     {
-        VPath * vpath;
-        char * basename;
-        size_t zz;
-        char buffer [8193];
-        char readgroup_ [257];
-        char * readgroup;
-
-        rc = VPathMake (&vpath, Path);
-        if (rc)
-            ; /* LOGERR */
-        else
+        VFSManager * vfs;
+        rc = VFSManagerMake ( & vfs );
+        if ( rc == 0 )
         {
-            VPUri_t uri_t;
-            switch (uri_t = VPathGetUri_t (vpath))
-            {
-            default:
-            case vpuri_invalid:
-                rc = RC (rcExe, rcParam, rcAccessing, rcPath, rcInvalid);
-                break;
-            case vpuri_not_supported:
-                rc = RC (rcExe, rcParam, rcAccessing, rcPath, rcUnsupported);
-                break;
-            case vpuri_none:
-                goto old;
+            VPath * vpath;
+            char * basename;
+            size_t zz;
+            char buffer [8193];
+            char readgroup_ [257];
+            char * readgroup;
 
-            case vpuri_ncbi_vfs:
-            case vpuri_file:
-            case vpuri_ncbi_acc:
-            case vpuri_http:
+            rc = VFSManagerMakePath (vfs, &vpath, Path);
+            VFSManagerRelease ( vfs );
+            if ( rc == 0 )
+            {
+                char * ext;
+
                 rc = VPathReadPath (vpath, buffer, sizeof buffer - 1, &zz);
-                if (rc)
-                    ;
-                else
+                if ( rc == 0 )
                 {
                 loop:
-                    basename = strrchr (buffer, '/');
-                    if (basename)
+                    basename = string_rchr (buffer, zz, '/');
+                    if ( basename == NULL )
+                        basename = buffer;
+                    else
                     {
                         if (basename[1] == '\0')
                         {
                             basename[0] = '\0';
                             goto loop;
                         }
-                        else
-                            ++basename;
+                        ++ basename;
+                        zz -= basename - buffer;
                     }
-                    else
-                        basename = buffer;
 
+                    /* cut off [.lite].[c]sra[.nenc||.ncbi_enc] if any */
+                    ext = string_rchr( basename, zz, '.' );
+                    if ( ext != NULL )
                     {
-                        char * ext;
+                        if ( strcasecmp( ext, ".nenc" ) == 0 || strcasecmp( ext, ".ncbi_enc" ) == 0 )
+                        {
+                            zz -= ext - basename;
+                            *ext = '\0';
+                            ext = string_rchr( basename, zz, '.' );
+                        }
 
-                        /* cut off [.lite].[c]sra[.nenc||.ncbi_enc] if any */
-                        ext = strrchr( basename, '.' );
                         if ( ext != NULL )
                         {
-                            if ( strcasecmp( ext, ".nenc" ) == 0 || strcasecmp( ext, ",ncbi_enc" ) == 0 )
+                            if ( strcasecmp( ext, ".sra" ) == 0 || strcasecmp( ext, ".csra" ) == 0 )
                             {
+                                zz -= ext - basename;
                                 *ext = '\0';
-                                ext = strrchr( basename, '.' );
-                            }
-                            if ( ext != NULL )
-                            {
-                                if ( strcasecmp( ext, ".sra" ) == 0 || strcasecmp( ext, ".csra" ) == 0 )
-                                {
+                                ext = string_rchr( basename, zz, '.' );
+                                if ( ext != NULL && strcasecmp( ext, ".lite" ) == 0 )
                                     *ext = '\0';
-                                    ext = strrchr( basename, '.' );
-                                    if ( ext != NULL && strcasecmp( ext, ".lite" ) == 0 )
-                                        *ext = '\0';
-                                }
                             }
                         }
                     }
-
+                
                     rc = VPathOption (vpath, vpopt_readgroup, readgroup_, 
                                       sizeof readgroup_ - 1, &zz);
-                    if (rc)
-                    {
-                        if (GetRCState (rc) == rcNotFound)
-                        {
-                            rc = 0;
-                            readgroup = NULL;
-                        }
-                    }
-                    else
+                    if ( rc == 0 )
                         readgroup = readgroup_;
+                    else if ( GetRCState ( rc ) == rcNotFound )
+                    {
+                        rc = 0;
+                        readgroup = NULL;
+                    }
 
 
-                    if (rc)
-                        ;
-                    else
+                    if ( rc == 0 )
                     {
                         VDatabase const *db;
-
+                        
                         rc = VDBManagerOpenDBRead( mgr, &db, NULL, Path );
                         if ( rc == 0 )
                         {
@@ -4067,9 +4046,9 @@ static rc_t ProcessPath( VDBManager const *mgr, char const Path[] )
                             rc = ProcessTable( mgr, Path, basename, readgroup );
                     }
                 }
-                break;
+
+                VPathRelease (vpath);
             }
-            VPathRelease (vpath);
         }
     }
     return rc;

@@ -27,7 +27,7 @@
 #define USE_EUGENE 1
 
 
-#define TRACK_REFERENCES 1
+#define TRACK_REFERENCES 0
 
 #include <vdb/extern.h>
 
@@ -65,7 +65,7 @@
 #include <stdio.h>
 #include <limits.h>
 
-#if ! WINDOWS
+#if !defined(WINDOWS)  &&  !defined(_WIN32)  &&  !defined(NCBI_WITHOUT_MT)
 #define LAUNCH_PAGEMAP_THREAD 1
 #endif
 
@@ -789,10 +789,9 @@ rc_t VFunctionProdCallPageFunc( VFunctionProd *self, VBlob **rslt, int64_t id,
 
 
         if(b->pm == NULL){
-		rc=PageMapProcessGetPagemap(&self->curs->pmpr,&b->pm);
-		if(rc != 0) return rc;
-	}
-
+            rc=PageMapProcessGetPagemap(&self->curs->pmpr,(PageMap**)(&b->pm));
+            if(rc != 0) return rc;
+        }
         
         if (prod->control) {
             param[i].variant = vrdControl;
@@ -1178,7 +1177,7 @@ rc_t VFunctionProdCallBlobNFunc( VFunctionProd *self, VBlob **rslt,
 	for(i=0;i<argc;i++){
 		VBlob const *vb=argv[i];
 		if(vb->pm == NULL){
-			rc=PageMapProcessGetPagemap(&self->curs->pmpr,&vb->pm);
+			rc=PageMapProcessGetPagemap(&self->curs->pmpr,(PageMap**)(&vb->pm));
 			if(rc != 0) return rc;
 		}
 	}
@@ -1825,17 +1824,27 @@ bool CC fetch_param_FixedRowLength ( void *item, void *data )
 }
 
 static
-uint32_t VFunctionProdFixedRowLength ( const VFunctionProd *self, int64_t row_id,bool  ignore_self )
+uint32_t VFunctionProdFixedRowLength ( const VFunctionProd *self, int64_t row_id, bool ignore_self )
 {
-    if(ignore_self == false &&  (self->dad.sub == vftRow || self->dad.sub == vftNonDetRow || self->dad.sub == vftIdDepRow )){
-	return 0;
-    } else {
-	fetch_param_FixedRowLength_data pb;
-        pb.first_time = true;
-        pb.length = 0;
-        VectorDoUntil ( & self -> parms, false, fetch_param_FixedRowLength, & pb );
-        return pb.length;
+    fetch_param_FixedRowLength_data pb;
+
+    if ( ! ignore_self )
+    {
+        switch ( self -> dad . sub )
+        {
+        case vftRow:
+        case vftNonDetRow:
+        case vftIdDepRow:
+            return 0;
+        }
     }
+
+    pb.first_time = true;
+    pb.length = 0;
+
+    VectorDoUntil ( & self -> parms, false, fetch_param_FixedRowLength, & pb );
+
+    return pb.length;
 }
 
 
@@ -2256,4 +2265,57 @@ rc_t VProductionReadBlob ( const VProduction *cself, VBlob **vblob, int64_t id, 
 #endif
 
 #endif /* PROD_CACHE */
+}
+
+/* IsStatic
+ *  trace all the way to a physical production
+ */
+rc_t VProductionIsStatic ( const VProduction *self, bool *is_static )
+{
+    rc_t rc;
+
+    assert ( is_static != NULL );
+    * is_static = false;
+
+    if ( self == NULL )
+        rc = RC ( rcVDB, rcColumn, rcAccessing, rcSelf, rcNull );
+    else
+    {
+        for ( rc = 0; self != NULL; )
+        {
+            switch ( self -> var )
+            {
+            case prodSimple:
+                self = ( ( const VSimpleProd*) self ) -> in;
+                break;
+            case prodFunc:
+            case prodScript:
+            {
+                const VFunctionProd *fp = ( const VFunctionProd* ) self;
+                uint32_t start = VectorStart ( & fp -> parms );
+                uint32_t end = VectorLength ( & fp -> parms );
+                for ( end += start; start < end; ++ start )
+                {
+                    self = ( const VProduction* ) VectorGet ( & fp -> parms, start );
+                    if ( self != NULL )
+                    {
+                        rc = VProductionIsStatic ( self, is_static );
+                        if ( rc != 0 || * is_static )
+                            break;
+                    }
+                }
+                return rc;
+            }
+            case prodPhysical:
+                return VPhysicalIsStatic ( ( ( const VPhysicalProd* ) self ) -> phys, is_static );
+            case prodColumn:
+                self = NULL;
+                break;
+            default:
+                return RC ( rcVDB, rcProduction, rcReading, rcType, rcUnknown );
+            }
+        }
+    }
+
+    return rc;
 }

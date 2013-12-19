@@ -77,7 +77,8 @@ struct KDBManager
 
 /* Make - PRIVATE
  */
-rc_t KDBManagerMake ( KDBManager **mgrp, struct KDirectory const *wd, const char *op );
+rc_t KDBManagerMake ( KDBManager **mgrp, struct KDirectory const *wd,
+    const char *op, struct VFSManager *vmanager );
 
 /* Attach
  * Sever

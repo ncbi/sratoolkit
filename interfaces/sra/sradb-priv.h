@@ -68,39 +68,28 @@ struct KDirectory;
 struct KDBManager;
 struct KTable;
 struct KLock;
+struct KConfig;
 struct VDBManager;
 struct VTable;
 struct VSchema;
 struct SRAPath;
-
+struct SRACacheUsage;
+struct SRACacheMetrics;
 /*--------------------------------------------------------------------------
  * SRAMgr
  *  opaque handle to SRA library
  */
-
-
-/* GetSRAPath
- *  retrieve a reference to SRAPath object in use - may be NULL
- * UseSRAPath
- *  provide an SRAPath object for use - attaches a new reference
+ 
+/*  SRAMgrResolve
+ *  Convert accession name into a file system path
  */
-SRA_EXTERN rc_t CC SRAMgrGetSRAPath ( const SRAMgr *self, struct SRAPath **path );
-SRA_EXTERN rc_t CC SRAMgrUseSRAPath ( const SRAMgr *self, struct SRAPath *path );
+ 
+SRA_EXTERN rc_t CC SRAMgrResolve( const SRAMgr *self, const char* acc, char* buf, size_t buf_size );
 
-/* FlushPath
- *  flushes cached files under given path
- *
- *  "path" [ IN ] [ IN ] - identifies path to flush from cache
+/* Flush
+ *  flushes least recently used accessions until the cache size is under the specified threshold
  */
-SRA_EXTERN rc_t CC SRAMgrFlushRepPath ( struct SRAMgr const *self, const char *path );
-SRA_EXTERN rc_t CC SRAMgrFlushVolPath ( struct SRAMgr const *self, const char *path );
-
-/* FlushRun
- *  flushes cached files on a given run
- *
- *  "accession" [ IN ] - NUL terminated accession key
- */
-SRA_EXTERN rc_t CC SRAMgrFlushRun ( struct SRAMgr const *self, const char *accession );
+SRA_EXTERN rc_t CC SRAMgrFlush ( struct SRAMgr const *self, const struct SRACacheMetrics* );
 
 /* RunBGTasks
  *  perform single pass of garbage collection tasks and exit.
@@ -134,6 +123,16 @@ SRA_EXTERN rc_t CC SRAMgrGetTableModDate ( const SRAMgr *self,
  */
 SRA_EXTERN rc_t CC SRAMgrConfigReload( const SRAMgr *self, struct KDirectory const *wd );
 
+/* 
+ *  Accession Cache usage stats
+ */
+SRA_EXTERN rc_t CC SRAMgrGetCacheUsage( const SRAMgr *self, struct SRACacheUsage* stats );
+
+/* 
+ *  Configure Accession Cache 
+ *  soft_threshold, hard_threshold - new threshold values ( -1 : do not change; < -1 invalid )
+ */
+SRA_EXTERN rc_t CC SRAMgrConfigureCache( const SRAMgr *self,  int32_t soft_threshold, int32_t hard_threshold );
 
 /*--------------------------------------------------------------------------
  * SRATable
@@ -291,12 +290,11 @@ SRA_EXTERN const SRATableData *CC SRATableGetTableData ( const SRATable *self );
 struct SRACacheIndex;
 
 typedef struct SRACacheMetrics
-{   /* 0 = metric not used */
-
-    /* sizeof table data */
-    /* expanded cache bytes, i.e. cursor */
-    uint64_t bytes;
-    uint32_t elements; /* open tables */
+{   
+    uint32_t elements; /* open accessions */
+    
+    /* not in use currently: */
+    uint64_t bytes; /* expanded cache bytes, i.e. cursor */
     uint32_t threads;
     uint32_t fds;
 } SRACacheMetrics;
@@ -345,21 +343,37 @@ typedef struct SRACacheIndex
 SRA_EXTERN rc_t CC SRACacheIndexMake(SRACacheIndex** self, String* prefix);
 SRA_EXTERN rc_t CC SRACacheIndexDestroy(SRACacheIndex* self);
 
+typedef struct SRACacheUsage {
+    /* config */
+    uint32_t soft_threshold;
+    uint32_t hard_threshold;    
+    /* usage stats */ 
+    uint32_t elements;
+    uint64_t requests;
+    uint64_t hits;
+    uint64_t misses;
+    uint64_t busy;
+} SRACacheUsage;
+
 typedef struct SRACache
 {
     BSTree indexes; /* grows as needed */
 
     DLList lru; /* DLList<SRACacheElement*>;  head is the oldest */
     
+    struct KLock* mutex; 
+
     SRACacheMetrics softThreshold;
     SRACacheMetrics hardThreshold;
-    SRACacheMetrics usage;
+    SRACacheMetrics current;
     
-    struct KLock* mutex; 
-    
+    uint64_t requests;
+    uint64_t hits;
+    uint64_t misses;
+    uint64_t busy;
 } SRACache;
 
-SRA_EXTERN rc_t CC SRACacheInit(SRACache**);
+SRA_EXTERN rc_t CC SRACacheInit(SRACache**, struct KConfig*);
 
 SRA_EXTERN rc_t CC SRACacheGetSoftThreshold(SRACache* self, SRACacheMetrics* metrics);
 SRA_EXTERN rc_t CC SRACacheSetSoftThreshold(SRACache* self, const SRACacheMetrics* metrics);
@@ -367,16 +381,20 @@ SRA_EXTERN rc_t CC SRACacheSetSoftThreshold(SRACache* self, const SRACacheMetric
 SRA_EXTERN rc_t CC SRACacheGetHardThreshold(SRACache* self, SRACacheMetrics* metrics);
 SRA_EXTERN rc_t CC SRACacheSetHardThreshold(SRACache* self, const SRACacheMetrics* metrics);
 
-SRA_EXTERN rc_t CC SRACacheGetUsage(SRACache* self, SRACacheMetrics* metrics);
+SRA_EXTERN rc_t CC SRACacheGetUsage(SRACache* self, SRACacheUsage* usage);
 
 /* flush tables until usage is lower than specified in self->softThreshold */
 SRA_EXTERN rc_t CC SRACacheFlush(SRACache* self); 
 
-/* if found, moves element to the back of the list; return NULL object if not in the cache */
+/* 
+    if found, moves element to the back of the list; return NULL object if not in the cache 
+    if found but the refcount is not 1, returns RC( rcSRA, rcData, rcAccessing, rcParam, rcBusy)
+*/
 SRA_EXTERN rc_t CC SRACacheGetTable(SRACache* self, const char* acc, const SRATable** object); 
 
 /* 
- * fails if table is already in the cache
+ * fails if table is already in the cache.
+ * Does not affect usage stats.
  */
 SRA_EXTERN rc_t CC SRACacheAddTable(SRACache* self, const char* acc, SRATable*); 
 

@@ -109,6 +109,8 @@ rc_t KTocParseKDirRecurOnePath (KToc * self,
     assert (dir != NULL);
     assert (path != NULL);
 
+    TOC_DEBUG (("%s: recur path for %s\n", __func__, path));
+
     type = (KPathType)KDirectoryPathType (dir, path);
 
     if (type & kptAlias)
@@ -237,6 +239,8 @@ rc_t KTocParseKDirRecur	(KToc * self,
     assert (dir != NULL);
     assert (path != NULL);
 
+    TOC_DEBUG (("%s: recur path for %s\n", __func__, path));
+
     /* -----
      * get a list of files in this directory
      */
@@ -302,13 +306,19 @@ rc_t KTocParseKDirRecur	(KToc * self,
 		    {
 			bool use_name;
 			char * recur_path;
+                        size_t recur_path_z;
 
 			memcpy (new_path, path, pathlen);
 			new_path[pathlen] = '/';
 			memcpy (new_path + pathlen + 1, name, namelen);
 			new_path[pathlen+1+namelen] = '\0';
 
-			recur_path = malloc (pathlen + 1 + namelen + 1);
+#if 1
+                        recur_path_z = pathlen + 1 + namelen + 1;
+#else
+                        recur_path_z = 4096;
+#endif
+ 			recur_path = malloc (recur_path_z);
 			if (recur_path == NULL)
 			{
 			    rc = RC (rcFS, rcToc, rcConstructing, rcMemory, rcExhausted);
@@ -316,9 +326,9 @@ rc_t KTocParseKDirRecur	(KToc * self,
 			}
 			else
 			{
-			    rc = KDirectoryVResolvePath (dir, false, recur_path, pathlen + 1 + namelen + 1,
-							 new_path, NULL);
-                            TOC_DEBUG (("%s: resovled path for %s\n", __func__, recur_path));
+			    rc = KDirectoryResolvePath (dir, false, recur_path, recur_path_z,
+							 new_path);
+                            TOC_DEBUG (("%s: resolved path %s for %s\n", __func__, recur_path, new_path));
                             TOC_DEBUG (("%s: filter %p\n", __func__, filter));
 			    if (rc == 0)
 			    {

@@ -47,6 +47,10 @@
 #define CATCH_SIGSEGV 1
 #endif
 
+#if ! defined CATCH_SIGHUP
+#define CATCH_SIGHUP 0
+#endif
+
 /*--------------------------------------------------------------------------
  * Main
  */
@@ -187,7 +191,9 @@ int main ( int argc, char *argv [] )
         int sig;
     } sigs [] =
     {
+#if CATCH_SIGHUP
         { SigHupHandler, SIGHUP },
+#endif
         { SigQuitHandler, SIGINT },
         { SigQuitHandler, SIGQUIT },
 #if CATCH_SIGSEGV

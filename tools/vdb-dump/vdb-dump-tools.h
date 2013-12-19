@@ -53,4 +53,8 @@ typedef dump_src* p_dump_src;
 
 rc_t vdt_dump_element( const p_dump_src src, const p_col_def def );
 
+#ifdef __cplusplus
+}
+#endif
+
 #endif

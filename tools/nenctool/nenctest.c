@@ -332,7 +332,7 @@ rc_t nenctest (const char * srcstr, const char * dststr, bool force)
     {
         VPath * srcpath;
 
-        rc = VPathMake (&srcpath, srcstr);
+        rc = VFSManagerMakePath (mgr, &srcpath, srcstr);
         if (rc)
             PLOGERR (klogErr,
                      (klogErr, rc, "Failed to parse source path '$(path)'",
@@ -341,7 +341,7 @@ rc_t nenctest (const char * srcstr, const char * dststr, bool force)
         {
             VPath * dstpath;
 
-            rc = VPathMake (&dstpath, dststr);
+            rc = VFSManagerMakePath (mgr, &dstpath, dststr);
             if (rc)
                 PLOGERR (klogErr,
                          (klogErr, rc, "Failed to parse destination path '$(path)'",

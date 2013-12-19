@@ -793,7 +793,7 @@ struct VTransDesc
 #define VTRANSFACT_IMPL_SELF( fact, maj, min, rel, self ) \
     static rc_t CC VTRANSFACT_NAME ( fact ) ( const void*, \
         const VXfactInfo*, VFuncDesc*, const VFactoryParams*, const VFunctionParams* ); \
-    MOD_EXPORT rc_t CC fact ( VTransDesc *desc ) \
+    rc_t CC fact ( VTransDesc *desc ) \
     { \
         desc -> fself = ( self ); \
         desc -> whack = NULL; \
@@ -807,7 +807,7 @@ struct VTransDesc
 #define VTRANSFACT_IMPL_CONSTRUCT( fact, maj, min, rel, construct, destroy ) \
     static rc_t CC VTRANSFACT_NAME ( fact ) ( const void*, \
         const VXfactInfo*, VFuncDesc*, const VFactoryParams*, const VFunctionParams* ); \
-    MOD_EXPORT rc_t CC fact ( VTransDesc *desc ) \
+    rc_t CC fact ( VTransDesc *desc ) \
     { \
         desc -> whack = ( destroy ); \
         desc -> factory = VTRANSFACT_NAME ( fact ); \

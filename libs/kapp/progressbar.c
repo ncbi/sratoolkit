@@ -109,7 +109,7 @@ void CC job_report(bool force_report, bool final)
 
     memset(&d, 0, sizeof(d));
     SLListForEach(&g_jobs.jobs, job_percent, &d);
-    d.qty = d.qty ? d.percent / d.qty : (final ? 100 : 0);
+    d.qty = (uint64_t) (d.qty ? d.percent / d.qty : (final ? 100 : 0) );
     if( force_report || d.qty != g_jobs.percent ) {
         g_jobs.percent = d.qty;
         PLOGMSG(klogInfo, (klogInfo, "processed $(percent)%",

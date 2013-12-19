@@ -42,9 +42,13 @@ struct Caps;
  * file entry
  *  modified from vdb-3 to not place requirements on Makefile
  */
+#if ! defined __mod__ && ! defined __file__
 #define FILE_ENTRY( __file_name__ )                                     \
     static const char __mod__ [] = "tools/sra-sort";                    \
     static const char __file__ [] = STRINGIZE_DEFINE ( __file_name__ )
+#else
+#define FILE_ENTRY( __file_name__ ) /* already defined */
+#endif
 
 
 /*--------------------------------------------------------------------------

@@ -241,17 +241,17 @@ struct PlacementRecordExtendFuncs
     /* constructor */
     rc_t ( CC * populate ) ( void *obj, const PlacementRecord *placement,
         struct VCursor const *curs, INSDC_coord_zero ref_window_start,
-        INSDC_coord_len ref_window_len, void *data );
+        INSDC_coord_len ref_window_len, void *data, void * placement_ctx );
 
     /* variable allocation size calculation
        when non-NULL, takes precedence over "fixed_size" */
     bool ( CC * filter ) ( struct VCursor const *curs, int64_t row_id,
         const PlacementRecord *placement, INSDC_coord_zero ref_window_start,
-        INSDC_coord_len ref_window_len, void *data );
+        INSDC_coord_len ref_window_len, void *data, void * placement_ctx );
 
     /* variable allocation size calculation
        when non-NULL, takes precedence over "fixed_size" */
-    rc_t ( CC * alloc_size ) ( struct VCursor const *curs, int64_t row_id, size_t * size, void *data );
+    rc_t ( CC * alloc_size ) ( struct VCursor const *curs, int64_t row_id, size_t * size, void *data, void * placement_ctx );
     
     /* fixed allocation size
        ignored if "alloc_size" is non-NULL,
@@ -527,7 +527,7 @@ ALIGN_EXTERN rc_t CC ReferenceIteratorAddPlacementIterator
 ALIGN_EXTERN rc_t CC ReferenceIteratorAddPlacements ( ReferenceIterator *self,
     struct ReferenceObj const *ref_obj, INSDC_coord_zero ref_pos, INSDC_coord_len ref_len,
     struct VCursor const *ref, struct VCursor const *align, align_id_src ids,
-    const char * spot_group );
+    const char * spot_group, void * placement_ctx );
 
 
 /* NextReference

@@ -30,16 +30,14 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-#if 0
-}
-#endif
+
+#include "ref_regions.h"
 
 #include <kapp/args.h>
 
 #include <klib/rc.h>
 #include <klib/log.h>
 #include <klib/text.h>
-#include <klib/vector.h>
 #include <klib/container.h>
 
 #include <kfs/directory.h>
@@ -58,6 +56,9 @@ extern "C" {
 #include <ctype.h>
 #include <assert.h>
 
+#define OPTION_REF     "aligned-region"
+#define ALIAS_REF      "r"
+
 typedef uint8_t align_tab_select;
 enum { primary_ats = 1, secondary_ats = 2, evidence_ats = 4 };
 
@@ -65,6 +66,7 @@ typedef struct common_options
 {
     bool gzip_output;
     bool bzip_output;
+    bool no_mt;
     align_tab_select tab_select;
     const char * output_file;
     const char * input_file;
@@ -80,21 +82,11 @@ size_t CommonOptions_count( void );
 
 /* get ref-ranges from the command-line and iterate them... */
 rc_t init_ref_regions( BSTree * regions, Args * args );
-uint32_t count_ref_regions( BSTree * regions );
-
-rc_t parse_and_add_region( BSTree * regions, const char * s );
-
-rc_t foreach_ref_region( BSTree * regions,
-    rc_t ( CC * on_range ) ( const char * name, uint32_t start, uint32_t end, void *data ), 
-    void *data );
-
-void check_ref_regions( BSTree * regions );
-void free_ref_regions( BSTree * regions );
 
 rc_t foreach_argument( Args * args, KDirectory *dir, bool div_by_spotgrp, bool * empty,
     rc_t ( CC * on_argument ) ( const char * path, const char * spot_group, void * data ), void * data );
 
-
+    
 typedef struct prepare_ctx
 {
     ReferenceIterator *ref_iter;
@@ -105,12 +97,13 @@ typedef struct prepare_ctx
     const ReferenceObj *refobj;
     const char * spot_group;
     bool omit_qualities;
+    bool read_tlen;
     bool use_primary_alignments;
     bool use_secondary_alignments;
     bool use_evidence_alignments;
     void * data;
-    rc_t ( CC * on_section ) ( struct prepare_ctx * ctx, uint32_t start, uint32_t end );
     const char *path;
+    rc_t ( CC * on_section ) ( struct prepare_ctx * ctx, uint32_t start, uint32_t end );
 } prepare_ctx;
 
 
@@ -130,4 +123,9 @@ rc_t prepare_plset_iter( prepare_ctx *ctx,
 
 rc_t parse_inf_file( Args * args );
 
+
+#ifdef __cplusplus
+}
 #endif
+
+#endif /*  _h_cmdline_cmn_ */

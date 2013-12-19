@@ -55,7 +55,7 @@
 LIB_EXPORT rc_t CC KDBManagerMakeUpdate ( KDBManager **mgrp, KDirectory *wd )
 {
     if ( wd == NULL || ! wd -> read_only )
-        return KDBManagerMake ( mgrp, wd, "make-update" );
+        return KDBManagerMake ( mgrp, wd, "make-update", NULL );
 
     if ( mgrp != NULL )
         * mgrp = NULL;

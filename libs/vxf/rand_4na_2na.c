@@ -83,8 +83,7 @@ static uint8_t randomize_ambiguity(uint8_t base, unsigned *seed, bool *reseed) {
         *reseed = true;
         return base;
     }
-    else {
-        
+    else {        
         unsigned int rval;
         unsigned int num_bits = map [ base ] . num_bits;
         

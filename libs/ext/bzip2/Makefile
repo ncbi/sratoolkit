@@ -31,42 +31,33 @@ MODULE = libs/ext/bzip2
 include $(TOP)/build/Makefile.env
 
 INT_LIBS = \
-
-EXT_LIBS = \
 	libbz2
 
 ALL_LIBS = \
-	$(INT_LIBS) \
-	$(EXT_LIBS)
+	$(INT_LIBS)
 
 #-------------------------------------------------------------------------------
 # outer targets
 #
-std: makedirs download
-	@ $(MAKE_CMD) $(TARGDIR)/$@
-
-all: makedirs download
+std all: makedirs download
 	@ $(MAKE_CMD) $(TARGDIR)/$@
 
 $(INT_LIBS): makedirs download
 	@ $(MAKE_CMD) $(ILIBDIR)/$@
-
-$(EXT_LIBS): makedirs download
-	@ $(MAKE_CMD) $(LIBDIR)/$@
 
 .PHONY: all std $(ALL_LIBS)
 
 #-------------------------------------------------------------------------------
 # all
 #
-$(TARGDIR)/all: $(LIBDIR)/libbz2
+$(TARGDIR)/all: $(ILIBDIR)/libbz2
 
 .PHONY: $(TARGDIR)/all
 
 #-------------------------------------------------------------------------------
 # std
 #
-$(TARGDIR)/std: $(LIBDIR)/libbz2
+$(TARGDIR)/std: $(ILIBDIR)/libbz2
 
 .PHONY: $(TARGDIR)/std
 
@@ -81,11 +72,7 @@ clean: stdclean
 #-------------------------------------------------------------------------------
 # libbz2
 #
-ifeq (win,$(OS))
-$(LIBDIR)/libbz2: $(addprefix $(LIBDIR)/libbz2.,$(LIBEXT))
-else
-$(LIBDIR)/libbz2: $(addprefix $(LIBDIR)/libbz2.,$(LIBX))
-endif
+$(ILIBDIR)/libbz2: $(addprefix $(ILIBDIR)/libbz2.,$(LIBX))
 
 LIBBZ2_SRC = \
 	blocksort \
@@ -99,13 +86,8 @@ LIBBZ2_SRC = \
 LIBBZ2_OBJ = \
 	$(addsuffix .$(LOBX),$(LIBBZ2_SRC))
 
-LIBBZ2_LIB = \
-
-$(LIBDIR)/libbz2.$(SHLX): $(LIBBZ2_OBJ)
-	$(LD) --dlib --vers $(SRCDIR) -o $@ $^ $(LIBBZ2_LIB)
-
-$(LIBDIR)/libbz2.$(LIBX): $(LIBBZ2_OBJ)
-	$(LD) --slib --vers $(SRCDIR) -o $@ $^ $(LIBBZ2_LIB)
+$(ILIBDIR)/libbz2.$(LIBX): $(LIBBZ2_OBJ)
+	$(LD) --slib -o $@ $^ $(LIBBZ2_LIB)
 
 
 #-------------------------------------------------------------------------------
@@ -122,6 +104,7 @@ BZIP2_TAR_GZ = \
 
 ifeq (win,$(OS))
 ECHO_VERS = echo -ne $(BZIP2_VERS) "\n"
+CFLAGS := $(CFLAGS) -D_CRT_SECURE_NO_WARNINGS -D_CRT_NONSTDC_NO_DEPRECATE
 else
 ECHO_VERS = echo $(BZIP2_VERS)
 endif
@@ -151,9 +134,9 @@ $(BZIP2_TAR): $(BZIP2_TAR_GZ)
 libbz2.vers: $(BZIP2_TAR_GET)
 	@ echo unpacking the sources
 	$(TAR_CMD) $^
-	mv bzip2-$(BZIP2_VERS)/*.[ch] .
-	mv bzip2-$(BZIP2_VERS)/*.def .
-	-rm -rf bzip2-$(BZIP2_VERS)
+	cp bzip2-$(BZIP2_VERS)/*.[ch] .
+	cp bzip2-$(BZIP2_VERS)/*.def .
+	#-rm -rf bzip2-$(BZIP2_VERS)
 	@ $(ECHO_VERS) > $@
 
 download: libbz2.vers

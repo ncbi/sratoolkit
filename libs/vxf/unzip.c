@@ -43,7 +43,7 @@
 static rc_t invoke_zlib(void *dst, size_t dsize, const void *src, size_t ssize, int windowBits)
 {
     int zr;
-    rc_t rc;
+    rc_t rc = 0;
 
     z_stream s;
     memset ( & s, 0, sizeof s );
@@ -67,7 +67,6 @@ static rc_t invoke_zlib(void *dst, size_t dsize, const void *src, size_t ssize, 
     switch (zr)
     {
     case Z_STREAM_END:
-        rc = 0;
         break;
     case Z_OK:         /* progress but not complete */
     case Z_BUF_ERROR:  /* no progress - need more output buffer */
@@ -155,7 +154,8 @@ rc_t CC legacy_unzip_func ( void *self, const VXformInfo *info,
 
     do
     {
-        size_t bytes = ( size_t ) ( ( bits + 7 ) >> 3 ) + 64;
+        size_t const bytes = ( size_t ) ( ( bits + 7 ) >> 3 ) + 64;
+        
         if ( ( ( uint64_t ) bytes << 3 ) < bits )
         {
             rc = RC(rcXF, rcFunction, rcExecuting, rcMemory, rcExhausted);
@@ -194,7 +194,9 @@ rc_t CC unzip_func(
                 const VBlobData *src,
                 VBlobHeader *hdr
 ) {
-    switch (VBlobHeaderVersion(hdr)) {
+    int const version = VBlobHeaderVersion(hdr);
+    
+    switch (version) {
     case 1:
         return unzip_func_v1(info, dst, src);
         break;

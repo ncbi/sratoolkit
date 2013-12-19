@@ -63,4 +63,9 @@ typedef struct row_context
 } row_context;
 typedef row_context* p_row_context;
 
+
+#ifdef __cplusplus
+}
+#endif
+
 #endif

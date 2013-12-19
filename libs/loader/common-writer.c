@@ -90,7 +90,7 @@ typedef struct FragmentInfo {
 } FragmentInfo;
 
 
-rc_t OpenKBTree(const CommonWriterSettings* settings, struct KBTree **const rslt, unsigned n, unsigned max)
+rc_t OpenKBTree(const CommonWriterSettings* settings, struct KBTree **const rslt, size_t const n, size_t const max)
 {
     size_t const cacheSize = (((settings->cache_size - (settings->cache_size / 2) - (settings->cache_size / 8)) / max)
                             + 0xFFFFF) & ~((size_t)0xFFFFF);
@@ -126,9 +126,9 @@ rc_t OpenKBTree(const CommonWriterSettings* settings, struct KBTree **const rslt
     return rc;
 }
 
-rc_t GetKeyIDOld(const CommonWriterSettings* settings, SpotAssembler* const ctx, uint64_t *const rslt, bool *const wasInserted, char const key[], char const name[], unsigned const namelen)
+rc_t GetKeyIDOld(const CommonWriterSettings* settings, SpotAssembler* const ctx, uint64_t *const rslt, bool *const wasInserted, char const key[], char const name[], size_t const namelen)
 {
-    unsigned const keylen = strlen(key);
+    size_t const keylen = strlen(key);
     rc_t rc;
     uint64_t tmpKey;
 
@@ -173,14 +173,23 @@ rc_t GetKeyIDOld(const CommonWriterSettings* settings, SpotAssembler* const ctx,
 static char const *Print_ctx_value_t(ctx_value_t const *const self)
 {
     static char buffer[4096];
-    rc_t rc = string_printf(buffer, sizeof(buffer), NULL, "pid: { %lu, %lu }, sid: %lu, fid: %u, alc: { %u, %u }, flg: %x", CTX_VALUE_GET_P_ID(*self, 0), CTX_VALUE_GET_P_ID(*self, 1), CTX_VALUE_GET_S_ID(*self), self->fragmentId, self->alignmentCount[0], self->alignmentCount[1], self->alignmentCount[2]);
+    uint8_t const *const flag = self->alignmentCount + 2;
+    rc_t rc = string_printf(buffer, sizeof(buffer), NULL,
+                            "pid: { %lu, %lu }, sid: %lu, fid: %u, alc: { %u, %u }, flg: %x",
+                            CTX_VALUE_GET_P_ID(*self, 0),
+                            CTX_VALUE_GET_P_ID(*self, 1),
+                            CTX_VALUE_GET_S_ID(*self),
+                            self->fragmentId,
+                            self->alignmentCount[0],
+                            self->alignmentCount[1],
+                            *flag);
 
     if (rc)
         return 0;
     return buffer;
 }
 
-static unsigned HashKey(void const *key, unsigned keylen)
+static unsigned HashKey(void const *const key, size_t const keylen)
 {
     /* There is nothing special about this hash. It was randomly generated. */
     static const uint8_t T1[] = {
@@ -202,7 +211,7 @@ static unsigned HashKey(void const *key, unsigned keylen)
         234,  13,  30, 241,  93, 188,  53, 114,  76,  29,  65,   3, 179, 108,  63, 139
     };
     unsigned h = 0x55;
-    unsigned i = keylen;
+    size_t i = keylen;
     
     do { h = T1[h ^ ((uint8_t)i)]; } while ((i >>= 8) != 0);
 
@@ -212,7 +221,7 @@ static unsigned HashKey(void const *key, unsigned keylen)
     return h;
 }
 
-static unsigned SeqHashKey(void const *key, unsigned keylen)
+static unsigned SeqHashKey(void const *const key, size_t const keylen)
 {
     /* There is nothing special about this hash. It was randomly generated. */
     static const uint8_t T1[] = {
@@ -235,7 +244,7 @@ static unsigned SeqHashKey(void const *key, unsigned keylen)
     };
     unsigned h1 = 0x55;
     unsigned h2 = 0x22;
-    unsigned i = keylen;
+    size_t i = keylen;
     
     do { h1 = T1[h1 ^ ((uint8_t)i)]; } while ((i >>= 8) != 0);
 
@@ -249,15 +258,37 @@ static unsigned SeqHashKey(void const *key, unsigned keylen)
     return (h1 << 8) | h2;
 }
 
-rc_t GetKeyID(CommonWriterSettings* settings, SpotAssembler *const ctx, uint64_t *const rslt, bool *const wasInserted, char const key[], char const name[], unsigned const namelen)
+#define USE_ILLUMINA_NAMING_POUND_NUMBER_SLASH_HACK 1
+
+static size_t GetFixedNameLength(char const name[], size_t const namelen)
 {
+#if USE_ILLUMINA_NAMING_POUND_NUMBER_SLASH_HACK
+    char const *const pound = string_chr(name, namelen, '#');
+    
+    if (pound && pound + 2u < name + namelen && pound[1] >= '0' && pound[1] <= '9' && pound[2] == '/') {
+        return (size_t)(pound - name) + 2u;
+    }
+#endif
+    return namelen;
+}
+
+rc_t GetKeyID(CommonWriterSettings *const settings,
+              SpotAssembler *const ctx,
+              uint64_t *const rslt,
+              bool *const wasInserted,
+              char const key[],
+              char const name[],
+              size_t const o_namelen)
+{
+    size_t const namelen = GetFixedNameLength(name, o_namelen);
+
     if (ctx->key2id_max == 1)
         return GetKeyIDOld(settings, ctx, rslt, wasInserted, key, name, namelen);
     else {
-        unsigned const keylen = strlen(key);
+        size_t const keylen = strlen(key);
         unsigned const h = HashKey(key, keylen);
-        unsigned f;
-        unsigned e = ctx->key2id_count;
+        size_t f;
+        size_t e = ctx->key2id_count;
         uint64_t tmpKey;
         
         *rslt = 0;
@@ -288,8 +319,8 @@ rc_t GetKeyID(CommonWriterSettings* settings, SpotAssembler *const ctx, uint64_t
         }}
         f = 0;
         while (f < e) {
-            unsigned const m = (f + e) / 2;
-            unsigned const oid = ctx->key2id_oid[m];
+            size_t const m = (f + e) / 2;
+            size_t const oid = ctx->key2id_oid[m];
             int const diff = strcmp(key, ctx->key2id_names + ctx->key2id_name[oid]);
             
             if (diff < 0)
@@ -302,14 +333,14 @@ rc_t GetKeyID(CommonWriterSettings* settings, SpotAssembler *const ctx, uint64_t
             }
         }
         if (ctx->key2id_count < ctx->key2id_max) {
-            unsigned const name_max = ctx->key2id_name_max + keylen + 1;
+            size_t const name_max = ctx->key2id_name_max + keylen + 1;
             KBTree *tree;
             rc_t rc = OpenKBTree(settings, &tree, ctx->key2id_count + 1, 1); /* ctx->key2id_max); */
             
             if (rc) return rc;
             
             if (ctx->key2id_name_alloc < name_max) {
-                unsigned alloc = ctx->key2id_name_alloc;
+                size_t alloc = ctx->key2id_name_alloc;
                 void *tmp;
                 
                 if (alloc == 0)
@@ -337,13 +368,13 @@ rc_t GetKeyID(CommonWriterSettings* settings, SpotAssembler *const ctx, uint64_t
             if ((uint8_t)ctx->key2id_hash[h] < 3) {
                 unsigned const n = (uint8_t)ctx->key2id_hash[h] + 1;
                 
-                ctx->key2id_hash[h] = (((ctx->key2id_hash[h] & ~(0xFFu)) | f) << 8) | n;
+                ctx->key2id_hash[h] = (uint32_t)((((ctx->key2id_hash[h] & ~(0xFFu)) | f) << 8) | n);
             }
             else {
                 /* the hash function isn't working too well
                  * keep the 3 mru
                  */
-                ctx->key2id_hash[h] = (((ctx->key2id_hash[h] & ~(0xFFu)) | f) << 8) | 3;
+                ctx->key2id_hash[h] = (uint32_t)((((ctx->key2id_hash[h] & ~(0xFFu)) | f) << 8) | 3);
             }
         GET_ID:
             tmpKey = ctx->idCount[f];
@@ -457,8 +488,7 @@ void ContextRelease(SpotAssembler *ctx)
     MMArrayWhack(ctx->id2value);
 }
 
-
-
+static
 rc_t WriteSoloFragments(const CommonWriterSettings* settings, SpotAssembler* ctx, SequenceWriter *seq)
 {
     uint32_t i;
@@ -552,6 +582,7 @@ rc_t WriteSoloFragments(const CommonWriterSettings* settings, SpotAssembler* ctx
             srec.cskey[read] = fip->cskey;
             memcpy(srec.seq + srec.readStart[read], src, srec.readLen[read]);
             src += fip->readlen;
+            
             memcpy(srec.qual + srec.readStart[read], src, srec.readLen[read]);
             src += fip->readlen;
             srec.spotGroup = (char *)src;
@@ -574,10 +605,10 @@ rc_t WriteSoloFragments(const CommonWriterSettings* settings, SpotAssembler* ctx
     return rc;
 }
 
-rc_t AlignmentUpdateSpotInfo(SpotAssembler *ctx, struct AlignmentWriter *align)
+static
+rc_t AlignmentUpdateSpotInfo(SpotAssembler *ctx, struct AlignmentWriter *align, uint64_t maxDistance)
 {
     rc_t rc;
-    uint64_t keyId;
     
     ++ctx->pass;
 
@@ -586,8 +617,11 @@ rc_t AlignmentUpdateSpotInfo(SpotAssembler *ctx, struct AlignmentWriter *align)
     rc = AlignmentStartUpdatingSpotIds(align);
     while (rc == 0 && (rc = Quitting()) == 0) {
         ctx_value_t const *value;
+        uint64_t keyId;
+        int64_t alignId;
+        bool isPrimary;
         
-        rc = AlignmentGetSpotKey(align, &keyId);
+        rc = AlignmentGetSpotKey(align, &keyId, &alignId, &isPrimary);
         if (rc) {
             if (GetRCObject(rc) == rcRow && GetRCState(rc) == rcNotFound)
                 rc = 0;
@@ -598,12 +632,29 @@ rc_t AlignmentUpdateSpotInfo(SpotAssembler *ctx, struct AlignmentWriter *align)
         rc = MMArrayGet(ctx->id2value, (void **)&value, keyId);
         if (rc == 0) {
             int64_t const spotId = CTX_VALUE_GET_S_ID(*value);
+            int64_t const id[] = {
+                CTX_VALUE_GET_P_ID(*value, 0),
+                CTX_VALUE_GET_P_ID(*value, 1)
+            };
+            int64_t mateId = 0;
+            ReferenceStart mateGlobalRefPos;
             
+            memset(&mateGlobalRefPos, 0, sizeof(mateGlobalRefPos));
             if (spotId == 0) {
+                assert(!isPrimary);
                 (void)PLOGMSG(klogWarn, (klogWarn, "Spot '$(id)' was never assigned a spot id, probably has no primary alignments", "id=%lx", keyId));
                 /* (void)PLOGMSG(klogWarn, (klogWarn, "Spot #$(i): { $(s) }", "i=%lu,s=%s", keyId, Print_ctx_value_t(value))); */
             }
-            rc = AlignmentWriteSpotId(align, spotId);
+            if (isPrimary) {
+                if (id[0] != 0 && id[1] != 0)
+                    mateId = alignId == id[0] ? id[1] : id[0];
+                
+                if (mateId && maxDistance && (id[0] > id[1] ? id[0] - id[1] : id[1] - id[0]) > maxDistance) {
+                    rc = AlignmentGetRefPos(align, mateId, &mateGlobalRefPos);
+                    if (rc) break;
+                }
+            }
+            rc = AlignmentUpdateInfo(align, spotId, mateId, &mateGlobalRefPos);
         }
         KLoadProgressbar_Process(ctx->progress[ctx->pass - 1], 1, false);
     }
@@ -906,14 +957,14 @@ static int8_t LogOddsToPhred ( int8_t logOdds )
     return toPhred[logOdds + 6];
 }
 
-rc_t ArchiveFile(const struct ReaderFile *reader, 
-                 CommonWriterSettings* G,
-                 struct SpotAssembler *ctx, 
-                 struct Reference *ref, 
-                 struct SequenceWriter *seq, 
-                 struct AlignmentWriter *align,
-                 bool *had_alignments, 
-                 bool *had_sequences)
+rc_t ArchiveFile(const struct ReaderFile *const reader,
+                 CommonWriterSettings *const G,
+                 struct SpotAssembler *const ctx,
+                 struct Reference *const ref,
+                 struct SequenceWriter *const seq,
+                 struct AlignmentWriter *const align,
+                 bool *const had_alignments,
+                 bool *const had_sequences)
 {
     KDataBuffer buf;
     KDataBuffer fragBuf;
@@ -981,7 +1032,7 @@ rc_t ArchiveFile(const struct ReaderFile *reader,
     if (rc)
         return rc;
     
-    rc = KDataBufferMake(&buf, (sizeof(int32_t) + sizeof(bool) * 2 + sizeof(char) * 2 + sizeof(uint8_t))*8, 0);
+    rc = KDataBufferMake(&buf, (AlignmentRecordBufferSize(1, false) + sizeof(char) + sizeof(uint8_t)) * 8, 0);
     if (rc)
         return rc;
     
@@ -1043,7 +1094,9 @@ rc_t ArchiveFile(const struct ReaderFile *reader,
                     (void)LOGERR(klogErr, rc, "ArchiveFile: RejectedGetError failed");
                     break;
                 }
-                (void)PLOGMSG(klogErr, (klogErr, "$(file):$(l):$(c):$(msg)", "file=%s,l=%lu,c=%lu,msg=%s", ReaderFileGetPathname(reader), line, col, message));
+                (void)PLOGMSG(fatal ? klogErr : klogWarn, (fatal ? klogErr : klogWarn, 
+                              "$(file):$(l):$(c):$(msg)", "file=%s,l=%lu,c=%lu,msg=%s", 
+                              ReaderFileGetPathname(reader), line, col, message));
                 rc = CheckLimitAndLogError(G);
                 RejectedRelease(rej);
                 
@@ -1116,7 +1169,7 @@ rc_t ArchiveFile(const struct ReaderFile *reader,
                 goto LOOP_END;
             }
             
-            AlignmentRecordInit(&data, buf.base, readlen, &seqDNA, G->expectUnsorted);
+            AlignmentRecordInit(&data, buf.base, readlen, &seqDNA, G->expectUnsorted, G->compressQuality);
             qual = (uint8_t *)&seqDNA[readlen];
         }
         else {
@@ -1135,10 +1188,14 @@ rc_t ArchiveFile(const struct ReaderFile *reader,
             SequenceGetReadLength(sequence, &readlen);
             if (isColorSpace) {
                 SequenceGetCSReadLength(sequence, &csSeqLen);
-                if (readlen != csSeqLen && readlen != 0) {
+                if (readlen > csSeqLen) {
                     rc = RC(rcAlign, rcRow, rcReading, rcData, rcInconsistent);
-                    (void)LOGERR(klogErr, rc, "SequenceWriter length and CS SequenceWriter length are not equal");
+                    (void)LOGERR(klogErr, rc, "SequenceWriter length and CS SequenceWriter length are inconsistent");
                     goto LOOP_END;
+                }
+                else if (readlen < csSeqLen)
+                {
+                    readlen = 0; /* will be hard clipped */
                 }
             }
             else if (readlen == 0) {
@@ -1149,19 +1206,15 @@ rc_t ArchiveFile(const struct ReaderFile *reader,
                 goto LOOP_END;
             }
             
-            AlignmentRecordInit(&data, buf.base, readlen | csSeqLen, &seqDNA, G->expectUnsorted);
+            AlignmentRecordInit(&data, buf.base, readlen | csSeqLen, &seqDNA, G->expectUnsorted, G->compressQuality);
             qual = (uint8_t *)&seqDNA[readlen | csSeqLen];
         }
+        SequenceGetSpotName(sequence, &name, &namelen);
+        if (G->parseSpotName)
+            ParseSpotName(name, &namelen);
         SequenceGetRead(sequence, seqDNA);
-        if (G->useQUAL) {
-            int8_t const *squal;
-            uint8_t offset=0;
-            int qualType=0;            
-            
-            SequenceGetQuality(sequence, &squal, &offset, &qualType);
-            memcpy(qual, squal, readlen);
-        }
-        else {
+        
+        {
             int8_t const *squal;
             uint8_t qoffset = 0;
             int qualType=0;            
@@ -1169,35 +1222,43 @@ rc_t ArchiveFile(const struct ReaderFile *reader,
             
             rc = SequenceGetQuality(sequence, &squal, &qoffset, &qualType);
             if (rc) {
-                (void)PLOGERR(klogErr, (klogErr, rc, "Spot '$(name)': length of original quality does not match sequence", "name=%s", name));
+                (void)PLOGERR(klogErr, (klogErr, rc, "Spot '$(name)': length of original quality does not match sequence", 
+                                                        "name=%.*s", (uint32_t)namelen, name));
+                rc = CheckLimitAndLogError(G);
                 goto LOOP_END;
             }
-            if (squal != NULL)
+            else if (squal == NULL)
+                memset(qual, 0, readlen);
+            else 
             {  
-                switch (qualType)
-                {
-                case QT_LogOdds:
-                    for (i = 0; i != readlen; ++i)
-                        qual[i] = LogOddsToPhred(squal[i]);
-                    break;
-                    
-                case QT_Phred:
-                    if (qoffset) {
-                        for (i = 0; i != readlen; ++i)
-                            qual[i] = squal[i] - qoffset;
-                    }
-                    else
-                        memcpy(qual, squal, readlen);
-                    break;
-                    
-                default:
+                if (G->useQUAL)
                     memcpy(qual, squal, readlen);
-                    break;
+                else
+                {
+                    switch (qualType)
+                    {
+                    case QT_LogOdds:
+                        for (i = 0; i != readlen; ++i)
+                            qual[i] = LogOddsToPhred(squal[i]);
+                        break;
+                        
+                    case QT_Phred:
+                        if (qoffset) {
+                            for (i = 0; i != readlen; ++i)
+                                qual[i] = squal[i] - qoffset;
+                        }
+                        else
+                            memcpy(qual, squal, readlen);
+                        break;
+                        
+                    default:
+                        memcpy(qual, squal, readlen);
+                        break;
+                    }
                 }
             }
-            else
-                memset(qual, 0, readlen);
         }
+        
         if (hasCG) {
             rc = CGDataGetSeqQual(cg, seqDNA, qual);
             if (rc == 0)
@@ -1221,9 +1282,6 @@ rc_t ArchiveFile(const struct ReaderFile *reader,
 
         if (alignment != 0)
             AR_MAPQ(data) = GetMapQ(alignment);
-        SequenceGetSpotName(sequence, &name, &namelen);
-        if (G->parseSpotName) 
-            ParseSpotName(name, &namelen); 
         {{
             char const *rgname;
             size_t rgnamelen;
@@ -1245,6 +1303,9 @@ rc_t ArchiveFile(const struct ReaderFile *reader,
         originally_aligned = (alignment != 0);
         aligned = originally_aligned && (AR_MAPQ(data) >= G->minMapQual);
         
+        if (isColorSpace && readlen == 0)   /* detect hard clipped colorspace   */
+            aligned = false;                /* reads and make unaligned         */
+
         if (aligned && align == NULL) {
             rc = RC(rcApp, rcFile, rcReading, rcData, rcInconsistent);
             (void)PLOGERR(klogErr, (klogErr, rc, "File '$(file)' contains aligned records", "file=%s", ReaderFileGetPathname(reader)));
@@ -1433,7 +1494,7 @@ rc_t ArchiveFile(const struct ReaderFile *reader,
                 }
                 else if (GetRCObject(rc) == rcData && GetRCState(rc) == rcInvalid) {
                     (void)PLOGERR(klogWarn, (klogWarn, rc, "Spot '$(name)': bad alignment to reference '$(ref)' at $(pos)", "name=%s,ref=%s,pos=%u", name, refSeq.name, rpos));
-                    CheckLimitAndLogError(G);
+                    rc = CheckLimitAndLogError(G);
                 }
                 else if (GetRCObject(rc) == rcData) {
                     (void)PLOGERR(klogWarn, (klogWarn, rc, "Spot '$(name)': bad alignment to reference '$(ref)' at $(pos)", "name=%s,ref=%s,pos=%u", name, refSeq.name, rpos));
@@ -1468,6 +1529,8 @@ rc_t ArchiveFile(const struct ReaderFile *reader,
                 }
                 else if (squal != NULL)
                     memcpy(qual, squal, csSeqLen);
+                else
+                    memset(qual, 0, csSeqLen);
                 readlen = csSeqLen;
             }
         }
@@ -1475,6 +1538,7 @@ rc_t ArchiveFile(const struct ReaderFile *reader,
         if (aligned) {
             if (G->editAlignedQual ) EditAlignedQualities  (G, qual, AR_HAS_MISMATCH(data), readlen);
             if (G->keepMismatchQual) EditUnalignedQualities(qual, AR_HAS_MISMATCH(data), readlen);
+            AR_NUM_MISMATCH_QUAL(data) = (AR_MISMATCH_QUAL(data) == NULL) ? (size_t)0 : ReferenceMgr_CompressHelper(AR_MISMATCH_QUAL(data), &data.data, qual);
         }
         else if (isPrimary) {
             switch (AR_READNO(data)) {
@@ -1508,7 +1572,7 @@ rc_t ArchiveFile(const struct ReaderFile *reader,
         }
         if (mated) {
             if (isPrimary || !originally_aligned) {
-                if (value->spotId != 0) {
+                if (CTX_VALUE_GET_S_ID(*value) != 0) {
                     (void)PLOGMSG(klogWarn, (klogWarn, "Spot '$(name)' has already been assigned a spot id", "name=%.*s", namelen, name));
                 }
                 else if (!value->has_a_read) {
@@ -1708,7 +1772,7 @@ rc_t ArchiveFile(const struct ReaderFile *reader,
                 }
             }
         }
-        else if (wasInserted & (isPrimary || !originally_aligned)) {
+        else if (CTX_VALUE_GET_S_ID(*value) == 0 && (isPrimary || !originally_aligned)) {
             /* new unmated fragment - no spot assembly */
             unsigned readLen[1];
 
@@ -1862,7 +1926,7 @@ rc_t CommonWriterInit(CommonWriter* self, struct VDBManager *mgr, struct VDataba
         self->seq = malloc(sizeof(*self->seq));
         if (self->seq == 0)
         {
-            ReferenceWhack(self->ref, false, 0);
+            ReferenceWhack(self->ref, false, 0, NULL);
             free(self->ref);
             return RC(rcAlign, rcArc, rcAllocating, rcMemory, rcExhausted);
         }
@@ -1871,7 +1935,7 @@ rc_t CommonWriterInit(CommonWriter* self, struct VDBManager *mgr, struct VDataba
         self->align = AlignmentMake(db);
         if (self->align == 0)
         {
-            ReferenceWhack(self->ref, false, 0);
+            ReferenceWhack(self->ref, false, 0, NULL);
             free(self->ref);
             
             SequenceWhack(self->seq, false);
@@ -1883,7 +1947,7 @@ rc_t CommonWriterInit(CommonWriter* self, struct VDBManager *mgr, struct VDataba
         rc = SetupContext(&self->settings, &self->ctx);
         if (rc != 0)
         {
-            ReferenceWhack(self->ref, false, 0);
+            ReferenceWhack(self->ref, false, 0, NULL);
             free(self->ref);
             
             SequenceWhack(self->seq, false);
@@ -1900,18 +1964,20 @@ rc_t CommonWriterInit(CommonWriter* self, struct VDBManager *mgr, struct VDataba
     return rc;
 }
 
-rc_t CommonWriterArchive(CommonWriter* self, const struct ReaderFile* reader)
+rc_t CommonWriterArchive(CommonWriter *const self,
+                         const struct ReaderFile *const reader)
 {
     rc_t rc;
+
     assert(self);
-    rc = ArchiveFile(reader, 
-                       &self->settings,
-                       &self->ctx, 
-                       self->ref,
-                       self->seq,
-                       self->align,
-                       &self->had_alignments, 
-                       &self->had_sequences);
+    rc = ArchiveFile(reader,
+                     &self->settings,
+                     &self->ctx,
+                     self->ref,
+                     self->seq,
+                     self->align,
+                     &self->had_alignments,
+                     &self->had_sequences);
     if (rc)
         self->commit = false;
     
@@ -1919,7 +1985,7 @@ rc_t CommonWriterArchive(CommonWriter* self, const struct ReaderFile* reader)
     return rc;
 }
 
-rc_t CommonWriterComplete(CommonWriter* self, bool quitting)
+rc_t CommonWriterComplete(CommonWriter* self, bool quitting, uint64_t maxDistance)
 {
     rc_t rc=0;
     /*** No longer need memory for key2id ***/
@@ -1952,7 +2018,7 @@ rc_t CommonWriterComplete(CommonWriter* self, bool quitting)
     
     if (self->had_alignments && !quitting) {
         (void)LOGMSG(klogInfo, "Writing alignment spot ids");
-        rc = AlignmentUpdateSpotInfo(&self->ctx, self->align);
+        rc = AlignmentUpdateSpotInfo(&self->ctx, self->align, maxDistance);
     }
 
     return rc;
@@ -1976,7 +2042,7 @@ rc_t CommonWriterWhack(CommonWriter* self)
 
     if (self->ref)
     {
-        rc_t rc2 = ReferenceWhack(self->ref, self->commit, self->settings.maxSeqLen);
+        rc_t rc2 = ReferenceWhack(self->ref, self->commit, self->settings.maxSeqLen, Quitting);
         if (rc == 0)
             rc = rc2;
         free(self->ref);

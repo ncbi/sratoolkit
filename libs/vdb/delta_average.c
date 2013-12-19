@@ -160,9 +160,9 @@ static
 rc_t CC undelta_average ( void *self, const VXformInfo *info, int64_t row_id,
     VBlob **rslt, uint32_t argc, const VBlob *argv [] )
 {
-    uint32_t  max_rl_bytes;
+    uint32_t  max_rl_bytes = 0;
     uint8_t   *avg = NULL;
-    uint32_t elem_bytes;
+    uint32_t elem_bytes = 0;
     /* input blob - schema assures us that it is ready to go */
     const VBlob *in = argv [ 0 ];
   /* allocate output blob of same size */

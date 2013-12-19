@@ -86,7 +86,7 @@ struct PTNode
 };
 
 /* MakeKey
- *  tries to may a key string from node
+ *  tries to make a key string from node
  *  will fail if key text was not embedded into image when created
  *
  *  "key" [ OUT ] - return parameter for a key string allocation

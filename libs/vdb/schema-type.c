@@ -1600,7 +1600,6 @@ void VSchemaTypeMark ( const VSchema *self, uint32_t type_id )
 {
     const SDatatype *dt;
     const STypeset *ts;
-    const SIndirectType *pt;
 
     switch ( type_id & 0xC0000000 )
     {
@@ -1628,19 +1627,6 @@ void VSchemaTypeMark ( const VSchema *self, uint32_t type_id )
         ts = VectorGet ( & self -> ts, type_id );
         if ( ts != NULL )
             STypesetMark ( ts, self );
-        break;
-
-    default:
-        while ( type_id < VectorStart ( & self -> pt ) )
-        {
-            self = self -> dad;
-            if ( self -> dad == NULL )
-                return;
-        }
-
-        pt = VectorGet ( & self -> pt, type_id );
-        if ( pt != NULL )
-            SIndirectTypeMark ( ( void * )pt, ( void * )self );
         break;
     }
 }
@@ -1941,9 +1927,14 @@ rc_t dim ( const KSymTable *tbl, KTokenSource *src, KToken *t,
             rc = const_expr ( tbl, src, t, env, self, & x );
             if ( rc == 0 )
             {
+                Vector dummy;
+                VectorInit ( & dummy, 1, 16 );
+
                 /* should have evaluated to a constant expression */
-                rc = eval_uint_expr ( self, x, dim );
+                rc = eval_uint_expr ( self, x, dim, & dummy );
                 SExpressionWhack ( x );
+
+                VectorWhack ( & dummy, NULL, NULL );
             }
             if ( rc != 0 )
                 return rc;

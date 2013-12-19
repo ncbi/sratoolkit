@@ -27,21 +27,31 @@
 #ifndef _h_maybeswap_
 #define _h_maybeswap_
 
-#if SWAP_PERSISTED
+/* technically, a whitelist would be safer */
+#ifdef __sparc
+#  if SWAP_PERSISTED
+#    define GET_UNALIGNED( type, swap, dest, src )                  \
+        do {                                                        \
+            type tmp##__LINE__;                                     \
+            memcpy ( & tmp##__LINE__, & ( src ), sizeof ( type ) ); \
+            dest = swap ( tmp##__LINE__ );                          \
+        } while (0)
+#  else
+#    define GET_UNALIGNED( type, swap, dest, src ) \
+        memcpy ( & ( dest ), & ( src ), sizeof ( type ) )
+#  endif
+#elif SWAP_PERSISTED
+#  define GET_UNALIGNED( type, swap, dest, src ) dest = swap ( src )
+#else
+#  define GET_UNALIGNED( type, swap, dest, src ) \
+      dest = ( * ( const type* ) & ( src ) )
+#endif
 
 #include <byteswap.h>
 
-#define GET16( x ) bswap_16 ( x )
-#define GET32( x ) bswap_32 ( x )
-#define GET64( x ) bswap_64 ( x )
-
-#else
-
-#define GET16( x ) ( * ( const uint16_t* ) & ( x ) ) 
-#define GET32( x ) ( * ( const uint32_t* ) & ( x ) ) 
-#define GET64( x ) ( * ( const uint64_t* ) & ( x ) ) 
-
-#endif
+#define GET16( dest, src ) GET_UNALIGNED ( uint16_t, bswap_16, dest, src )
+#define GET32( dest, src ) GET_UNALIGNED ( uint32_t, bswap_32, dest, src )
+#define GET64( dest, src ) GET_UNALIGNED ( uint64_t, bswap_64, dest, src )
 
 #endif /* _h_maybeswap_ */
 

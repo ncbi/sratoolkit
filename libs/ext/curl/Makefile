@@ -25,7 +25,7 @@
 
 default: std
 
-TOP ?= $(shell ../../../build/abspath.sh ../../..)
+TOP ?= $(abspath ../../..)
 MODULE = libs/ext/curl
 
 include $(TOP)/build/Makefile.env

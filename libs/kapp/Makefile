@@ -31,14 +31,11 @@ MODULE = libs/kapp
 include $(TOP)/build/Makefile.env
 
 INT_LIBS = \
-	libkapp
-
-EXT_LIBS = \
+	libkapp \
     libload
 
 ALL_LIBS = \
-	$(INT_LIBS) \
-	$(EXT_LIBS)
+	$(INT_LIBS)
 
 #-------------------------------------------------------------------------------
 # outer targets
@@ -49,17 +46,13 @@ all std: makedirs
 $(INT_LIBS): makedirs
 	@ $(MAKE_CMD) $(ILIBDIR)/$@
 
-$(EXT_LIBS): makedirs
-	@ $(MAKE_CMD) $(LIBDIR)/$@
-
 .PHONY: all std $(ALL_LIBS)
 
 #-------------------------------------------------------------------------------
 # std
 #
 $(TARGDIR)/std: \
-	$(addprefix $(ILIBDIR)/,$(INT_LIBS)) \
-	$(addprefix $(LIBDIR)/,$(EXT_LIBS))
+	$(addprefix $(ILIBDIR)/,$(INT_LIBS))
 
 .PHONY: $(TARGDIR)/std
 
@@ -69,15 +62,6 @@ $(TARGDIR)/std: \
 clean: stdclean
 
 .PHONY: clean
-
-#-------------------------------------------------------------------------------
-# tag
-#
-tag: \
-	$(addsuffix _tag,$(ALL_LIBS))
-
-.PHONY: tag $(addsuffix _tag,$(ALL_LIBS))
-
 
 #-------------------------------------------------------------------------------
 # OS specific application support
@@ -100,14 +84,11 @@ KAPP_LIB = \
 $(ILIBDIR)/libkapp.$(LIBX): $(KAPP_OBJ)
 	$(LD) --slib -o $@ $^ $(KAPP_LIB)
 
-libkapp_tag:
-	@ $(TOP)/build/tag-module.sh $(MODULE) libkapp $(KAPP_OBJ)
-
 
 #-------------------------------------------------------------------------------
 # loaders common libarary
 #
-$(LIBDIR)/libload: $(addprefix $(LIBDIR)/libload.,$(LIBX))
+$(ILIBDIR)/libload: $(addprefix $(ILIBDIR)/libload.,$(LIBX))
 
 LOADLIB_SRC = \
 	progressbar \
@@ -130,8 +111,5 @@ ifneq (win,$(OS))
 	LOADLIB_LIB += -dkq
 endif
 
-$(LIBDIR)/libload.$(LIBX): $(LOADLIB_OBJ)
-	$(LD) --slib --vers $(SRCDIR) -o $@ $^ $(LOADLIB_LIB)
-
-libload_tag:
-	@ $(TOP)/build/tag-module.sh $(MODULE) libload $(LOADLIB_OBJ)
+$(ILIBDIR)/libload.$(LIBX): $(LOADLIB_OBJ)
+	$(LD) --slib -o $@ $^ $(LOADLIB_LIB)

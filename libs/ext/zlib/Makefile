@@ -25,48 +25,39 @@
 
 default: std
 
-TOP ?= $(shell ../../../build/abspath.sh ../../..)
+TOP ?= $(abspath ../../..)
 MODULE = libs/ext/zlib
 
 include $(TOP)/build/Makefile.env
 
 INT_LIBS = \
-
-EXT_LIBS = \
 	libz
 
 ALL_LIBS = \
-	$(INT_LIBS) \
-	$(EXT_LIBS)
+	$(INT_LIBS)
 
 #-------------------------------------------------------------------------------
 # outer targets
 #
-std: makedirs download
-	@ $(MAKE_CMD) $(TARGDIR)/$@
-
-all: makedirs download
+std all: makedirs download
 	@ $(MAKE_CMD) $(TARGDIR)/$@
 
 $(INT_LIBS): makedirs download
 	@ $(MAKE_CMD) $(ILIBDIR)/$@
-
-$(EXT_LIBS): makedirs download
-	@ $(MAKE_CMD) $(LIBDIR)/$@
 
 .PHONY: all std $(ALL_LIBS)
 
 #-------------------------------------------------------------------------------
 # all
 #
-$(TARGDIR)/all: $(LIBDIR)/libz
+$(TARGDIR)/all: $(ILIBDIR)/libz
 
 .PHONY: $(TARGDIR)/all
 
 #-------------------------------------------------------------------------------
 # std
 #
-$(TARGDIR)/std: $(LIBDIR)/libz
+$(TARGDIR)/std: $(ILIBDIR)/libz
 
 .PHONY: $(TARGDIR)/std
 
@@ -74,18 +65,13 @@ $(TARGDIR)/std: $(LIBDIR)/libz
 # clean
 #
 clean: stdclean
-	@ rm -f libz.vers
 
 .PHONY: clean
 
 #-------------------------------------------------------------------------------
 # libz
 #
-ifeq (win,$(OS))
-$(LIBDIR)/libz: $(addprefix $(LIBDIR)/libz.,$(LIBEXT))
-else
-$(LIBDIR)/libz: $(addprefix $(LIBDIR)/libz.,$(LIBX))
-endif
+$(ILIBDIR)/libz: $(addprefix $(ILIBDIR)/libz.,$(LIBX))
 
 LIBZ_SRC = \
 	adler32 \
@@ -108,20 +94,15 @@ LIBZ_SRC = \
 LIBZ_OBJ = \
 	$(addsuffix .$(LOBX),$(LIBZ_SRC))
 
-LIBZ_LIB = \
-
-$(LIBDIR)/libz.$(SHLX): $(LIBZ_OBJ)
-	$(LD) --dlib --vers $(SRCDIR) -o $@ $^ $(LIBZ_LIB)
-
-$(LIBDIR)/libz.$(LIBX): $(LIBZ_OBJ)
-	$(LD) --slib --vers $(SRCDIR) -o $@ $^ $(LIBZ_LIB)
+$(ILIBDIR)/libz.$(LIBX): $(LIBZ_OBJ)
+	$(LD) --slib -o $@ $^ $(LIBZ_LIB)
 
 
 #-------------------------------------------------------------------------------
 # libz download
 #
 ZLIB_VERS := \
-	1.2.7
+	1.2.8
 
 ZLIB_TAR = \
 	zlib-$(ZLIB_VERS).tar
@@ -131,6 +112,7 @@ ZLIB_TAR_GZ = \
 
 ifeq (win,$(OS))
 ECHO_VERS = echo -ne $(ZLIB_VERS) "\n"
+CFLAGS := $(CFLAGS) -D_CRT_SECURE_NO_WARNINGS -D_CRT_NONSTDC_NO_DEPRECATE
 else
 ECHO_VERS = echo $(ZLIB_VERS)
 endif
@@ -160,9 +142,8 @@ $(ZLIB_TAR): $(ZLIB_TAR_GZ)
 libz.vers: $(ZLIB_TAR_GET)
 	@ echo unpacking the sources
 	$(TAR_CMD) $^
-	mv zlib-$(ZLIB_VERS)/*.[ch] .
-	mv zlib-$(ZLIB_VERS)/win32/zlib.def libz.def
-	-rm -rf zlib-$(ZLIB_VERS) >/dev/null
+	cp zlib-$(ZLIB_VERS)/*.[ch] .
+	cp zlib-$(ZLIB_VERS)/win32/zlib.def libz.def
 	@ $(ECHO_VERS) > $@
 
 download: libz.vers

@@ -90,20 +90,9 @@ PREFETCH_OBJ = \
 	$(addsuffix .$(OBJX),$(PREFETCH_SRC))
 
 PREFETCH_LIB = \
-	-ssraschema \
-	-dsraxf \
-	-dvxf \
-	-lvdb \
 	-lkapp \
-	-lkdb \
-	-lvfs \
-	-lkurl \
-	-lkrypto \
-	-lkfg \
-	-lkfs \
-	-lksrch \
-	-lklib \
-	-lkproc \
+	-lncbi-vdb \
+	-lxml2 \
 	-lm
 
 

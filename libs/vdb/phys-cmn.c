@@ -546,22 +546,26 @@ rc_t VPhysicalReadStatic ( VPhysical *self, VBlob **vblob, int64_t id, uint32_t 
 
 rc_t VPhysicalReadBlob ( VPhysical *self, VBlob **vblob, int64_t id, uint32_t elem_bits )
 {
+    rc_t rc;
+
     /* check for hit on static guy */
     if ( self -> knode != NULL &&
          id >= self -> sstart_id && id <= self -> sstop_id )
     {
         return VPhysicalReadStatic ( self, vblob, id, elem_bits );
     }
-    {
+
     /* need to read from kcolumn path */
-	rc_t rc = VProductionReadBlob ( self -> b2p, vblob, id , 1, NULL);
-	if(rc == 0){
-	    if((*vblob)->pm==NULL){
-		rc = PageMapProcessGetPagemap(&self->curs->pmpr,&(*vblob)->pm);
+    rc = VProductionReadBlob ( self -> b2p, vblob, id , 1, NULL);
+	if ( rc == 0 )
+    {
+	    if((*vblob)->pm==NULL)
+        {
+            rc = PageMapProcessGetPagemap(&self->curs->pmpr,&(*vblob)->pm);
 	    }
-	}
+    }
+
 	return rc;
-   }
 }
 
 
@@ -656,3 +660,20 @@ rc_t VPhysicalProdColumnIdRange ( const VPhysicalProd *Self,
     return RC ( rcVDB, rcColumn, rcReading, rcRange, rcEmpty );
 }
 
+
+/* IsStatic
+ *  is this a static column
+ */
+rc_t VPhysicalIsStatic ( const VPhysical *self, bool *is_static )
+{
+    assert ( is_static != NULL );
+
+    if ( self == NULL )
+    {
+        * is_static = false;
+        return RC ( rcVDB, rcColumn, rcAccessing, rcSelf, rcNull );
+    }
+
+    * is_static = self -> knode != NULL;
+    return 0;
+}

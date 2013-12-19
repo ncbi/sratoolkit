@@ -84,13 +84,7 @@ SRAPATH_OBJ = \
 
 SRAPATH_LIB += \
 	-lkapp \
-	-lvfs \
-	-lkurl \
-	-lkrypto \
-	-lkfg \
-	-lkfs \
-	-lkproc \
-	-lklib
+	-lncbi-vdb \
 
 $(BINDIR)/srapath: $(SRAPATH_OBJ)
 	$(LD) --exe --vers $(SRCDIR) -o $@ $^ $(SRAPATH_LIB)

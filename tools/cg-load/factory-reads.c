@@ -216,6 +216,7 @@ static const CGFileType_vt CGReads15_vt =
     NULL,
     NULL,
     NULL,
+    NULL, /* tag_lfr */
     CGReads15_GetAssemblyId,
     CGReads15_GetSlide,
     CGReads15_GetLane,

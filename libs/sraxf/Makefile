@@ -28,15 +28,12 @@ default: std
 TOP ?= $(shell ../../build/abspath.sh ../..)
 MODULE = libs/sraxf
 
-MOD_LIBS = \
-	libsraxf
-
-WMOD_LIBS = \
+INT_LIBS = \
+	libsraxf \
 	libwsraxf
 
 ALL_LIBS = \
-	$(MOD_LIBS) \
-	$(WMOD_LIBS)
+	$(INT_LIBS)
 
 include $(TOP)/build/Makefile.env
 
@@ -69,9 +66,7 @@ clean: stdclean
 #-------------------------------------------------------------------------------
 # sra transform library
 #
-$(TARGDIR)/libsraxf: $(addprefix $(TARGDIR)/libsraxf.,$(MODEXT))
-
-$(TARGDIR)/libsraxf.$(SHLX): $(MODDIR)/libsraxf.$(SHLX)
+$(TARGDIR)/libsraxf: $(addprefix $(ILIBDIR)/libsraxf.,$(ILIBEXT))
 
 SRAXF_SRC = \
 	untyped \
@@ -116,11 +111,6 @@ SRAXF_LIB = \
 	-dm \
 	-dz
 
-$(MODDIR)/libsraxf.$(SHLX): $(SRAXF_OBJ)
-	$(LD) --dlib --vers $(SRCDIR) -o $@ $^ $(SRAXF_LIB)
-
-$(TARGDIR)/libsraxf.$(LIBX): $(ILIBDIR)/libsraxf.$(LIBX)
-
 $(ILIBDIR)/libsraxf.$(LIBX): $(SRAXF_OBJ)
 	$(LD) --slib -o $@ $^ $(SRAXF_LIB)
 
@@ -128,9 +118,7 @@ $(ILIBDIR)/libsraxf.$(LIBX): $(SRAXF_OBJ)
 #-------------------------------------------------------------------------------
 # sra transform update library
 #
-$(TARGDIR)/libwsraxf: $(addprefix $(TARGDIR)/libwsraxf.,$(MODEXT))
-
-$(TARGDIR)/libwsraxf.$(SHLX): $(WMODDIR)/libwsraxf.$(SHLX)
+$(TARGDIR)/libwsraxf: $(addprefix $(ILIBDIR)/libwsraxf.,$(ILIBEXT))
 
 WSRAXF_SRC = \
 	$(SRAXF_SRC) \
@@ -150,11 +138,6 @@ WSRAXF_LIB = \
 	-dklib \
 	-dm \
 	-dz
-
-$(WMODDIR)/libwsraxf.$(SHLX): $(WSRAXF_OBJ)
-	$(LD) --dlib --vers $(SRCDIR) -o $@ $^ $(WSRAXF_LIB)
-
-$(TARGDIR)/libwsraxf.$(LIBX): $(ILIBDIR)/libwsraxf.$(LIBX)
 
 $(ILIBDIR)/libwsraxf.$(LIBX): $(WSRAXF_OBJ)
 	$(LD) --slib -o $@ $^ $(WSRAXF_LIB)

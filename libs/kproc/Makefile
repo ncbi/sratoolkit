@@ -28,20 +28,19 @@ default: std
 TOP ?= $(shell ../../build/abspath.sh ../..)
 MODULE = libs/kproc
 
-ALL_LIBS = \
-	$(INT_LIBS) \
-	$(EXT_LIBS)
-
 include $(TOP)/build/Makefile.env
 
-EXT_LIBS = \
+INT_LIBS = \
 	libksproc \
 	libkproc
 
 ifneq (win,$(OS))
-EXT_LIBS += \
+INT_LIBS += \
 	libkq
 endif
+
+ALL_LIBS = \
+	$(INT_LIBS)
 
 #-------------------------------------------------------------------------------
 # outer targets
@@ -52,17 +51,13 @@ all std: makedirs
 $(INT_LIBS): makedirs
 	@ $(MAKE_CMD) $(ILIBDIR)/$@
 
-$(EXT_LIBS): makedirs
-	@ $(MAKE_CMD) $(LIBDIR)/$@
-
 .PHONY: all std $(ALL_LIBS)
 
 #-------------------------------------------------------------------------------
 # std
 #
 $(TARGDIR)/std: \
-	$(addprefix $(ILIBDIR)/,$(INT_LIBS)) \
-	$(addprefix $(LIBDIR)/,$(EXT_LIBS))
+	$(addprefix $(ILIBDIR)/,$(INT_LIBS))
 
 .PHONY: $(TARGDIR)/std
 
@@ -74,17 +69,9 @@ clean: stdclean
 .PHONY: clean
 
 #-------------------------------------------------------------------------------
-# tag
-#
-tag: \
-	$(addsuffix _tag,$(ALL_LIBS))
-
-.PHONY: tag $(addsuffix _tag,$(ALL_LIBS))
-
-#-------------------------------------------------------------------------------
 # multi-threaded process support
 #
-$(LIBDIR)/libkproc: $(addprefix $(LIBDIR)/libkproc.,$(LIBEXT))
+$(ILIBDIR)/libkproc: $(addprefix $(ILIBDIR)/libkproc.,$(ILIBEXT))
 
 PROC_CMN = \
 	task \
@@ -119,20 +106,14 @@ PROC_LIB = \
 	-dklib
 endif
 
-$(LIBDIR)/libkproc.$(SHLX): $(PROC_OBJ)
-	$(LD) --dlib --vers $(SRCDIR) -o $@ $^ $(PROC_LIB)
-
-$(LIBDIR)/libkproc.$(LIBX): $(PROC_OBJ)
-	$(LD) --slib --vers $(SRCDIR) -o $@ $^ $(PROC_LIB)
-
-libkproc_tag:
-	@ $(TOP)/build/tag-module.sh $(MODULE) libkproc $(PROC_OBJ)
+$(ILIBDIR)/libkproc.$(LIBX): $(PROC_OBJ)
+	$(LD) --slib -o $@ $^ $(PROC_LIB)
 
 
 #-------------------------------------------------------------------------------
 # single-threaded process support
 #
-$(LIBDIR)/libksproc: $(addprefix $(LIBDIR)/libksproc.,$(LIBEXT))
+$(ILIBDIR)/libksproc: $(addprefix $(ILIBDIR)/libksproc.,$(ILIBEXT))
 
 SPROC_SRC = \
 	$(PROC_CMN) \
@@ -149,20 +130,14 @@ SPROC_OBJ = \
 SPROC_LIB = \
 	-dklib
 
-$(LIBDIR)/libksproc.$(SHLX): $(SPROC_OBJ)
-	$(LD) --dlib --vers $(SRCDIR) -o $@ $^ $(SPROC_LIB)
-
-$(LIBDIR)/libksproc.$(LIBX): $(SPROC_OBJ)
-	$(LD) --slib --vers $(SRCDIR) -o $@ $^ $(SPROC_LIB)
-
-libksproc_tag:
-	@ $(TOP)/build/tag-module.sh $(MODULE) libksproc $(SPROC_OBJ)
+$(ILIBDIR)/libksproc.$(LIBX): $(SPROC_OBJ)
+	$(LD) --slib -o $@ $^ $(SPROC_LIB)
 
 
 #-------------------------------------------------------------------------------
 # cross-thread reference queue
 #
-$(LIBDIR)/libkq: $(addprefix $(LIBDIR)/libkq.,$(LIBEXT))
+$(ILIBDIR)/libkq: $(addprefix $(ILIBDIR)/libkq.,$(ILIBEXT))
 
 Q_SRC = \
 	queue
@@ -174,11 +149,5 @@ Q_LIB = \
 	-dkproc \
 	-dklib
 
-$(LIBDIR)/libkq.$(SHLX): $(Q_OBJ)
-	$(LD) --dlib --vers $(SRCDIR) -o $@ $^ $(Q_LIB)
-
-$(LIBDIR)/libkq.$(LIBX): $(Q_OBJ)
-	$(LD) --slib --vers $(SRCDIR) -o $@ $^ $(Q_LIB)
-
-libkq_tag:
-	@ $(TOP)/build/tag-module.sh $(MODULE) libkq $(Q_OBJ)
+$(ILIBDIR)/libkq.$(LIBX): $(Q_OBJ)
+	$(LD) --slib -o $@ $^ $(Q_LIB)

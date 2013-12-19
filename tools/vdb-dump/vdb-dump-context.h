@@ -37,6 +37,7 @@ extern "C" {
 #include <kapp/args.h>
 #include <klib/vector.h>
 #include "vdb-dump-num-gen.h"
+#include "vdb-dump-redir.h"
 
 #define OPTION_ROW_ID_ON         "row_id_on"
 #define OPTION_LINE_FEED         "line_feed"
@@ -66,6 +67,15 @@ extern "C" {
 #define OPTION_NUMELEMSUM        "numelemsum"
 #define OPTION_SHOW_BLOBBING     "blobbing"
 #define OPTION_ENUM_PHYS         "phys"
+#define OPTION_CHECK_CURL        "check-curl"
+#define OPTION_IDX_ENUM          "idx-report"
+#define OPTION_IDX_RANGE         "idx-range"
+#define OPTION_CUR_CACHE         "cur-cache"
+#define OPTION_OUT_FILE          "output-file"
+#define OPTION_GZIP              "gzip"
+#define OPTION_BZIP2             "bzip2"
+#define OPTION_OUT_BUF_SIZE      "output-buffer-size"
+#define OPTION_NO_MULTITHREAD    "disable-multithreading"
 
 #define ALIAS_ROW_ID_ON         "I"
 #define ALIAS_LINE_FEED         "l"
@@ -94,6 +104,10 @@ extern "C" {
 #define ALIAS_NUMELEM           "u"
 #define ALIAS_NUMELEMSUM        "U"
 
+#define USE_PATHTYPE_TO_DETECT_DB_OR_TAB 1
+#define CURSOR_CACHE_SIZE 256*1024*1024
+#define DEF_OPTION_OUT_BUF_SIZE 1024*1024
+
 typedef enum dump_format_t
 {
     df_default,
@@ -101,7 +115,9 @@ typedef enum dump_format_t
     df_xml,
     df_json,
     df_piped,
-    df_tab
+    df_tab,
+    df_fastq,
+    df_fasta
 } dump_format_t;
 
 /********************************************************************
@@ -115,13 +131,18 @@ typedef struct dump_context
     const char *columns;
     const char *excluded_columns;
     const char *filter;
+	const char *idx_range;
+    const char *output_file;
     num_gen *row_generator;
     bool print_row_id;
     uint16_t lf_after_row;
     uint16_t max_line_len;
     uint16_t indented_line_len;
     uint32_t generic_idx;
+    size_t cur_cache_size;
+    size_t output_buffer_size;
     dump_format_t format;
+    out_redir_mode_t compress_mode;
     char c_boolean;
 
     bool print_column_names;
@@ -143,6 +164,10 @@ typedef struct dump_context
     bool sum_num_elem;
     bool show_blobbing;
     bool enum_phys;
+    bool check_curl;
+	bool idx_enum_requested;
+	bool idx_range_requested;
+    bool disable_multithreading;
 } dump_context;
 typedef dump_context* p_dump_context;
 
@@ -158,5 +183,9 @@ void vdco_show_help( p_dump_context ctx );
 rc_t vdco_set_table( p_dump_context ctx, const char *src );
 
 rc_t vdco_capture_arguments_and_options( const Args * args, dump_context *ctx );
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

@@ -4,7 +4,7 @@
 # N.B. Run "perl configuration-assistant.perl" if you see a message like:
 # configuration-assistant.perl: /usr/bin/perl: bad interpreter: No such file or directory
 ################################################################################
-my $VERSION = '2.3.2.4';
+my $VERSION = '2.3.4-2';
 ################################################################################
 
 use strict;
@@ -42,6 +42,7 @@ Version() if ($options{version});
 
 $options{references} = 1 if ($#ARGV >= 0);
 
+printOS();
 println "cwd = '" . getcwd() . "'\n";
 
 my $DECRYPTION_PKG;
@@ -234,6 +235,22 @@ sub Posixify {
     s|^([a-zA-Z]):/|/$1/|;
 
     return $_;
+}
+
+sub printOS {
+    my $fail;
+    if ($^O eq 'MSWin32') {
+        $fail = system('ver');
+    }
+    else {
+        $fail = system('uname -a');
+        if ($fail) {
+            $fail = system('ver');        
+        }
+    }
+    if ($fail) {
+        println "Operating system: '$^O'";
+    }
 }
 
 sub Version {

@@ -105,7 +105,6 @@ int SYSTEMTIME_compare ( const SYSTEMTIME *a, const SYSTEMTIME *b )
 static
 void SYSTEMTIME_from_half_baked_SYSTEMTIME ( const SYSTEMTIME *half_baked, SYSTEMTIME *proper, WORD year )
 {
-    int i;
     FILETIME ft;
 
     * proper = * half_baked;

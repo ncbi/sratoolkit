@@ -283,6 +283,7 @@ static const CGFileType_vt CGEvidenceDnbs15_vt =
     NULL,
     NULL,
     CGEvidenceDnbs15_Read,
+    NULL, /* tag_lfr */
     CGEvidenceDnbs15_GetAssemblyId,
     NULL,
     NULL,
@@ -300,6 +301,7 @@ static const CGFileType_vt CGEvidenceDnbs20_vt =
     NULL,
     NULL,
     CGEvidenceDnbs20_Read,
+    NULL, /* tag_lfr */
     CGEvidenceDnbs15_GetAssemblyId,
     NULL,
     NULL,

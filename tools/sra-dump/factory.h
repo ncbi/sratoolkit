@@ -57,6 +57,12 @@ typedef struct SRASplitter SRASplitter;
 typedef uint8_t readmask_t; 
 extern uint32_t nreads_max;
 
+/* new hack to realize changed requirement for quality-filter */
+#define DEF_QUAL_N_LIMIT 10
+extern uint32_t quality_N_limit;
+
+extern bool g_legacy_report;
+
 #define make_readmask(m) readmask_t m[NREADS_MAX]
 #define copy_readmask(src,dst) (memcpy(dst, src, sizeof(readmask_t) * nreads_max))
 #define reset_readmask(m) (memset(m, ~0, sizeof(readmask_t) * nreads_max))

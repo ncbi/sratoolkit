@@ -112,7 +112,7 @@ LIB_EXPORT rc_t CC VTableRelease ( const VTable *self )
         {
         case krefWhack:
             return VTableWhack ( ( VTable* ) self );
-        case krefLimit:
+        case krefNegative:
             return RC ( rcVDB, rcTable, rcReleasing, rcRange, rcExcessive );
         }
     }
@@ -144,7 +144,7 @@ rc_t VTableSever ( const VTable *self )
         {
         case krefWhack:
             return VTableWhack ( ( VTable* ) self );
-        case krefLimit:
+        case krefNegative:
             return RC ( rcVDB, rcTable, rcReleasing, rcRange, rcExcessive );
         }
     }

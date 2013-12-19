@@ -36,6 +36,7 @@
 
 #include <sra/srapath.h>
 
+#include <vfs/manager.h>
 #include <vfs/path.h>
 #include <vfs/path-priv.h>
 
@@ -68,8 +69,8 @@ const char * inf_usage[] = { "File with all input-parameters / options", NULL };
 
 const char * schema_usage[] = { "optional schema-file to be used", NULL };
 
-#define OPTION_REF     "aligned-region"
-#define ALIAS_REF      "r"
+const char * no_mt_usage[] = { "disable multithreading", NULL };
+
 
 #define OPTION_OUTF    "outfile"
 #define ALIAS_OUTF     "o"
@@ -89,6 +90,8 @@ const char * schema_usage[] = { "optional schema-file to be used", NULL };
 #define OPTION_SCHEMA "schema"
 #define ALIAS_SCHEMA  "S"
 
+#define OPTION_NO_MT  "disable-multithreading"
+
 OptDef CommonOptions[] =
 {
     /*name,           alias,         hfkt, usage-help,    maxcount, needs value, required */
@@ -98,7 +101,8 @@ OptDef CommonOptions[] =
     { OPTION_GZIP,    ALIAS_GZIP,    NULL, gzip_usage,    1,        false,       false },
     { OPTION_BZIP,    ALIAS_BZIP,    NULL, bzip_usage,    1,        false,       false },
     { OPTION_INF,     ALIAS_INF,     NULL, inf_usage,     0,        true,        false },
-    { OPTION_SCHEMA,  ALIAS_SCHEMA,  NULL, schema_usage,  1,        true,        false }
+    { OPTION_SCHEMA,  ALIAS_SCHEMA,  NULL, schema_usage,  1,        true,        false },
+    { OPTION_NO_MT,   NULL,          NULL, no_mt_usage,   1,        false,       false }    
 };
 
 
@@ -159,6 +163,9 @@ rc_t get_common_options( Args * args, common_options *opts )
         rc = get_bool_option( args, OPTION_BZIP, &opts->bzip_output, false );
 
     if ( rc == 0 )
+        rc = get_bool_option( args, OPTION_NO_MT, &opts->no_mt, false );
+        
+    if ( rc == 0 )
         rc = get_str_option( args, OPTION_SCHEMA, &opts->schema_file );
 
     if ( rc == 0 )
@@ -191,9 +198,10 @@ void print_common_helplines( void )
 {
     HelpOptionLine ( ALIAS_REF, OPTION_REF, "name[:from-to]", ref_usage );
     HelpOptionLine ( ALIAS_OUTF, OPTION_OUTF, "output-file", outf_usage );
-    HelpOptionLine ( ALIAS_TABLE, OPTION_TABLE, "table", table_usage );
-    HelpOptionLine ( ALIAS_BZIP, OPTION_BZIP, "bzip", bzip_usage );
-    HelpOptionLine ( ALIAS_GZIP, OPTION_GZIP, "gzip", gzip_usage );
+    HelpOptionLine ( ALIAS_TABLE, OPTION_TABLE, "shortcut", table_usage );
+    HelpOptionLine ( ALIAS_BZIP, OPTION_BZIP, NULL, bzip_usage );
+    HelpOptionLine ( ALIAS_GZIP, OPTION_GZIP, NULL, gzip_usage );
+    HelpOptionLine ( NULL, OPTION_NO_MT, NULL, no_mt_usage );    
 }
 
 
@@ -227,303 +235,6 @@ static int cmp_pchar( const char * a, const char * b )
 /* =========================================================================================== */
 
 
-typedef struct range
-{
-    uint32_t start;
-    uint32_t end;
-} range;
-
-
-static range * make_range( const uint64_t start, const uint64_t end )
-{
-    range *res = calloc( sizeof *res, 1 );
-    if ( res != NULL )
-    {
-        res->start = start;
-        res->end = end;
-    }
-    return res;
-}
-
-
-static int cmp_range( const range * a, const range * b )
-{
-
-    int res = ( a->start - b->start );
-    if ( res == 0 )
-        res = ( a->end - b->end );
-    return res;
-}
-
-
-static bool range_overlapp( const range * a, const range * b )
-{
-    return ( !( ( b->end < a->start ) || ( b->start > a->end ) ) );
-}
-
-
-/* =========================================================================================== */
-
-typedef struct reference_region
-{
-    BSTNode node;
-    const char * name;
-    Vector ranges;
-} reference_region;
-
-
-static reference_region * make_reference_region( const char *name )
-{
-    reference_region *res = calloc( sizeof *res, 1 );
-    if ( res != NULL )
-    {
-        res->name = string_dup_measure ( name, NULL );
-        VectorInit ( &res->ranges, 0, 5 );
-    }
-    return res;
-}
-
-
-static int CC cmp_range_wrapper( const void *item, const void *n )
-{   return cmp_range( item, n ); }
-
-
-static rc_t add_ref_region_range( reference_region * self, const uint64_t start, const uint64_t end )
-{
-    rc_t rc = 0;
-    range *r = make_range( start, end );
-    if ( r == NULL )
-        rc = RC( rcApp, rcNoTarg, rcConstructing, rcMemory, rcExhausted );
-    else
-    {
-        rc = VectorInsert ( &self->ranges, r, NULL, cmp_range_wrapper );
-        if ( rc != 0 )
-            free( r );
-    }
-    return rc;
-}
-
-
-#define RR_NAME  1
-#define RR_START 2
-#define RR_END   3
-
-
-static void put_c( char *s, size_t size, size_t *dst, char c )
-{
-    if ( *dst < ( size - 1 ) )
-        s[ *dst ] = c;
-    (*dst)++;
-}
-
-static void finish_txt( char *s, size_t size, size_t *dst )
-{
-    if ( *dst > size )
-        s[ size - 1 ] = 0;
-    else
-        s[ *dst ] = 0;
-    *dst = 0;
-}
-
-static uint64_t finish_num( char *s, size_t size, size_t *dst )
-{
-    uint64_t res = 0;
-    char *endp;
-    finish_txt( s, size, dst );
-    res = strtou64( s, &endp, 10 );
-    return res;
-}
-
-
-/* s = refname:1000-2000 */
-static void parse_definition( const char *s, char * name, size_t len,
-                              uint64_t *start, uint64_t *end )
-{
-    size_t n = string_size( s );
-
-    *start = 0;
-    *end   = 0;
-    name[ 0 ] = 0;
-    if ( n > 0 )
-    {
-        size_t i, st, dst = 0;
-        char tmp[ 32 ];
-        st = RR_NAME;
-        for ( i = 0; i < n; ++i )
-        {
-            char c = s[ i ];
-            switch( st )
-            {
-                case RR_NAME  : if ( c == ':' )
-                                {
-                                    finish_txt( name, len, &dst );
-                                    st = RR_START;
-                                }
-                                else
-                                {
-                                    put_c( name, len, &dst, c );
-                                }
-                                break;
-
-                case RR_START : if ( c == '-' )
-                                {
-                                    *start = finish_num( tmp, sizeof tmp, &dst );
-                                    st = RR_END;
-                                }
-                                else if ( ( c >= '0' )&&( c <= '9' ) )
-                                {
-                                    put_c( tmp, sizeof tmp, &dst, c );
-                                }
-                                break;
-
-                case RR_END   : if ( ( c >= '0' )&&( c <= '9' ) )
-                                {
-                                    put_c( tmp, sizeof tmp, &dst, c );
-                                }
-                                break;
-            }
-        }
-        switch( st )
-        {
-            case RR_NAME  : finish_txt( name, len, &dst );
-                            break;
-
-            case RR_START : *start = finish_num( tmp, sizeof tmp, &dst );
-                            break;
-
-            case RR_END   : *end = finish_num( tmp, sizeof tmp, &dst );
-                            break;
-        }
-    }
-}
-
-
-static void CC release_range_wrapper( void * item, void * data )
-{
-    free( item );
-}
-
-
-static void free_reference_region( reference_region * self )
-{
-    free( (void*)self->name );
-    VectorWhack ( &self->ranges, release_range_wrapper, NULL );
-    free( self );
-}
-
-
-static void check_ref_region_ranges( reference_region * self )
-{
-    uint32_t n = VectorLength( &self->ranges );
-    uint32_t i = 0;
-    range *a = NULL;
-    while ( i < n )
-    {
-        range *b = VectorGet ( &self->ranges, i );
-        bool remove = false;
-        if ( a != NULL )
-        {
-            remove = range_overlapp( a, b );
-            if ( remove )
-            {
-                range *r;
-                a->end = b->end;
-                VectorRemove ( &self->ranges, i, (void**)&r );
-                free( r );
-                n--;
-            }
-        }
-        if ( !remove )
-        {
-            a = b;
-            ++i;
-        }
-    }
-}
-
-
-/* =========================================================================================== */
-
-
-static int CC reference_vs_pchar_wrapper( const void *item, const BSTNode *n )
-{
-    const reference_region * r = ( const reference_region * )n;
-    return cmp_pchar( (const char *)item, r->name );
-}
-
-static reference_region * find_reference_region( BSTree * regions, const char * name )
-{
-    return ( reference_region * ) BSTreeFind ( regions, name, reference_vs_pchar_wrapper );
-}
-
-static int CC ref_vs_ref_wrapper( const BSTNode *item, const BSTNode *n )
-{
-   const reference_region * a = ( const reference_region * )item;
-   const reference_region * b = ( const reference_region * )n;
-   return cmp_pchar( a->name, b->name );
-}
-
-static rc_t add_refrange( BSTree * regions, const char * name, const uint64_t start, const uint64_t end )
-{
-    rc_t rc;
-
-    reference_region * r = find_reference_region( regions, name );
-    if ( r == NULL )
-    {
-        r = make_reference_region( name );
-        if ( r == NULL )
-            rc = RC( rcApp, rcNoTarg, rcConstructing, rcMemory, rcExhausted );
-        else
-            rc = add_ref_region_range( r, start, end );
-        if ( rc == 0 )
-            rc = BSTreeInsert ( regions, (BSTNode *)r, ref_vs_ref_wrapper );
-        if ( rc != 0 )
-            free_reference_region( r );
-    }
-    else
-    {
-        rc = add_ref_region_range( r, start, end );
-    }
-    return rc;
-}
-
-
-rc_t parse_and_add_region( BSTree * regions, const char * s )
-{
-    uint64_t start, end;
-    char name[ 64 ];
-    parse_definition( s, name, sizeof name, &start, &end );
-    if ( name[ 0 ] == 0 )
-        return RC( rcApp, rcNoTarg, rcConstructing, rcMemory, rcExhausted );
-    else
-        return add_refrange( regions, name, start, end );
-}
-
-
-static void CC check_refrange_wrapper( BSTNode *n, void *data )
-{
-    check_ref_region_ranges( ( reference_region * ) n );
-}
-
-
-void check_ref_regions( BSTree * regions )
-{
-    BSTreeForEach ( regions, false, check_refrange_wrapper, NULL );
-}
-
-
-static void CC release_ref_region_wrapper( BSTNode *n, void * data )
-{
-    free_reference_region( ( reference_region * ) n );
-}
-
-
-void free_ref_regions( BSTree * regions )
-{    
-    BSTreeWhack ( regions, release_ref_region_wrapper, NULL );
-}
-
-
 rc_t init_ref_regions( BSTree * tree, Args * args )
 {
     uint32_t count;
@@ -549,70 +260,6 @@ rc_t init_ref_regions( BSTree * tree, Args * args )
         }
     }
     return rc;
-}
-
-
-static void CC count_ref_region_wrapper( BSTNode *n, void *data )
-{   
-    reference_region * r = ( reference_region * ) n;
-    uint32_t * count = ( uint32_t * ) data;
-    *count += VectorLength( &(r->ranges) );
-}
-
-
-uint32_t count_ref_regions( BSTree * regions )
-{
-    uint32_t res = 0;
-    BSTreeForEach ( regions, false, count_ref_region_wrapper, &res );
-    return res;
-}
-
-
-typedef struct foreach_ref_region_func
-{
-    rc_t ( CC * on_region ) ( const char * name, uint32_t start, uint32_t end, void *data );
-    const char * name;
-    void * data;
-    rc_t rc;
-} foreach_ref_region_func;
-
-
-static void CC foreach_range_vector_wrapper( void *item, void *data )
-{
-    range * r = ( range * ) item;
-    foreach_ref_region_func * func = ( foreach_ref_region_func * )data;
-
-    if ( func->rc == 0 )
-    {
-        func->rc = func->on_region( func->name, r->start, r->end, func->data );
-    }
-}
-
-
-static void CC foreach_ref_region_wrapper( BSTNode *n, void *data )
-{   
-    reference_region * r = ( reference_region * ) n;
-    foreach_ref_region_func * func = ( foreach_ref_region_func * )data;
-
-    if ( func->rc == 0 )
-    {
-        func->name = r->name;
-        VectorForEach ( &(r->ranges), false, foreach_range_vector_wrapper, data );
-    }
-}
-
-
-rc_t foreach_ref_region( BSTree * regions,
-    rc_t ( CC * on_region ) ( const char * name, uint32_t start, uint32_t end, void *data ), 
-    void *data )
-{
-    foreach_ref_region_func func;
-
-    func.on_region = on_region;
-    func.data = data;
-    func.rc = 0;
-    BSTreeForEach ( regions, false, foreach_ref_region_wrapper, &func );
-    return func.rc;
 }
 
 
@@ -754,6 +401,12 @@ static rc_t split_vpath_into_path_and_readgroup( VPath *vpath, const char *argum
 static rc_t test_split_vpath_into_path_and_readgroup( VPath *vpath, const char *argument, char ** path, char ** attribute )
 {
     rc_t rc = 0;
+#if 1
+    if ( VPathFromUri ( vpath ) )
+        rc = split_vpath_into_path_and_readgroup ( vpath, argument, path, attribute );
+    else
+        rc = split_argument ( argument, path, attribute, '=' );
+#else
     VPUri_t uri_type = VPathGetUri_t( vpath );
     switch ( uri_type )
     {
@@ -777,6 +430,7 @@ static rc_t test_split_vpath_into_path_and_readgroup( VPath *vpath, const char *
             rc = split_vpath_into_path_and_readgroup( vpath, argument, path, attribute );
             break;
     }
+#endif
     return rc;
 }
 
@@ -793,15 +447,23 @@ static rc_t split_argument_into_path_and_readgroup( const char *argument, char *
     }
     else
     {
-        VPath * vpath;
-        rc_t rc = VPathMake( &vpath, argument );
+        VFSManager * mgr;
+        rc_t rc = VFSManagerMake ( & mgr );
+
         *path = NULL;
         *attribute = NULL;
 
         if ( rc == 0 )
         {
-            rc = test_split_vpath_into_path_and_readgroup( vpath, argument, path, attribute );
-            VPathRelease( vpath );
+            VPath * vpath;
+            rc = VFSManagerMakePath ( mgr, &vpath, argument );
+            if ( rc == 0 )
+            {
+                rc = test_split_vpath_into_path_and_readgroup( vpath, argument, path, attribute );
+                VPathRelease( vpath );
+            }
+
+            VFSManagerRelease ( mgr );
         }
     }
     return rc;
@@ -950,8 +612,7 @@ static rc_t prepare_db_table( prepare_ctx *ctx,
         rc = VDBManagerOpenTableRead ( vdb_mgr, &ctx->seq_tab, NULL, "%s", path );
         if ( rc != 0 )
         {
-            PLOGERR(klogInt, (klogInt, rc, "failed to open '$(path)'",
-                "path=%s", path));
+            PLOGERR( klogErr, ( klogErr, rc, "failed to open '$(path)'", "path=%s", path ) );
         }
         else {
             ReportResetTable(path, ctx->seq_tab);
@@ -964,8 +625,9 @@ static rc_t prepare_db_table( prepare_ctx *ctx,
         {
             LOGERR( klogInt, rc, "VDatabaseOpenTableRead( SEQUENCE ) failed" );
         }
-        else {
-            ReportResetDatabase(path, ctx->db);
+        else
+        {
+            ReportResetDatabase( path, ctx->db );
         }
     }
     return rc;

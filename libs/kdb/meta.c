@@ -283,7 +283,7 @@ LIB_EXPORT rc_t CC KMDataNodeRelease ( const KMDataNode *cself )
             free ( self );
             break;
 
-        case krefLimit:
+        case krefNegative:
             return RC ( rcDB, rcMetadata, rcReleasing, rcRange, rcExcessive );
         }
     }
@@ -1505,7 +1505,7 @@ LIB_EXPORT rc_t CC KMetadataRelease ( const KMetadata *self )
         {
         case krefWhack:
             return KMetadataWhack ( ( KMetadata* ) self );
-        case krefLimit:
+        case krefNegative:
             return RC ( rcDB, rcMetadata, rcReleasing, rcRange, rcExcessive );
         }
     }
@@ -1535,7 +1535,7 @@ rc_t KMetadataSever ( const KMetadata *self )
         {
         case krefWhack:
             return KMetadataWhack ( ( KMetadata* ) self );
-        case krefLimit:
+        case krefNegative:
             return RC ( rcDB, rcMetadata, rcReleasing, rcRange, rcExcessive );
         }
     }
@@ -1642,6 +1642,7 @@ rc_t KMetadataMakeRead ( KMetadata **metap,
         rc = RC ( rcDB, rcMetadata, rcConstructing, rcMemory, rcExhausted );
     else
     {
+        memset ( meta, 0, sizeof * meta );
         meta -> root = calloc ( 1, sizeof * meta -> root );
         if ( meta -> root == NULL )
             rc = RC ( rcDB, rcMetadata, rcConstructing, rcMemory, rcExhausted );
@@ -1649,12 +1650,7 @@ rc_t KMetadataMakeRead ( KMetadata **metap,
         {
             meta -> root -> meta = meta;
             meta -> dir = dir;
-            meta -> mgr = NULL;
-            meta -> db = NULL;
-            meta -> tbl = NULL;
-            meta -> col = NULL;
             KRefcountInit ( & meta -> refcount, 1, "KMetadata", "make-read", path );
-            meta -> vers = 0;
             meta -> rev = rev;
             meta -> byteswap = false;
             strcpy ( meta -> path, path );
@@ -2053,15 +2049,12 @@ static
 rc_t KMDataNodeNamelistMake ( KNamelist **names, uint32_t count )
 {
     rc_t rc;
-    KMDataNodeNamelist *self = malloc ( sizeof * self -
+    KMDataNodeNamelist *self = calloc ( 1, sizeof * self -
         sizeof self -> namelist + count * sizeof self -> namelist [ 0 ] );
     if ( self == NULL )
         rc = RC ( rcDB, rcMetadata, rcListing, rcMemory, rcExhausted );
     else
     {
-        self -> node = NULL;
-        self -> count = 0;
-        
         rc = KNamelistInit ( & self -> dad,
             ( const KNamelist_vt* ) & vtKMDataNodeNamelist );
         if ( rc == 0 )

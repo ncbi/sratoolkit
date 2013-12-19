@@ -164,7 +164,7 @@ const char *curly_errstr ( CURLcode code )
         CURL_CASE2 ( CURLE_SSH, 79 );        
         CURL_CASE2 ( CURLE_SSL_SHUTDOWN_FAILED, 80 );
         CURL_CASE2 ( CURLE_AGAIN, 81 );
-        CURL_CASE ( CURLE_SSL_CRL_BADFILE );
+        CURL_CASE2 ( CURLE_SSL_CRL_BADFILE, 82 );
         CURL_CASE2 ( CURLE_SSL_ISSUER_ERROR, 83 );
     }
 
@@ -379,7 +379,7 @@ static rc_t get_content_length( struct KNSManager *kns_mgr, CURL *curl, uint64_t
     }
     else
     {
-        *size = double_size;
+        *size = (uint64_t) double_size;
     }
     return rc;
 }

@@ -30,15 +30,12 @@ MODULE = libs/align
 
 INT_LIBS = \
 	libncbi-bam \
-	libalign-writer
-
-EXT_LIBS = \
+	libalign-writer \
 	libalign-access \
 	libalign-reader
 
 ALL_LIBS = \
-	$(INT_LIBS) \
-	$(EXT_LIBS)
+	$(INT_LIBS)
 
 include $(TOP)/build/Makefile.env
 
@@ -51,17 +48,13 @@ all std: makedirs
 $(INT_LIBS): makedirs
 	@ $(MAKE_CMD) $(ILIBDIR)/$@
 
-$(EXT_LIBS): makedirs
-	@ $(MAKE_CMD) $(LIBDIR)/$@
-
 .PHONY: all std $(ALL_LIBS)
 
 #-------------------------------------------------------------------------------
 # std
 #
 $(TARGDIR)/std: \
-	$(addprefix $(ILIBDIR)/,$(INT_LIBS)) \
-	$(addprefix $(LIBDIR)/,$(EXT_LIBS))
+	$(addprefix $(ILIBDIR)/,$(INT_LIBS))
 
 .PHONY: $(TARGDIR)/std
 
@@ -71,15 +64,6 @@ $(TARGDIR)/std: \
 clean: stdclean
 
 .PHONY: clean
-
-#-------------------------------------------------------------------------------
-# tag
-#
-tag: \
-	$(addsuffix _tag,$(ALL_LIBS))
-
-.PHONY: tag $(addsuffix _tag,$(ALL_LIBS))
-
 
 #-------------------------------------------------------------------------------
 # libncbi-bam
@@ -92,26 +76,16 @@ BAM_SRC = \
 BAM_OBJ = \
 	$(addsuffix .$(LOBX),$(BAM_SRC))
 
-BAM_LIB = \
-	-lvfs \
-	-lkfs \
-	-lklib \
-	-lz
-
-$(ILIBDIR)/libncbi-bam.$(SHLX): $(BAM_OBJ)
-	$(LD) --dlib -o $@ $^ $(BAM_LIB)
+BAM_LIB = 
 
 $(ILIBDIR)/libncbi-bam.$(LIBX): $(BAM_OBJ)
 	$(LD) --slib -o $@ $^ $(BAM_LIB)
-
-libncbi-bam_tag:
-	@ $(TOP)/build/tag-module.sh $(MODULE) libncbi-bam $(BAM_OBJ)
 
 
 #-------------------------------------------------------------------------------
 # align-access
 #
-$(LIBDIR)/libalign-access: $(addprefix $(LIBDIR)/libalign-access.,$(LIBEXT))
+$(ILIBDIR)/libalign-access: $(addprefix $(ILIBDIR)/libalign-access.,$(ILIBEXT))
 
 ALIGN_ACCESS_SRC = \
 	align-access
@@ -119,27 +93,15 @@ ALIGN_ACCESS_SRC = \
 ALIGN_ACCESS_OBJ = \
 	$(addsuffix .$(LOBX),$(ALIGN_ACCESS_SRC))
 
-ALIGN_ACCESS_LIB = \
-	-sncbi-bam \
-	-lvfs \
-	-lkfs \
-	-dkproc \
-	-lklib \
-	-lz
+ALIGN_ACCESS_LIB = 
 
-$(LIBDIR)/libalign-access.$(SHLX): $(ALIGN_ACCESS_OBJ)
-	$(LD) --dlib --vers $(SRCDIR) -o $@ $^ $(ALIGN_ACCESS_LIB)
-
-$(LIBDIR)/libalign-access.$(LIBX): $(ALIGN_ACCESS_OBJ)
-	$(LD) --slib --vers $(SRCDIR) -o $@ $^ $(ALIGN_ACCESS_LIB)
-
-libalign-access_tag:
-	@ $(TOP)/build/tag-module.sh $(MODULE) libalign-access $(ALIGN_ACCESS_OBJ)
+$(ILIBDIR)/libalign-access.$(LIBX): $(ALIGN_ACCESS_OBJ)
+	$(LD) --slib -o $@ $^ $(ALIGN_ACCESS_LIB)
 
 #-------------------------------------------------------------------------------
 # align-reader
 #
-$(LIBDIR)/libalign-reader: $(addprefix $(LIBDIR)/libalign-reader.,$(LIBEXT))
+$(ILIBDIR)/libalign-reader: $(addprefix $(ILIBDIR)/libalign-reader.,$(ILIBEXT))
 
 ALIGN_READER_SRC = \
 	align_mgr \
@@ -157,22 +119,10 @@ ALIGN_READER_SRC = \
 ALIGN_READER_OBJ = \
 	$(addsuffix .$(LOBX),$(ALIGN_READER_SRC))
 
-ALIGN_READER_LIB = \
-	-lvdb \
-	-lkdb \
-	-lkfg \
-	-lkfs \
-	-lklib \
-	-lz
+ALIGN_READER_LIB = 
 
-$(LIBDIR)/libalign-reader.$(SHLX): $(ALIGN_READER_OBJ)
-	$(LD) --dlib --vers $(SRCDIR) -o $@ $^ $(ALIGN_READER_LIB)
-
-$(LIBDIR)/libalign-reader.$(LIBX): $(ALIGN_READER_OBJ)
-	$(LD) --slib --vers $(SRCDIR) -o $@ $^ $(ALIGN_READER_LIB)
-
-libalign-reader_tag:
-	@ $(TOP)/build/tag-module.sh $(MODULE) libalign-reader $(ALIGN_READER_OBJ)
+$(ILIBDIR)/libalign-reader.$(LIBX): $(ALIGN_READER_OBJ)
+	$(LD) --slib -o $@ $^ $(ALIGN_READER_LIB)
 
 #-------------------------------------------------------------------------------
 # align-writer
@@ -195,19 +145,7 @@ ALIGN_WRITER_SRC = \
 ALIGN_WRITER_OBJ = \
 	$(addsuffix .$(LOBX),$(ALIGN_WRITER_SRC))
 
-ALIGN_WRITER_LIB = \
-	-lwvdb \
-	-lwkdb \
-	-lkfg \
-	-lkfs \
-	-lklib \
-	-lz
-
-$(ILIBDIR)/libalign-writer.$(SHLX): $(ALIGN_WRITER_OBJ)
-	$(LD) --dlib -o $@ $^ $(ALIGN_WRITER_LIB)
+ALIGN_WRITER_LIB = 
 
 $(ILIBDIR)/libalign-writer.$(LIBX): $(ALIGN_WRITER_OBJ)
 	$(LD) --slib -o $@ $^ $(ALIGN_WRITER_LIB)
-
-libalign-writer_tag:
-	@ $(TOP)/build/tag-module.sh $(MODULE) libalign-writer $(ALIGN_WRITER_OBJ)

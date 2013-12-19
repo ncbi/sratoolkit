@@ -132,6 +132,26 @@ KLIB_EXTERN rc_t CC KDataBufferSub ( const KDataBuffer *self,
  *  make a writable copy of the buffer, copying contents if needed.
  *
  *  "writable" [ OUT ] - pointer to the structure to initialize
+ *
+ * The usage pattern is:
+ *   KDataBuffer buffer;
+ * ...
+ * initialize buffer
+ * do stuff which might make it shared
+ *   (like pass it to a function that might retain it)
+ * ...
+ *   KDataBuffer writable;
+ *   rc_t rc = KDataBufferMakeWritable(&buffer, &writable);
+ *
+ *   if (rc == 0) {
+ *       / * until you whack the old one KDataBufferWritable(&writable) might be false! * /
+ *       KDataBufferWhack(&buffer);
+ *       buffer = writable;
+ * ...
+ * do whatever you want with buffer because it is now writable (not shared)
+ * ...
+ *   }
+ *   KDataBufferWhack(&buffer);
  */
 KLIB_EXTERN rc_t CC KDataBufferMakeWritable ( const KDataBuffer *self, KDataBuffer *writable );
 

@@ -31,15 +31,16 @@
 #include <stdlib.h>
 #include <string.h>
 
-const unsigned char* IUPAC_decode[256] = { (const unsigned char*)0xFFFF };
+const unsigned char * IUPAC_decode [ 256 ];
 
 static
-void IUPAC_init(void)
+void IUPAC_init ( void )
 {
-    if( IUPAC_decode[0] != NULL ) {
-        const char** t = (const char**)IUPAC_decode;
+    static bool initialized;
+    if ( ! initialized )
+    {
+        const char ** t = ( const char** ) IUPAC_decode;
 
-        memset(t, 0, sizeof(t));
         t['A'] = t['a'] = "Aa";
         t['C'] = t['c'] = "Cc";
         t['G'] = t['g'] = "Gg";
@@ -55,7 +56,8 @@ void IUPAC_init(void)
         t['B'] = t['b'] = "CcGgTtUu";
         t['D'] = t['d'] = "AaGgTtUu";
         t['H'] = t['h'] = "AaCcTtUu";
-        t['N'] = t['n'] = t['.'] = "AaCcGgTtUuNn.-";
+        t['N'] = t['n'] = t [ '.' ] = "AaCcGgTtUuNn.-";
+        initialized = true;
     }
 }
 
@@ -156,9 +158,7 @@ LIB_EXPORT rc_t CC AgrepMake( AgrepParams **self, AgrepFlags mode, const char *p
         (*self)->mode = mode;
         if( mode & AGREP_PATTERN_4NA ) {
             size_t i, l = strlen(pattern);
-            if( IUPAC_decode[0] != NULL ) {
-                IUPAC_init();
-            }
+            IUPAC_init();
             if( l == 0 ) {
                 rc = RC(rcText, rcString, rcSearching, rcParam, rcOutofrange);
             }

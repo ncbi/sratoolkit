@@ -171,7 +171,7 @@ LIB_EXPORT rc_t CC VNamelistAppend( VNamelist *self, const char* src )
             rc = RC( rcCont, rcNamelist, rcInserting, rcString, rcEmpty );
         else
         {
-            char* my_copy = strdup( src );
+            char* my_copy = string_dup( src, string_size( src ) );
             if ( my_copy == NULL )
                 rc = RC( rcCont, rcNamelist, rcInserting, rcMemory, rcExhausted );
             else
@@ -184,6 +184,36 @@ LIB_EXPORT rc_t CC VNamelistAppend( VNamelist *self, const char* src )
     }
     return rc;
 }
+
+
+LIB_EXPORT rc_t CC VNamelistAppendString( VNamelist *self, const String * src )
+{
+    rc_t rc;
+
+    if ( self == NULL )
+        rc = RC ( rcCont, rcNamelist, rcInserting, rcSelf, rcNull );
+    else
+    {
+        if ( src == NULL )
+            rc = RC( rcCont, rcNamelist, rcInserting, rcString, rcNull );
+        else if ( src->addr == NULL || src->len == 0 )
+            rc = RC( rcCont, rcNamelist, rcInserting, rcString, rcEmpty );
+        else
+        {
+            char* my_copy = string_dup ( src->addr, src->len );
+            if ( my_copy == NULL )
+                rc = RC( rcCont, rcNamelist, rcInserting, rcMemory, rcExhausted );
+            else
+            {
+                rc = VectorAppend( &(self->name_vector), NULL, my_copy );
+                if ( rc != 0 )
+                    free ( my_copy );
+            }
+        }
+    }
+    return rc;
+}
+
 
 
 LIB_EXPORT rc_t CC VNamelistIndexOf( VNamelist *self, const char* s, uint32_t *found )
@@ -215,7 +245,7 @@ LIB_EXPORT rc_t CC VNamelistIndexOf( VNamelist *self, const char* s, uint32_t *f
                     if ( rc == 0 )
                     {
                         size_t n2 = string_size ( name );
-                        if ( string_cmp ( s, n1, name, n2, ( n1 < n2 ) ? n2 : n1 ) == 0 )
+                        if ( string_cmp ( s, n1, name, n2, (uint32_t) ( ( n1 < n2 ) ? n2 : n1 ) ) == 0 )
                         {
                             *found = idx;
                             return 0;

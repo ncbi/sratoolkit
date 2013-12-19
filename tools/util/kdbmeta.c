@@ -50,6 +50,10 @@
 #include <kdb/column.h>
 #include <kdb/meta.h>
 #include <kdb/namelist.h>
+#include <kdb/kdb-priv.h>
+#include <vfs/manager.h>
+#include <vfs/resolver.h>
+#include <vfs/path.h>
 #include <kapp/main.h>
 #include <kapp/args.h>
 #include <klib/text.h>
@@ -1161,23 +1165,43 @@ rc_t CC KMain ( int argc, char *argv [] )
 
                         found = false;
 
-#if 1 /* TOOLS_USE_SRAPATH != 0 */
+#if ! WINDOWS /* TOOLS_USE_SRAPATH != 0 */
+#warning fix kdbmanagerVPathType to understand accessions
                         {
-                            SRAPath * sra_path = NULL;
-                            rc = SRAPathMake (&sra_path, NULL);
+                            const VFSManager * vfs;
+                            rc = KDBManagerGetVFSManager ( mgr, & vfs );
                             if ( rc == 0 )
                             {
-                                if ( ! SRAPathTest (sra_path, pc))
+                                VResolver * resolver;
+                                rc = VFSManagerGetResolver ( vfs, & resolver );
+                                if ( rc == 0 )
                                 {
-                                    rc = SRAPathFind (sra_path, pc, objpath, sizeof (objpath));
-                                    if (rc == 0)
-                                        found = true;
+                                    VPath * query;
+                                    rc = VFSManagerMakePath ( vfs, & query, "%s", pc );
+                                    if ( rc == 0 )
+                                    {
+                                        const VPath * local;
+                                        rc = VResolverQuery ( resolver, 0, query, & local, NULL, NULL );
+                                        if ( rc == 0 )
+                                        {
+                                            rc = VPathReadPath ( local, objpath, sizeof objpath, NULL );
+                                            if ( rc == 0 )
+                                                found = true;
+
+                                            VPathRelease ( local );
+                                        }
+                                        else if ( GetRCState ( rc ) == rcNotFound )
+                                        {
+                                            rc = 0;
+                                        }
+
+                                        VPathRelease ( query );
+                                    }
+
+                                    VResolverRelease ( resolver );
                                 }
-                                SRAPathRelease (sra_path);
-                            }
-                            else if ( GetRCState ( rc ) == rcNotFound && GetRCTarget ( rc ) == rcDylib )
-                            {
-                                rc = 0;
+
+                                VFSManagerRelease ( vfs );
                             }
                         }
 

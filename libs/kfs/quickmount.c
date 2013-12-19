@@ -179,7 +179,7 @@ rc_t KQuickMountDirRelativePath (const KQuickMountDir *self, enum RCContext ctx,
     psize = strlen ( p );
 
     /* open up space if needed */
-    if ( p - path < bsize )
+    if ( (size_t) (p - path) < bsize )
     {
         /* prevent overflow */
         if ( bsize + psize >= path_max )
@@ -192,7 +192,7 @@ rc_t KQuickMountDirRelativePath (const KQuickMountDir *self, enum RCContext ctx,
         memcpy ( & path [ bsize ], "../", 3 );
 
     /* close gap */
-    if ( p - path > bsize )
+    if ( (size_t) (p - path) > bsize )
         memmove ( & path [ bsize ], p, strlen ( p ) + 1 );
 
     return 0;
@@ -432,7 +432,7 @@ static rc_t CC KQuickMountDirResolvePath (const KQuickMountDir *self,
     rc_t rc = KQuickMountDirVMakePath ( self, rcResolving, true, full, sizeof full, path, args );
     if ( rc == 0 )
     {
-        uint32_t path_size = strlen ( full );
+        size_t path_size = strlen ( full );
 
         if ( absolute )
         {

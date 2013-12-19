@@ -28,6 +28,8 @@
 #include <klib/log.h>
 #include <kfs/file.h>
 
+#include <kapp/main.h> /* for Quitting */
+
 #include <vdb/schema.h>
 #include <vdb/table.h>
 #include <vdb/cursor.h>
@@ -437,10 +439,10 @@ rc_t ReferenceWhack(Reference *self, bool commit)
             rc = ReferenceSeq_Release(self->rseq);
         if (self->out_of_order) {
             (void)LOGMSG(klogInfo, "Starting coverage calculation");
-            rc = ReferenceMgr_Release(self->mgr, commit, NULL, true);
+            rc = ReferenceMgr_Release(self->mgr, commit, NULL, true, Quitting);
         }
         else {
-            rc = ReferenceMgr_Release(self->mgr, commit, NULL, false);
+            rc = ReferenceMgr_Release(self->mgr, commit, NULL, false, Quitting);
         }
     }
     return rc;

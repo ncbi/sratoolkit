@@ -77,4 +77,8 @@ rc_t vdh_print_col_info( dump_context *ctx,
                          const p_col_def col_def,
                          const VSchema *my_schema );
 
+#ifdef __cplusplus
+}
+#endif
+
 #endif

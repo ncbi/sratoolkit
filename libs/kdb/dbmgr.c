@@ -27,6 +27,9 @@
 #define TRACK_REFERENCES 0
 
 #include <kdb/extern.h>
+
+#include <kdb/kdb-priv.h> /* KDBManagerMakeReadWithVFSManager */
+
 #include "libkdb.vers.h"
 
 #include <vfs/manager.h>
@@ -60,6 +63,7 @@
 
 
 /* MakeRead
+ * MakeReadWithVFSManager
  *  create library handle for specific use
  *  NB - only one of the functions will be implemented
  *
@@ -68,9 +72,14 @@
  */
 LIB_EXPORT rc_t CC KDBManagerMakeRead ( const KDBManager **mgrp, const KDirectory *wd )
 {
-    return KDBManagerMake ( ( KDBManager** ) mgrp, wd, "make-read" );
+    return KDBManagerMakeReadWithVFSManager(mgrp, wd, NULL);
 }
 
+LIB_EXPORT rc_t CC KDBManagerMakeReadWithVFSManager ( const KDBManager **mgrp,
+    const KDirectory *wd, struct VFSManager *vmanager )
+{
+    return KDBManagerMake ( ( KDBManager** ) mgrp, wd, "make-read", vmanager );
+}
 
 /*
  * Resolve using manager, possibly against this directory, using or not uri
@@ -141,7 +150,7 @@ rc_t KDBManagerVResolvePath (const KDBManager * self,
     if ((fmt == NULL) || (fmt[0] == '\0'))
         return RC (rcDB, rcMgr, rcResolving, rcParam, rcNull);
 
-    rc = VPathMakeFmt (&p, fmt, args);
+    rc = VFSManagerVMakePath ( self -> vfsmgr, &p, fmt, args);
     if (rc == 0)
     {
         rc = KDBManagerVResolveVPath (self, disable_accession_resolution,
@@ -170,7 +179,7 @@ rc_t KDBManagerVResolvePathRelativeDir (const KDBManager * self, const KDirector
     if ((fmt == NULL) || (fmt[0] == '\0'))
         return RC (rcDB, rcMgr, rcResolving, rcParam, rcNull);
 
-    rc = VPathMakeFmt (&p, fmt, args);
+    rc = VFSManagerVMakePath ( self -> vfsmgr, &p, fmt, args);
     if (rc == 0)
     {
         rc = KDBManagerVResolveVPath (self, disable_accession_resolution,
@@ -333,11 +342,20 @@ LIB_EXPORT int CC KDBManagerPathTypeVP ( const KDBManager * self, const VPath * 
             }
             /*
              * If we couldn't open the path as a directory we 'might'
-             * have a KDB idx but we will only try that for a limitted
+             * have a KDB idx but we will only try that for a limited
              * set of uri schemes.
              */
             else
             {
+#if 1
+                if ( VPathIsFSCompatible ( rpath ) )
+                {
+                    char buffer [ 4096 ];
+                    rc = VPathReadPath ( rpath, buffer, sizeof buffer, NULL );
+                    if ( rc == 0 )
+                        path_type = KDBPathType ( self -> wd, false, buffer );
+                }
+#else
                 VPUri_t t;
 
                 rc = VPathGetScheme_t (rpath, &t);
@@ -359,6 +377,7 @@ LIB_EXPORT int CC KDBManagerPathTypeVP ( const KDBManager * self, const VPath * 
                         break;
                     }}
                 }
+#endif
             }
             VPathRelease (rpath);
         }
@@ -376,7 +395,7 @@ LIB_EXPORT int CC KDBManagerVPathType ( const KDBManager * self, const char *pat
         VPath * vp;
         rc_t rc;
 
-        rc = VPathMakeVFmt (&vp, path, args);
+        rc = VFSManagerVMakePath ( self -> vfsmgr, &vp, path, args);
         if (rc == 0)
         {
             path_type = KDBManagerPathTypeVP (self, vp);

@@ -40,6 +40,7 @@
 #include <ctype.h>
 #include <stdio.h>
 #include <assert.h>
+#include <va_copy.h>
 
 /* the number of PrintFmt, PrintArg and String
    elements to allocate in function-local storage */
@@ -1281,7 +1282,7 @@ LIB_EXPORT rc_t CC old_string_printf ( char *dst, size_t bsize, size_t *num_writ
     return rc;
 }
 
-LIB_EXPORT size_t CC old_vkfprintf ( const KWrtHandler *out,
+LIB_EXPORT rc_t CC old_vkfprintf ( const KWrtHandler *out,
     size_t *num_writ, const char * fmt, va_list args )
 {
     rc_t rc;
@@ -1303,7 +1304,7 @@ LIB_EXPORT size_t CC old_vkfprintf ( const KWrtHandler *out,
     return rc;
 }
 
-LIB_EXPORT size_t CC old_kfprintf ( const KWrtHandler *out,
+LIB_EXPORT rc_t CC old_kfprintf ( const KWrtHandler *out,
     size_t *num_writ, const char * fmt, ... )
 {
     rc_t rc;
@@ -2297,8 +2298,8 @@ rc_t print_padding ( KBufferedWrtHandler *out, size_t count, char pad_char )
             num_writ = count - total;
         else
         {
-            uint32_t i = out -> cur;
-            uint32_t lim = out -> cur + count - total;
+            size_t i = out -> cur;
+            size_t lim = out -> cur + count - total;
             if ( lim > out -> bsize )
                 lim = out -> bsize;
             for ( num_writ = lim - i; i < lim; ++ i )
@@ -2472,7 +2473,7 @@ rc_t structured_print_engine ( KBufferedWrtHandler *out,
         uint32_t zero_fill;
 
         /* length of integer portion of numeral, prefix contribution */
-        uint32_t int_len, prefix_contribution;
+        uint32_t int_len = 0, prefix_contribution;
 
         /* string index, from index and text precision */
         bool text_index;
@@ -2537,7 +2538,8 @@ rc_t structured_print_engine ( KBufferedWrtHandler *out,
                 f . type = sptString;
                 if ( f . u . f . precision < S . len )
 #if STDC_COMPATIBILITY  &&  !defined(__GLIBC__)
-                    S . size = S . len = f . u . f . precision;
+                    S . size = f . u . f . precision;
+                    S . len = (uint32_t) f . u . f . precision;
 #else
                     StringInit ( & S, "", 0, 0 );
 #endif                    
@@ -2684,6 +2686,8 @@ rc_t structured_print_engine ( KBufferedWrtHandler *out,
                 text_lim = f . u . f . precision;
 
             S = * args [ arg_idx ] . S;
+            if ( S . addr == NULL && S . size == 0 && S . len == 0 )
+                S . addr = "";
             break;
 
             /* UCS-2 or UTF-32 String object */
@@ -2707,7 +2711,7 @@ rc_t structured_print_engine ( KBufferedWrtHandler *out,
         case sptBytesPrinted:
             n = args [ arg_idx ] . n;
             if ( n != NULL )
-                * n = out -> cur + out -> flushed;
+                * n = (uint32_t) ( out -> cur + out -> flushed );
             ++ arg_idx;
             continue;
 #endif
@@ -2722,7 +2726,7 @@ rc_t structured_print_engine ( KBufferedWrtHandler *out,
         case sptSignedInt16Vect:
         case sptSignedInt32Vect:
         case sptSignedInt64Vect:
-            f64 = i64;
+            f64 = (double) i64;
             break;
 
         case sptUnsignedInt:
@@ -2730,14 +2734,14 @@ rc_t structured_print_engine ( KBufferedWrtHandler *out,
         case sptUnsignedInt16Vect:
         case sptUnsignedInt32Vect:
         case sptUnsignedInt64Vect:
-            f64 = u64;
+            f64 = (double) u64;
             break;
 
         case sptFloat:
         case sptFloat32Vect:
         case sptFloat64Vect:
         case sptFloatLongVect:
-            i64 = f64;
+            i64 = (int64_t) f64;
             break;
 
         case sptChar:
@@ -2752,10 +2756,10 @@ rc_t structured_print_engine ( KBufferedWrtHandler *out,
             return RC ( rcText, rcString, rcConverting, rcType, rcUnsupported );
 
         case sptRowId:
-            f64 = i64;
+            f64 = (double) i64;
             break;
         case sptRowLen:
-            f64 = u64;
+            f64 = (double) u64;
             break;
 
 #if SUPPORT_PERCENT_N
@@ -3022,7 +3026,7 @@ rc_t structured_print_engine ( KBufferedWrtHandler *out,
                                 , VersionGetMinor ( ( uint32_t ) u64 )
                                 , VersionGetRelease ( ( uint32_t ) u64 )
                 );
-            StringInit ( & S, & text [ i ], dst_len, dst_len );
+            StringInit ( & S, text, dst_len, dst_len );
             f . u . f . precision = dst_len;
             break;
 
@@ -3108,12 +3112,12 @@ rc_t structured_print_engine ( KBufferedWrtHandler *out,
             break;
 
         case spfRC:
-            dst_len = KWrtFmt_rc_t ( text, sizeof text, f . explain_rc ? "#" : "", ( rc_t ) u64 );
+            dst_len = (uint32_t) KWrtFmt_rc_t ( text, sizeof text, f . explain_rc ? "#" : "", ( rc_t ) u64 );
             StringInit ( & S, text, dst_len, dst_len );
             break;
 
         case spfOSErr:
-            dst_len = KWrtFmt_error_code ( text, sizeof text, ( int ) i64 );
+            dst_len = (uint32_t) KWrtFmt_error_code ( text, sizeof text, ( int ) i64 );
             StringInit ( & S, text, dst_len, dst_len );
             break;
 
@@ -3131,7 +3135,7 @@ rc_t structured_print_engine ( KBufferedWrtHandler *out,
         {
             assert ( S . addr != NULL );
             assert ( S . size != 0 || S . len == 0 );
-            if ( StringSubstr ( & S, & S, text_start, text_lim ) == NULL )
+            if ( StringSubstr ( & S, & S, ( uint32_t ) text_start, ( uint32_t ) text_lim ) == NULL )
                 StringInit ( & S, "", 0, 0 );
         }
 
@@ -3146,7 +3150,7 @@ rc_t structured_print_engine ( KBufferedWrtHandler *out,
         if ( f . left_fill != 0 && f . u . f . min_field_width > dst_len )
         {
             assert ( S . size != 0 || S . len == 0 );
-            left_pad += f . u . f . min_field_width - dst_len;
+            left_pad += ( uint32_t ) ( f . u . f . min_field_width ) - dst_len;
             dst_len = ( uint32_t ) f . u . f . min_field_width;
         }
 
@@ -3409,7 +3413,7 @@ LIB_EXPORT rc_t CC new_string_printf ( char *dst, size_t bsize,
     return rc;
 }
 
-LIB_EXPORT size_t CC new_vkfprintf ( const KWrtHandler *out,
+LIB_EXPORT rc_t CC new_vkfprintf ( const KWrtHandler *out,
     size_t *num_writ, const char *fmt_str, va_list vargs )
 {
     rc_t rc;
@@ -3438,7 +3442,7 @@ LIB_EXPORT size_t CC new_vkfprintf ( const KWrtHandler *out,
     return rc;
 }
 
-LIB_EXPORT size_t CC new_kfprintf ( const KWrtHandler *out,
+LIB_EXPORT rc_t CC new_kfprintf ( const KWrtHandler *out,
     size_t *num_writ, const char *fmt, ... )
 {
     rc_t rc;
@@ -3448,6 +3452,89 @@ LIB_EXPORT size_t CC new_kfprintf ( const KWrtHandler *out,
 
     rc = new_vkfprintf ( out, num_writ, fmt, args );
         
+    va_end ( args );
+
+    return rc;
+}
+
+LIB_EXPORT rc_t CC KDataBufferVPrintf ( KDataBuffer * buf, const char * fmt, va_list args )
+{
+    rc_t rc;
+
+    if ( buf == NULL )
+        rc = RC ( rcText, rcString, rcFormatting, rcBuffer, rcNull );
+    else if ( fmt == NULL )
+        rc = RC ( rcText, rcString, rcFormatting, rcParam, rcNull );
+    else if ( fmt [ 0 ] == 0 )
+        rc = RC ( rcText, rcString, rcFormatting, rcParam, rcEmpty );
+    else
+    {
+        size_t bsize;
+        char *buffer;
+        size_t content;
+        size_t num_writ;
+
+        /* the C library ruins a va_list upon use
+           in case we ever need to use it a second time,
+           make a copy first */
+        va_list args_copy;
+        va_copy ( args_copy, args );
+
+        /* begin to calculate content and bsize */
+        content = ( size_t ) buf -> elem_count;
+
+        /* check for an empty buffer */
+        if ( content == 0 )
+        {
+            /* detect buffers initialized by memset */
+            if ( buf -> elem_bits == 0 )
+                buf -> elem_bits = 8;
+
+            rc = KDataBufferResize ( buf, bsize = 4096 );
+            if ( rc != 0 )
+                return rc;
+        }
+        else
+        {
+            /* generate even multiple of 4K */
+            bsize = ( content + 4095 ) & ~ ( size_t ) 4095;
+
+            /* discount NUL byte */
+            content -= 1;
+        }
+            
+        /* convert the 2-part url into a flat string */
+        buffer = buf -> base;
+        rc = string_vprintf ( &buffer [ content ], bsize - content, & num_writ, fmt, args );
+        /* Make sure there is enough room to store data including NUL */
+        if ( rc != 0 || ( content + num_writ ) == bsize )
+        {
+            bsize = ( content + num_writ + 4095 + 1 ) & ~ ( size_t ) 4095;
+            rc = KDataBufferResize ( buf, bsize );
+            if ( rc == 0 )
+            {
+                /* try again with the newly sized buffer */
+                rc = string_vprintf ( &buffer [ content ], bsize - content, & num_writ, fmt, args_copy );
+            }
+        }
+        va_end ( args_copy );
+    
+        /* size down to bsize + NUL */
+        if ( rc == 0 )
+            KDataBufferResize ( buf, content + num_writ + 1 );
+    }
+
+    return rc;
+}
+
+/* forward to KDataBufferVPrintf */
+LIB_EXPORT rc_t CC KDataBufferPrintf ( KDataBuffer * buf, const char * fmt, ... )
+{
+    rc_t rc;
+
+    va_list args;
+    va_start ( args, fmt );
+    rc = KDataBufferVPrintf ( buf, fmt, args );
     va_end ( args );
 
     return rc;

@@ -29,13 +29,10 @@ TOP ?= $(shell ../../build/abspath.sh ../..)
 MODULE = libs/search
 
 INT_LIBS = \
-
-EXT_LIBS = \
 	libksrch
 
 ALL_LIBS = \
-	$(INT_LIBS) \
-	$(EXT_LIBS)
+	$(INT_LIBS)
 
 include $(TOP)/build/Makefile.env
 
@@ -48,17 +45,13 @@ all std: makedirs
 $(INT_LIBS): makedirs
 	@ $(MAKE_CMD) $(ILIBDIR)/$@
 
-$(EXT_LIBS): makedirs
-	@ $(MAKE_CMD) $(LIBDIR)/$@
-
 .PHONY: all std $(ALL_LIBS)
 
 #-------------------------------------------------------------------------------
 # std
 #
 $(TARGDIR)/std: \
-	$(addprefix $(ILIBDIR)/,$(INT_LIBS)) \
-	$(addprefix $(LIBDIR)/,$(EXT_LIBS))
+	$(addprefix $(ILIBDIR)/,$(INT_LIBS))
 
 .PHONY: $(TARGDIR)/all $(TARGDIR)/std
 
@@ -71,17 +64,9 @@ clean: stdclean
 .PHONY: clean
 
 #-------------------------------------------------------------------------------
-# tag
-#
-tag: \
-	$(addsuffix _tag,$(ALL_LIBS))
-
-.PHONY: tag $(addsuffix _tag,$(ALL_LIBS))
-
-#-------------------------------------------------------------------------------
 # search
 #
-$(LIBDIR)/libksrch: $(addprefix $(LIBDIR)/libksrch.,$(LIBEXT))
+$(ILIBDIR)/libksrch: $(addprefix $(ILIBDIR)/libksrch.,$(ILIBEXT))
 
 SEARCH_SRC = \
 	search \
@@ -108,11 +93,5 @@ SEARCH_LIB = \
 	-dklib \
 	-dm
 
-$(LIBDIR)/libksrch.$(SHLX): $(SEARCH_OBJ)
-	$(LD) --dlib --vers $(SRCDIR) -o $@ $^ $(SEARCH_LIB)
-
-$(LIBDIR)/libksrch.$(LIBX): $(SEARCH_OBJ)
-	$(LD) --slib --vers $(SRCDIR) -o $@ $^ $(SEARCH_LIB)
-
-libksrch_tag:
-	@ $(TOP)/build/tag-module.sh $(MODULE) libksrch $(SEARCH_OBJ)
+$(ILIBDIR)/libksrch.$(LIBX): $(SEARCH_OBJ)
+	$(LD) --slib -o $@ $^ $(SEARCH_LIB)

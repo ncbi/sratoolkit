@@ -110,7 +110,7 @@ LIB_EXPORT rc_t CC KFileRelease ( const KFile *self )
             if ( self -> dir != NULL )
                 return KDirectoryDestroyFile ( self -> dir, ( KFile* ) self );
             return KFileDestroy ( ( KFile* ) self );
-        case krefLimit:
+        case krefNegative:
             return RC ( rcFS, rcFile, rcReleasing, rcRange, rcExcessive );
         default:
             break;

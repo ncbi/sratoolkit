@@ -43,7 +43,11 @@
 // these macros are available outside of test cases' code
 
 #define LOG(log_level, msg) \
-    if (log_level >= ncbi::NK::TestEnv::verbosity) std::cerr << msg
+    (log_level >= ncbi::NK::TestEnv::verbosity ? (std::cerr << msg) : std::cerr)
+
+/*#define TESTMESSAGE(M) \
+{ ncbi::NK::saveLocation(__FILE__,__LINE__); \
+    LOG(ncbi::NK::LogLevel::e_message, M); }*/
 
 #define TEST_MESSAGE(M) \
 { ncbi::NK::saveLocation(__FILE__,__LINE__); \
@@ -94,7 +98,7 @@ class TestCase;
 
 class TestEnv {
 public:
-	typedef rc_t ArgsHandler(int argc, char* argv[]);
+    typedef rc_t ArgsHandler(int argc, char* argv[]);
 
     TestEnv(int argc, char* argv[], ArgsHandler *argsHandler = NULL);
     ~TestEnv(void);
@@ -122,6 +126,9 @@ public:
     static rc_t Usage(const char *progname);
 #endif
 
+    static bool in_child_process;
+    static std::string GetPidString();
+
 private:
     static void TermHandler();
 
@@ -144,10 +151,9 @@ protected:
 public:
     ncbi::NK::counter_t GetErrorCounter(void) { return _ec; }
     const std::string& GetName(void) const { return _name; }
-
-protected:
     void ErrorCounterAdd(ncbi::NK::counter_t ec) { _ec += ec; }
 
+protected:
     void report_error(const char* msg, const char* file, int line, bool is_msg = false, bool isCritical = false);
 
     void report_passed(const char* msg, const char* file, int line);
@@ -237,6 +243,9 @@ protected:
   ( (exp)                      \
       ? report_passed((#exp), __FILE__, __LINE__) \
       : report_error ((#exp), __FILE__, __LINE__) )
+
+#define REPORT_ERROR(exp)       \
+        report_error (exp, __FILE__, __LINE__)
 
 /* TODO #define CHECK_MESSAGE(exp, M)       \
   std::ostringstream s, s << M, \
@@ -446,7 +455,7 @@ ncbi::NK::counter_t Main(int argc, char* argv[],
             "Entering test suite \"" << suite_name << "\"\n");
         ec = t->Run(&globalFixtute);
         LOG(ncbi::NK::LogLevel::e_test_suite,
-            "Leaving test suite \"" << suite_name << "\"\n";)
+            "Leaving test suite \"" << suite_name << "\"\n");
     } 
     catch (std::exception& ex) 
     { 

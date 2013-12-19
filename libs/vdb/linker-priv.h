@@ -256,6 +256,9 @@ struct LSpecial
     /* func name */
     struct KSymbol const *name;
 
+    /* for built-in address */
+    VUntypedFunc func;
+
     /* func id */
     uint32_t id;
 };

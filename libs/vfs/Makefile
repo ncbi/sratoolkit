@@ -28,14 +28,10 @@ TOP ?= $(shell ../../build/abspath.sh ../..)
 MODULE = libs/vfs
 
 INT_LIBS = \
-
-EXT_LIBS = \
-	libsrapath \
 	libvfs
 
 ALL_LIBS = \
-	$(INT_LIBS) \
-	$(EXT_LIBS)
+	$(INT_LIBS)
 
 TEST_TOOLS = \
 
@@ -46,14 +42,11 @@ RWORKDIR=$(TOP)/$(MODULE)
 #-------------------------------------------------------------------------------
 # outer targets
 #
-all std: vers-includes
+all std: makedirs
 	@ $(MAKE_CMD) $(TARGDIR)/std
 
-$(INT_LIBS): vers-includes
+$(INT_LIBS): makedirs
 	@ $(MAKE_CMD) $(ILIBDIR)/$@
-
-$(EXT_LIBS): vers-includes
-	@ $(MAKE_CMD) $(LIBDIR)/$@
 
 $(TEST_TOOLS): makedirs
 	@ $(MAKE_CMD) $(TEST_BINDIR)/$@
@@ -64,17 +57,9 @@ $(TEST_TOOLS): makedirs
 # std
 #
 $(TARGDIR)/std: \
-	$(addprefix $(ILIBDIR)/,$(INT_LIBS)) \
-	$(addprefix $(LIBDIR)/,$(EXT_LIBS))
+	$(addprefix $(ILIBDIR)/,$(INT_LIBS))
 
 .PHONY: $(TARGDIR)/std
-
-#-------------------------------------------------------------------------------
-# vers-includes
-#
-$(TARGDIR)/vers-includes: $(addsuffix .vers.h,$(EXT_LIBS))
-
-.PHONY: $(TARGDIR)/vers-includes
 
 #-------------------------------------------------------------------------------
 # clean
@@ -85,55 +70,31 @@ clean: stdclean
 .PHONY: clean
 
 #-------------------------------------------------------------------------------
-# tag
-#
-tag: \
-	$(addsuffix _tag,$(ALL_LIBS))
-
-.PHONY: tag $(addsuffix _tag,$(ALL_LIBS))
-
-#-------------------------------------------------------------------------------
-# srapath library
-#
-$(LIBDIR)/libsrapath: $(LIBDIR)/libsrapath.$(LIBX)
-
-SRAPATH_SRC = \
-	srapath-stub \
-	srapath
-
-SRAPATH_OBJ = \
-	$(addsuffix .$(LOBX),$(SRAPATH_SRC))
-
-$(LIBDIR)/libsrapath.$(LIBX): $(SRAPATH_OBJ)
-	$(LD) --slib --vers $(SRCDIR) -o $@ $^
-
-#-------------------------------------------------------------------------------
 # vfs
 #
-$(LIBDIR)/libvfs: $(addprefix $(LIBDIR)/libvfs.,$(LIBEXT))
+$(ILIBDIR)/libvfs: $(addprefix $(ILIBDIR)/libvfs.,$(ILIBEXT))
+
+VFS_SRC_CMN = \
+	syspath \
+	manager  \
+	resolver \
+    
 
 VFS_SRC = \
 	path \
-	syspath \
-	manager  \
-	resolver
+	$(VFS_SRC_CMN)
 
 VFS_OBJ = \
 	$(addsuffix .$(LOBX),$(VFS_SRC))
 
 VFS_LIB = \
+	-lkns \
 	-lkurl \
+	-lkns \
 	-lkrypto \
 	-lkfg \
 	-lkfs \
 	-lklib
 
-$(LIBDIR)/libvfs.$(SHLX): $(VFS_OBJ)
-	$(LD) --dlib --vers $(SRCDIR) -o $@ $^ -ssrapath $(VFS_LIB)
-
-$(LIBDIR)/libvfs.$(LIBX): $(VFS_OBJ)
-	$(LD) --slib --vers $(SRCDIR) -o $@ $^ $(VFS_LIB)
-
-libvfs_tag:
-	@ $(TOP)/build/tag-module.sh $(MODULE) libvfs $(VFS_OBJ)
-
+$(ILIBDIR)/libvfs.$(LIBX): $(VFS_OBJ)
+	$(LD) --slib -o $@ $^ $(VFS_LIB)

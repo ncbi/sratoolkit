@@ -44,4 +44,8 @@ extern "C" {
 
 rc_t vdfo_print_row( const p_row_context r_ctx );
 
+#ifdef __cplusplus
+}
+#endif
+
 #endif

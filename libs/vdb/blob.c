@@ -748,7 +748,7 @@ void VBlobPageMapOptimize ( VBlob **vblobp)
 		elem_count_t	minlen,maxlen;
 		elem_count_t	elem_sz = sblob->data.elem_bits/8;
 		rc_t rc = PageMapRowLengthRange(pm, &minlen,&maxlen);
-		if( rc == 0  && maxlen*elem_sz > 2 ){ 
+		if( rc == 0  && maxlen*elem_sz > 2 && maxlen*elem_sz <= 2048 /* do not optimize super large entries */){ 
 		/******* TRY dictionary **/
 			int64_t		limit_vocab_size;
 			uint32_t	vocab_cnt=0;
@@ -1152,43 +1152,68 @@ rc_t VBlobSubblob( const struct VBlob *self,struct VBlob **sub, int64_t start_id
 LIB_EXPORT rc_t CC VBlobIdRange ( const VBlob *self,
     int64_t *first, uint64_t *count )
 {
-    if ( self == NULL )
-    {   return RC ( rcVDB, rcBlob, rcAccessing, rcSelf, rcNull ); }
+    rc_t rc;
 
-    if ( first != NULL )
-    {   *first = self -> start_id; }
+    if ( first == NULL && count == NULL )
+        rc = RC ( rcVDB, rcBlob, rcAccessing, rcParam, rcNull );
+    else
+    {
+        if ( self == NULL )
+            rc = RC ( rcVDB, rcBlob, rcAccessing, rcSelf, rcNull );
+        else
+        {
+            if ( first != NULL )
+                * first = self -> start_id;
+            if ( count != NULL )
+                * count = self -> stop_id + 1 - self -> start_id;
+            return 0;
+        }
+    }
 
-    if ( count != NULL )
-    {   *count = self -> stop_id + 1 - self -> start_id; }
-
-    return 0;
+    return rc;
 }
 
 LIB_EXPORT rc_t CC VBlobCellData ( const VBlob *self, int64_t row_id,
     uint32_t *elem_bits, const void **base, uint32_t *boff, uint32_t *row_len )
 {
-    uint32_t dummyb;
-    uint32_t dummyr;
-    if ( boff == NULL )
-    {   boff = & dummyb; }
-    if ( row_len == NULL )
-    {   row_len = & dummyr; }
+    rc_t rc;
+    uint32_t dummy;
 
-    if ( self == NULL )
-    {   return RC ( rcVDB, rcBlob, rcAccessing, rcSelf, rcNull ); }
+    if ( elem_bits == NULL )
+        elem_bits = & dummy;
+    if ( boff == NULL )
+        boff = & dummy;
+    if ( row_len == NULL )
+        row_len = & dummy;
 
     if ( base == NULL )
-    {   return RC ( rcVDB, rcBlob, rcAccessing, rcParam, rcNull ); }
+        rc = RC ( rcVDB, rcBlob, rcAccessing, rcParam, rcNull );
+    else
+    {
+        if ( self == NULL )
+            rc = RC ( rcVDB, rcBlob, rcAccessing, rcSelf, rcNull );
+        else if ( row_id < self -> start_id || self -> stop_id < row_id )
+            rc = RC ( rcVDB, rcBlob, rcAccessing, rcRange, rcInvalid );
+        else
+        {
+            uint64_t start;
 
-    *base = self -> data . base;
+            /* TBD - this may be wrong */
+            * elem_bits = self -> data . elem_bits;
+            * row_len = PageMapGetIdxRowInfo ( self -> pm, ( uint32_t ) ( row_id - self -> start_id ), boff );
+            start = ( uint64_t ) boff [ 0 ] * elem_bits [ 0 ];
+            * base = ( uint8_t* ) self -> data . base + ( start >> 3 );
+            * boff = ( uint32_t ) start & 7;
 
-    if ( elem_bits != NULL )
-    {   *elem_bits = self -> data . elem_bits; }
+            return 0;
+        }
 
-    *row_len = PageMapGetIdxRowInfo ( self -> pm,
-        ( uint32_t ) ( row_id - self -> start_id ), boff );
+        * base = NULL;
+    }
 
-    return 0;
+    * elem_bits = * boff = * row_len = 0;
+
+    return rc;
 }
 
 /* a copy of VCursorRead() */

@@ -104,6 +104,9 @@ struct VProdResolve
     /* vector of owned productions */
     Vector *owned;
 
+    /* vector of late-binding expressions */
+    Vector *cx_bind;
+
     /* which chain is being resolved
        chainEncoding    - when going from input to physical
        chainDecoding    - when pulling from physical to output

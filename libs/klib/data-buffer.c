@@ -212,10 +212,12 @@ rc_t buffer_impl_check_integrity (buffer_impl_t const *self, uint8_t const *base
 LIB_EXPORT rc_t CC KDataBufferMake(KDataBuffer *target, uint64_t elem_bits, uint64_t elem_count) {
     rc_t rc;
     size_t bytes;
-    buffer_impl_t **impp = (buffer_impl_t **)&target->ignore;
+    buffer_impl_t **impp;
     
     if (target == NULL)
     	return RC(rcRuntime, rcBuffer, rcConstructing, rcParam, rcNull);
+
+    impp = (buffer_impl_t **)&target->ignore;
     
     bytes = roundup((elem_bits * elem_count + 7) / 8, 12);
     if (8 * (uint64_t)bytes < elem_bits * elem_count)
@@ -367,9 +369,14 @@ LIB_EXPORT rc_t CC KDataBufferCast(const KDataBuffer *self, KDataBuffer *target,
 
 LIB_EXPORT rc_t CC KDataBufferMakeWritable (const KDataBuffer *cself, KDataBuffer *target)
 {
-    
-    if (cself == NULL || target == NULL)
+    if (cself == NULL)
     	return RC(rcRuntime, rcBuffer, rcConstructing, rcParam, rcNull);
+    
+    if (target == NULL)
+    	return RC(rcRuntime, rcBuffer, rcConstructing, rcParam, rcNull);
+
+    if ((KDataBuffer const *)target != cself)
+        memset(target, 0, sizeof(*target));
     
     if (cself->ignore == NULL)
         return KDataBufferMake(target, cself->elem_bits, cself->elem_count);
@@ -392,8 +399,12 @@ LIB_EXPORT rc_t CC KDataBufferMakeWritable (const KDataBuffer *cself, KDataBuffe
             }
             return RC(rcRuntime, rcBuffer, rcAllocating, rcMemory, rcExhausted);
         }
-        else if (atomic32_read(&((buffer_impl_t *)cself->ignore)->refcount) == 1) {
+        else if (atomic32_read(&self->refcount) == 1) {
             /* sub-buffer but is only reference so let it be */
+            if ((KDataBuffer const *)target != cself) {
+                *target = *cself;
+                atomic32_set(&self->refcount, 2);
+            }
             return 0;
         }
         else {
@@ -402,7 +413,11 @@ LIB_EXPORT rc_t CC KDataBufferMakeWritable (const KDataBuffer *cself, KDataBuffe
             
             rc = allocate(&copy, roundup(KDataBufferBytes(cself), 12));
             if (rc == 0) {
-                bitcpy((void *)get_data(copy), 0, cself->base, cself->bit_offset, KDataBufferBits(cself));
+                if (cself->bit_offset == 0)
+                    memcpy((void *)get_data(copy), cself->base, KDataBufferBytes(cself));
+                else
+                    bitcpy((void *)get_data(copy), 0, cself->base, cself->bit_offset, KDataBufferBits(cself));
+
                 if ((const KDataBuffer *)target == cself)
                     release(self);
                 else 

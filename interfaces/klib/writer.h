@@ -135,9 +135,9 @@ KLIB_EXTERN rc_t CC vkprintf ( size_t *num_writ, const char * fmt, va_list args 
 /* kfprintf
  *  performs a printf to a KWrtHandler
  */
-KLIB_EXTERN size_t CC kfprintf ( const KWrtHandler *out,
+KLIB_EXTERN rc_t CC kfprintf ( const KWrtHandler *out,
     size_t *num_writ, const char * fmt, ... );
-KLIB_EXTERN size_t CC vkfprintf ( const KWrtHandler *out,
+KLIB_EXTERN rc_t CC vkfprintf ( const KWrtHandler *out,
     size_t *num_writ, const char * fmt, va_list args );
 
 

@@ -33,6 +33,7 @@
 #include <kfs/impl.h>
 #include <klib/refcount.h>
 #include <klib/text.h>
+#include <klib/printf.h>
 #include <klib/vector.h>
 #include <klib/namelist.h>
 #include <klib/rc.h>
@@ -153,7 +154,7 @@ LIB_EXPORT rc_t CC KRepositoryRelease ( const KRepository *self )
         {
         case krefWhack:
             return KRepositoryWhack ( ( KRepository* ) self );
-        case krefLimit:
+        case krefNegative:
             return RC ( rcKFG, rcNode, rcReleasing, rcRange, rcExcessive );
         }
     }
@@ -345,6 +346,39 @@ LIB_EXPORT bool CC KRepositoryDisabled ( const KRepository *self )
 
     return false;
 }
+
+
+static const char * STR_TRUE  = "true";
+static const char * STR_FALSE = "false";
+
+LIB_EXPORT rc_t CC KRepositorySetDisabled ( const KRepository *self, bool disabled )
+{
+    rc_t rc = RC ( rcKFG, rcNode, rcAccessing, rcSelf, rcNull );
+    if ( self != NULL )
+    {
+        KConfigNode * self_node = ( KConfigNode * )self->node;  /* casting away const-ness */
+        KConfigNode * node;
+        rc = KConfigNodeOpenNodeUpdate ( self_node, &node, "disabled" );
+        if ( rc == 0 )
+        {
+            const char * value = disabled ? STR_TRUE : STR_FALSE;
+            rc = KConfigNodeWrite ( node, value, string_size( value ) );
+            if ( rc == 0 )
+            {
+                KConfig * cfg;
+                rc = KConfigNodeGetMgr( self->node, &cfg );
+                if ( rc == 0 )
+                {
+                    rc = KConfigCommit ( cfg );
+                    KConfigRelease ( cfg );
+                }
+            }
+            KConfigNodeRelease ( node );
+        }
+    }
+    return rc;
+}
+
 
 /* CacheEnabled
  *  discover whether the repository supports caching
@@ -769,7 +803,7 @@ LIB_EXPORT rc_t CC KRepositoryMgrRelease ( const KRepositoryMgr *self )
         {
         case krefWhack:
             return KRepositoryMgrWhack ( ( KRepositoryMgr* ) self );
-        case krefLimit:
+        case krefNegative:
             return RC ( rcKFG, rcMgr, rcReleasing, rcRange, rcExcessive );
         }
     }
@@ -1032,19 +1066,31 @@ LIB_EXPORT rc_t CC KRepositoryMgrCurrentProtectedRepository ( const KRepositoryM
                                 const KRepository *r = ( const void* ) VectorGet ( & v, i );
                                 if ( r -> subcategory == krepProtectedSubCategory )
                                 {
+                                    rc_t rc2 = 0;
                                     size_t resolved_size;
                                     char *resolved = wd_path + path_size;
 
                                     /* get stated root path to repository */
                                     char *root = resolved + path_size;
-                                    rc = KRepositoryRoot ( r, root, path_size, NULL );
-                                    if ( rc != 0 )
-                                        break;
+                                    rc2 = KRepositoryRoot ( r,
+                                        root, path_size, NULL );
+                                    if ( rc2 != 0 ) {
+                                        /* VDB-1096:
+                                        We cannot get repository root:
+                                        is it a bad repository configuration?
+                                        Then ignore this repository node
+                                        and try another repository */
+                                        continue;
+                                    }
 
                                     /* get its canonical path */
-                                    rc = KSysDirRealPath ( sysDir, resolved, path_size, root );
-                                    if ( rc != 0 )
-                                        break;
+                                    rc2 = KSysDirRealPath ( sysDir,
+                                        resolved, path_size, root );
+                                    if ( rc2 != 0 ) {
+                                        /* VDB-1096:
+                      Invalid cannot get repository root? Ignore and continue */
+                                        continue;
+                                    }
 
                                     /* we know the current directory's canonical path size
                                        and we know the repository's canonical path size.
@@ -1085,3 +1131,60 @@ LIB_EXPORT rc_t CC KRepositoryMgrCurrentProtectedRepository ( const KRepositoryM
 
     return rc;
 }
+
+/* GetProtectedRepository
+ *  retrieves a user protected repository by its associated project-id
+ */
+KFG_EXTERN rc_t CC KRepositoryMgrGetProtectedRepository ( const KRepositoryMgr *self, 
+    uint32_t projectId, 
+    const KRepository **protected )
+{
+    rc_t rc;
+
+    if ( protected == NULL )
+        rc = RC ( rcKFG, rcMgr, rcAccessing, rcParam, rcNull );
+    else
+    {
+        if ( self == NULL )
+            rc = RC ( rcKFG, rcMgr, rcAccessing, rcSelf, rcNull );
+        else
+        {
+            char repNodeName[512] = "";
+            size_t numWrit = 0;
+            KRepositoryVector v;
+            rc = string_printf(repNodeName, sizeof repNodeName, &numWrit, "dbgap-%u", projectId); /* go case-insensitive */
+            assert(numWrit < sizeof(repNodeName));
+            
+            rc = KRepositoryMgrUserRepositories ( self, & v );
+            if ( rc == 0 )
+            {  /* look for all protected user repositories */
+                uint32_t i, count = VectorLength ( & v );
+                for ( i = 0; i < count; ++ i )
+                {
+                    const KRepository *r = ( const void* ) VectorGet ( & v, i );
+                    if ( r -> subcategory == krepProtectedSubCategory )
+                    {
+                        char localName[512] = "";
+                        size_t localNumWrit = 0;
+                        KRepositoryName(r, localName, sizeof(localName), &localNumWrit);
+                        assert(localNumWrit < sizeof(localName));
+                        if (strcase_cmp(repNodeName, numWrit, localName, localNumWrit, sizeof(localName)) == 0)
+                        {
+                            rc = KRepositoryAddRef ( r );
+                            if ( rc == 0 )
+                            {
+                                * protected = r;
+                                KRepositoryVectorWhack(&v);
+                                return 0;
+                            }
+                        }
+                    }
+                }
+                KRepositoryVectorWhack(&v);
+                rc = RC ( rcKFG, rcMgr, rcAccessing, rcNode, rcNotFound );
+            }
+        }
+    }
+
+    return rc;
+}    

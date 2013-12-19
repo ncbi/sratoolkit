@@ -30,6 +30,7 @@
 #include <sra/srapath.h>
 #include <sra/types.h>
 #include <sra/sraschema.h>
+#include <sra/sradb-priv.h>
 #include <vdb/database.h>
 #include <vdb/schema.h>
 #include <vdb/table.h>
@@ -41,6 +42,7 @@
 #include <kdb/table.h>
 #include <kdb/database.h>
 #include <kdb/kdb-priv.h>
+#include <vfs/manager.h>
 #include <vfs/path.h>
 #include <vfs/path-priv.h>
 #include <vfs/resolver.h>
@@ -49,6 +51,7 @@
 #include <klib/debug.h>
 #include <klib/rc.h>
 #include <klib/text.h>
+#include <klib/printf.h>
 #include <kfs/toc.h>
 #include <kfs/file.h>
 #include <sysalloc.h>
@@ -146,7 +149,7 @@ rc_t SRATableSever ( const SRATable *self )
         {
         case krefWhack:
             return SRATableWhack ( ( SRATable* ) self );
-        case krefLimit:
+        case krefNegative:
             return RC ( rcSRA, rcTable, rcReleasing, rcRange, rcExcessive );
         }
     }
@@ -322,7 +325,7 @@ rc_t PseudoMetaFix(PseudoMeta *self)
 }
 
 static
-rc_t SRATableLoadMetadata(SRATable *self)
+rc_t SRATableLoadMetadata(SRATable * self)
 {
     rc_t rc = 0;
     PseudoMeta meta;
@@ -354,20 +357,58 @@ rc_t SRATableLoadMetadata(SRATable *self)
     return rc;
 }
 
+/* detect min and max spot-id from a temp. cursor */
+static rc_t SRATableGetMinMax( SRATable * self )
+{
+    const VCursor *temp_cursor;
+    rc_t rc;
+
+    assert( self != NULL );
+    assert( self->vtbl != NULL);
+    rc = VTableCreateCursorRead( self->vtbl, &temp_cursor );
+    if ( rc == 0 )
+    {
+        uint32_t idx;
+        rc = VCursorAddColumn ( temp_cursor, &idx, "READ" );
+        if ( rc == 0 )
+        {
+            rc = VCursorOpen( temp_cursor );
+            if ( rc == 0 )
+            {
+                int64_t  first;
+                uint64_t count;
+                rc = VCursorIdRange( temp_cursor, 0, &first, &count );
+                if ( rc == 0 )
+                {
+                    self->min_spot_id = first;
+                    self->max_spot_id = first + count;
+                    self->spot_count = count;
+                }
+            }
+        }
+        VCursorRelease( temp_cursor );
+    }
+    return rc;
+}
+
 rc_t SRATableFillOut ( SRATable *self, bool update )
 {
     rc_t rc;
     
     /* require these operations to succeed */
-    rc = VCursorPermitPostOpenAdd(self->curs);
+    rc = VCursorPermitPostOpenAdd( self->curs );
     if ( rc != 0 )
         return rc;
-    rc = VCursorOpen(self->curs);
+    rc = VCursorOpen( self->curs );
     if ( rc != 0 )
         return rc;
     self -> curs_open = true;
     if ( ! update )
-        rc = SRATableLoadMetadata(self);
+    {
+        rc = SRATableLoadMetadata( self );
+        if ( rc != 0 )
+            rc = SRATableGetMinMax( self );
+    }
     return rc;
 }
 
@@ -415,19 +456,26 @@ rc_t ResolveTablePath ( const SRAMgr *mgr,
 
     return 0;
 #else
-    VPath *accession;
-    const VPath *tblpath = NULL;
-    rc_t rc = VPathMakeFmt ( & accession, spec, args );
+    VFSManager *vfs;
+    rc_t rc = VFSManagerMake ( & vfs );
     if ( rc == 0 )
     {
-        rc = VResolverLocal ( ( const VResolver* ) mgr -> _pmgr, accession, & tblpath );
+        VPath *accession;
+        const VPath *tblpath = NULL;
+        rc = VFSManagerMakePath ( vfs, & accession, spec, args );
         if ( rc == 0 )
         {
-            size_t size;
-            rc = VPathReadPath ( tblpath, path, psize, & size );
-            VPathRelease ( tblpath );
+            rc = VResolverLocal ( ( const VResolver* ) mgr -> _pmgr, accession, & tblpath );
+            if ( rc == 0 )
+            {
+                size_t size;
+                rc = VPathReadPath ( tblpath, path, psize, & size );
+                VPathRelease ( tblpath );
+            }
+            VPathRelease ( accession );
         }
-        VPathRelease ( accession );
+
+        VFSManagerRelease ( vfs );
     }
     return rc;
 #endif
@@ -500,7 +548,6 @@ rc_t CC SRAMgrVOpenAltTableRead ( const SRAMgr *self,
                                 rc = VTableCreateCursorRead ( tbl -> vtbl, & tbl -> curs );
                                 if ( rc == 0 )
                                 {
-                                    tbl -> mgr = SRAMgrAttach ( self );
                                     tbl -> mode = self -> mode;
                                     tbl -> read_only = true;
                                     KRefcountInit ( & tbl -> refcount, 1, "SRATable", "OpenTableRead", spec );
@@ -535,9 +582,44 @@ rc_t CC SRAMgrVOpenAltTableRead ( const SRAMgr *self,
  *  to table.
  */
 LIB_EXPORT rc_t CC SRAMgrVOpenTableRead ( const SRAMgr *self,
-        const SRATable **rslt, const char *spec, va_list args )
+        const SRATable **crslt, const char *spec, va_list args )
 {
-    return SRAMgrVOpenAltTableRead ( self, rslt, "SEQUENCE", spec, args );
+    rc_t rc;
+    char tblpath [ 4096 ];
+    int num_writ = vsnprintf ( tblpath, sizeof tblpath, spec, args );
+    if ( num_writ < 0 || ( size_t ) num_writ >= sizeof tblpath )
+        rc = RC ( rcSRA, rcMgr, rcOpening, rcPath, rcExcessive );
+    else
+    {
+        SRATable **rslt = (SRATable **)crslt; /* to avoid "const_casts" below */
+        rc = SRACacheGetTable( self->cache, tblpath, crslt );
+        if  (rc == 0 )
+        {
+            if ( *crslt == NULL )
+            {
+                rc = SRAMgrOpenAltTableRead ( self, crslt, "SEQUENCE", tblpath );
+                if ( rc == 0 )
+                {
+                    rc = SRACacheAddTable( self->cache, tblpath, *rslt);
+                    if ( GetRCObject(rc) == rcParam && GetRCState(rc) == rcExists )
+                    {           /* the same object has appeared in the cache since our call to SRACacheGetTable above;  */
+                       rc = 0;  /* return the new object, never mind the cache */
+                    }
+                    else if ( ! SRACacheMetricsLessThan(&self->cache->current, &self->cache->hardThreshold) )
+                       rc = SRACacheFlush(self->cache);
+                }
+            }
+        }
+        else if ( (GetRCObject(rc) == rcName && GetRCState(rc) == rcInvalid) ||   /* accessions with irregular names are not cached */
+                  (GetRCObject(rc) == rcParam && GetRCState(rc) == rcBusy)    )   /* in cache but in use */
+        {    
+            rc = SRAMgrOpenAltTableRead ( self, crslt, "SEQUENCE", tblpath );
+            if (rc == 0)
+                (*rslt)->mgr = SRAMgrAttach(self);
+        }
+    }
+
+    return rc;
 }
 
 LIB_EXPORT rc_t CC SRAMgrOpenTableRead ( const SRAMgr *self,

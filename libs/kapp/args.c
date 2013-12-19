@@ -1854,7 +1854,7 @@ static void print_indented( const size_t first_indent, const size_t indent,
             if ( space != NULL )
             {
                 /* space found, can we print the word on the current line? */
-                int wordlen = ( space - msg );
+                int wordlen = (int) ( space - msg );
                 if ( ( line_len + wordlen + 1 ) < max_line_len )
                 {
                     if ( wordlen > 1 )

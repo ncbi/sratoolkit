@@ -122,7 +122,7 @@ uint64_t EncryptedPos_to_BlockId (uint64_t enc_offset, uint32_t * poffset,
             else
             {
                 if (poffset)
-                    *poffset = offset;
+                    *poffset = (uint32_t)offset;
                 if (in_block)
                     *in_block = true;
             }

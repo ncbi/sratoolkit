@@ -68,7 +68,7 @@ rc_t CC KStsDefaultFormatter( void* self, KWrtHandler* writer,
         while( mend != msg && (*mend == '\n' || *mend == '\r') ) {
             --mend;
         }
-        mlen = mend - msg;
+        mlen = ( uint32_t ) ( mend - msg );
     } else {
         mlen = 0;
     }

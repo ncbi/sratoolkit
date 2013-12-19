@@ -105,6 +105,11 @@ enum
     NCBI_WGS_gap_unknown                    = 2 * -1
 };
 
+/* gap_linkage
+ * Describes linkage and linkage evidence
+ */
+typedef int32_t NCBI_WGS_gap_linkage;
+
 /* gap type
  *  scaffold          a gap between two sequence contigs in a scaffold
  *  contig            an unspanned gap between two sequence contigs
@@ -140,15 +145,17 @@ enum
  */
 enum
 {
-    NCBI_WGS_gap_linkage_paired_ends        = 1 * -64,
-    NCBI_WGS_gap_linkage_align_genus        = 2 * -64,
-    NCBI_WGS_gap_linkage_align_xgenus       = 3 * -64,
-    NCBI_WGS_gap_linkage_align_trnscpt      = 4 * -64,
-    NCBI_WGS_gap_linkage_within_clone       = 5 * -64,
-    NCBI_WGS_gap_linkage_clone_contig       = 6 * -64,
-    NCBI_WGS_gap_linkage_map                = 7 * -64,
-    NCBI_WGS_gap_linkage_strobe             = 8 * -64,
-    NCBI_WGS_gap_linkage_unspecified        = 9 * -64
+    NCBI_WGS_gap_linkage_linked                      = 1,
+    NCBI_WGS_gap_linkage_evidence_paired_ends        = 2,
+    NCBI_WGS_gap_linkage_evidence_align_genus        = 4,
+    NCBI_WGS_gap_linkage_evidence_align_xgenus       = 8,
+    NCBI_WGS_gap_linkage_evidence_align_trnscpt      = 16,
+    NCBI_WGS_gap_linkage_evidence_within_clone       = 32,
+    NCBI_WGS_gap_linkage_evidence_clone_contig       = 64,
+    NCBI_WGS_gap_linkage_evidence_map                = 128,
+    NCBI_WGS_gap_linkage_evidence_strobe             = 256,
+    NCBI_WGS_gap_linkage_evidence_unspecified        = 512,
+    NCBI_WGS_gap_linkage_evidence_pcr                = 1024
 };
 
 

@@ -210,7 +210,12 @@ rc_t KMemBankWhack ( KMemBank *self )
     if ( rc != 0 )
         return rc;
 
+    rc = KPageFileDropBacking ( self -> pf );
+    /* TBD - can report errors */
+
     rc  = KPageFileRelease ( self -> pf );
+    /* TBD - can report errors */
+
     free ( self );
 
     return 0;

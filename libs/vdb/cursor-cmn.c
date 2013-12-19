@@ -302,7 +302,7 @@ LIB_EXPORT rc_t CC VCursorRelease ( const VCursor *self )
         {
         case krefWhack:
             return VCursorWhack ( ( VCursor* ) self );
-        case krefLimit:
+        case krefNegative:
             return RC ( rcVDB, rcCursor, rcReleasing, rcRange, rcExcessive );
         }
     }
@@ -346,7 +346,7 @@ rc_t VCursorMake ( VCursor **cursp, const VTable *tbl )
                 KRefcountInit ( & curs -> refcount, 1, "VCursor", "make", "vcurs" );
                 curs -> state = vcConstruct;
                 curs -> permit_add_column = true;
-		curs -> suspend_triggers  = false;
+                curs -> suspend_triggers  = false;
                 * cursp = curs;
                 return 0;
             }
@@ -543,8 +543,15 @@ static rc_t VTableCreateCachedCursorReadImpl ( const VTable *self,
                 rc = VCursorSupplementSchema ( curs );
                
 #if 0  
-                if(create_pagemap_thread && capacity > 0 && rc == 0 )
+                if ( create_pagemap_thread && capacity > 0 && rc == 0 )
+                {
                     rc = VCursorLaunchPagemapThread ( curs );
+                    if ( rc != 0 )
+                    {
+                        if ( GetRCState( rc ) == rcNotAvailable )
+                            rc = 0;
+                    }
+                }   
 #endif
                 if ( rc == 0 )
                 {
@@ -623,7 +630,8 @@ LIB_EXPORT rc_t CC VCursorSuspendTriggers ( const VCursor *cself )
 /* AddSColumn
  */
 static
-rc_t VCursorAddSColumn ( VCursor *self, uint32_t *idx, const SColumn *scol, const VTypedecl *cast )
+rc_t VCursorAddSColumn ( VCursor *self, uint32_t *idx,
+    const SColumn *scol, const VTypedecl *cast, Vector *cx_bind )
 {
     rc_t rc;
     VColumn *col;
@@ -650,7 +658,7 @@ rc_t VCursorAddSColumn ( VCursor *self, uint32_t *idx, const SColumn *scol, cons
     }
 
     /* make object */
-    rc = VCursorMakeColumn ( self, & col, scol );
+    rc = VCursorMakeColumn ( self, & col, scol, cx_bind );
     if ( rc == 0 )
     {
         /* insert it into vectors */
@@ -713,7 +721,12 @@ rc_t VCursorAddColspec ( VCursor *self, uint32_t *idx, const char *colspec )
     if ( scol == NULL || type != eColumn )
         rc = RC ( rcVDB, rcCursor, rcUpdating, rcColumn, rcNotFound );
     else
-        rc = VCursorAddSColumn ( self, idx, scol, & cast );
+    {
+        Vector cx_bind;
+        VectorInit ( & cx_bind, 1, self -> schema -> num_indirect );
+        rc = VCursorAddSColumn ( self, idx, scol, & cast, & cx_bind );
+        VectorWhack ( & cx_bind, NULL, NULL );
+    }
 
     return rc;
 }
@@ -825,7 +838,7 @@ rc_t VCursorGetColspec ( const VCursor *self, uint32_t *idx, const char *colspec
     VTypedecl cast;
     const SNameOverload *name;
     const SColumn *scol = STableFind ( self -> tbl -> stbl, self -> schema,
-        & cast, & name, & type, colspec, "VCursorAddColspec", true );
+        & cast, & name, & type, colspec, "VCursorGetColspec", true );
     if ( scol == NULL || type != eColumn )
         rc = RC ( rcVDB, rcCursor, rcAccessing, rcColumn, rcNotFound );
     else
@@ -1187,6 +1200,7 @@ rc_t VCursorOpenColumn ( const VCursor *cself, VColumn *col )
     KDlset *libs;
     VCursor *self = ( VCursor* ) cself;
 
+    Vector cx_bind;
     VProdResolveData pb;
     pb . pr . schema = self -> schema;
     pb . pr . ld = self -> tbl -> linker;
@@ -1194,10 +1208,13 @@ rc_t VCursorOpenColumn ( const VCursor *cself, VColumn *col )
     pb . pr . curs = self;
     pb . pr . cache = & self -> prod;
     pb . pr . owned = & self -> owned;
+    pb . pr . cx_bind = & cx_bind;
     pb . pr . chain = chainDecoding;
     pb . pr . blobbing = false;
     pb . pr . ignore_column_errors = false;
     pb . pr . discover_writable_columns = false;
+
+    VectorInit ( & cx_bind, 1, self -> schema -> num_indirect );
 
     pb . rc = VLinkerOpen ( pb . pr . ld, & libs );
     if ( pb . rc == 0 )
@@ -1206,6 +1223,8 @@ rc_t VCursorOpenColumn ( const VCursor *cself, VColumn *col )
         VCursorResolveColumn ( col, & pb );
         KDlsetRelease ( libs );
     }
+
+    VectorWhack ( & cx_bind, NULL, NULL );
 
     return pb . rc;
 }
@@ -1223,6 +1242,7 @@ static
 rc_t VCursorResolveColumnProductions ( VCursor *self,
     const KDlset *libs, bool ignore_failures )
 {
+    Vector cx_bind;
     VProdResolveData pb;
     pb . pr . schema = self -> schema;
     pb . pr . ld = self -> tbl -> linker;
@@ -1231,16 +1251,21 @@ rc_t VCursorResolveColumnProductions ( VCursor *self,
     pb . pr . curs = self;
     pb . pr . cache = & self -> prod;
     pb . pr . owned = & self -> owned;
+    pb . pr . cx_bind = & cx_bind;
     pb . pr . chain = chainDecoding;
     pb . pr . blobbing = false;
     pb . pr . ignore_column_errors = ignore_failures;
     pb . pr . discover_writable_columns = false;
     pb . rc = 0;
 
-    if ( VectorDoUntil ( & self -> row, false, VCursorResolveColumn, & pb ) )
-        return pb . rc;
+    VectorInit ( & cx_bind, 1, self -> schema -> num_indirect );
 
-    return 0;
+    if ( ! VectorDoUntil ( & self -> row, false, VCursorResolveColumn, & pb ) )
+        pb . rc = 0;
+
+    VectorWhack ( & cx_bind, NULL, NULL );
+
+    return pb . rc;
 }
 
 rc_t VCursorOpenRead ( VCursor *self, const KDlset *libs )
@@ -1974,15 +1999,20 @@ LIB_EXPORT rc_t CC VCursorOpenParentRead ( const VCursor *self, const VTable **t
     return rc;
 }
 
+struct insert_overloaded_pb
+{
+    VCursor *curs;
+    Vector *cx_bind;
+};
 
 static
 void CC insert_overloaded_scolumns ( void *item, void *data )
 {
-    VCursor *curs = data;
+    struct insert_overloaded_pb *pb = data;
     const SColumn *scol = ( const void* ) item;
 
     uint32_t ignore;
-    VCursorAddSColumn ( curs, & ignore, scol, NULL );
+    VCursorAddSColumn ( pb -> curs, & ignore, scol, NULL, pb -> cx_bind );
 }
 
 static
@@ -1990,13 +2020,22 @@ void VCursorListCol_walk_through_columns_and_add_to_cursor ( VCursor *self )
 {
     uint32_t idx = VectorStart ( & self -> stbl -> cname );
     uint32_t end = VectorLength ( & self -> stbl -> cname );
+
+    Vector cx_bind;
+    struct insert_overloaded_pb pb;
+    pb . curs = self;
+    pb . cx_bind = & cx_bind;
+    VectorInit ( & cx_bind, 1, self -> schema -> num_indirect );
+
     for ( end += idx; idx < end; ++idx )
     {
         /* look at the table column name guy */
         const SNameOverload* ol_entry = ( const SNameOverload* ) VectorGet ( & self -> stbl -> cname, idx );
         if ( ol_entry != NULL )
-            VectorForEach ( & ol_entry -> items, false, insert_overloaded_scolumns, self );
+            VectorForEach ( & ol_entry -> items, false, insert_overloaded_scolumns, & pb );
     }
+
+    VectorWhack ( & cx_bind, NULL, NULL );
 }
 
 static
@@ -2401,4 +2440,37 @@ LIB_EXPORT rc_t CC VDBManagerDisablePagemapThread ( struct VDBManager const *sel
         return RC ( rcVDB, rcMgr, rcUpdating, rcSelf, rcNull );
     s_disable_pagemap_thread = true;
     return 0;
+}
+
+
+/* IsStaticColumn
+ *  answers question: "does this column have the same value for every cell?"
+ */
+LIB_EXPORT rc_t CC VCursorIsStaticColumn ( const VCursor *self, uint32_t col_idx, bool *is_static )
+{
+    rc_t rc;
+
+    if ( is_static == NULL )
+        rc = RC ( rcVDB, rcCursor, rcAccessing, rcParam, rcNull );
+    else
+    {
+        if ( self == NULL )
+            rc = RC ( rcVDB, rcCursor, rcAccessing, rcSelf, rcNull );
+        else
+        {
+            uint32_t start = VectorStart ( & self -> row );
+            uint32_t end = start + VectorLength ( & self -> row );
+            if ( col_idx < start || col_idx > end )
+                rc = RC ( rcVDB, rcCursor, rcSelecting, rcId, rcInvalid );
+            else
+            {
+                VColumn *col = VectorGet ( & self -> row, col_idx );
+                return VColumnIsStatic ( col, is_static );
+            }
+        }
+
+        * is_static = false;
+    }
+
+    return rc;
 }

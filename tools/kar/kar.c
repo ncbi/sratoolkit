@@ -436,10 +436,12 @@ rc_t open_dir_as_archive (const char * path, const KFile ** file)
         PLOGERR (klogFatal, (klogFatal, rc, "Parameter [$(P)] must be a directory", PLOG_S(P), path));
         return rc;
     case kptDir:
+/*         KOutMsg ("%s: opening dir\n",__func__); */
         rc = KDirectoryVOpenDirRead (kdir, &d, false, path, NULL);
     }
     if (rc == 0)
     {
+/*         KOutMsg ("%s: dir to archive\n",__func__); */
         rc = KDirectoryOpenTocFileRead (d, file, alignment, pnamesFilter, NULL, sort_size_then_rel_path );
         KDirectoryRelease (d);
     }
@@ -700,9 +702,12 @@ rc_t step_through_dir (const KDirectory * dir, const char * path,
                     char * new_path;
                     size_t namelen;
                     size_t new_pathlen;
+                    size_t rsize;
+
                     namelen = strlen (name);
                     new_pathlen = pathlen + 1 + namelen;
-                    new_path = malloc (new_pathlen + 1);
+                    rsize = new_pathlen + 1;
+                    new_path = malloc (rsize);
                     if (new_path != NULL)
                     {
                         char * recur_path;
@@ -715,15 +720,14 @@ rc_t step_through_dir (const KDirectory * dir, const char * path,
                         {
                             memcpy (new_path, path, pathlen);
                             new_path[pathlen] = '/';
-                            memcpy (new_path + pathlen + 1, name, namelen);
-                            new_path[pathlen+1+namelen] = '\0';
+                            memcpy (&new_path[pathlen+1], name, namelen);
+                            new_path[new_pathlen] = '\0';
                         }
-                        recur_path = malloc (pathlen + 1 + namelen + 1);
+                        recur_path = malloc (rsize);
                         if (recur_path != NULL)
                         {
                             rc = KDirectoryVResolvePath (dir, false, recur_path,
-                                                         pathlen + 1 + namelen + 1,
-                                                         new_path, NULL);
+                                                         rsize, new_path, NULL);
 
                             if (rc == 0)
                             {
@@ -793,16 +797,24 @@ rc_t	derive_directory_name (char ** dirname, const char * arcname, const char * 
     }
     if (rc == 0)
     {
-        *dirname = malloc (len + 1);
-        if (*dirname == NULL)
+        if ( len == 0 )
         {
-            rc = RC (rcExe, rcNoTarg, rcAllocating, rcMemory, rcExhausted);
-            LOGERR (klogErr, rc, "Unable to allocate memory for directory name");
+            rc = RC (rcExe, rcNoTarg, rcParsing, rcParam, rcInvalid);
+            * dirname = NULL;
         }
         else
         {
-            memcpy (*dirname, srcname, len);
-            (*dirname)[len] = '\0';
+            *dirname = malloc (len + 1);
+            if (*dirname == NULL)
+            {
+                rc = RC (rcExe, rcNoTarg, rcAllocating, rcMemory, rcExhausted);
+                LOGERR (klogErr, rc, "Unable to allocate memory for directory name");
+            }
+            else
+            {
+                memcpy (*dirname, srcname, len);
+                (*dirname)[len] = '\0';
+            }
         }
     }
     return rc;
@@ -822,18 +834,48 @@ rc_t	run_kar_create(const char * archive, const char * directory)
 
         rc = derive_directory_name (&directorystr, archive, directory);
 
-        assert (directorystr != NULL);
-        assert (directorystr[0] != '\0');
-
         if (rc != 0)
             LOGERR (klogErr, rc,"failed to derive directory name");
         else
         {
+            assert (directorystr != NULL);
+            assert (directorystr[0] != '\0');
+
             STSMSG (4, ("start creation of archive"));
 
-            rc = open_dir_as_archive (directorystr, &fin);
+            /* Jira ticket: SRA-1876
+               Date: September 13, 2013
+               raw usage of "directorystr" causes tests to fail within libs/kfs/arc.c */
+            {
+                char full [ 4096 ];
+                rc = KDirectoryResolvePath ( kdir, true, full, sizeof full, "%s", directorystr );
+                if ( rc == 0 )
+                {
+                    /* string should be non-empty based upon behavior of
+                       "derive_directory_name" ( also fixed today ) */
+                    assert ( full [ 0 ] != 0 );
+
+                    /* eliminate double-slashes */
+                    if ( full [ 1 ] != 0 )
+                    {
+                        uint32_t i, j;
+
+                        /* ALLOW double slashes at the very start
+                           set starting index to 2 for that reason */
+                        for ( i = j = 2; full [ i ] != 0; ++ i )
+                        {
+                            if ( ( full [ j ] = full [ i ] ) != '/' || full [ j - 1 ] != '/' )
+                                ++ j;
+                        }
+
+                        full [ j ] = 0;
+                    }
+
+                    rc = open_dir_as_archive ( full, & fin );
+                }
+            }
             if (rc != 0)
-                PLOGERR (klogErr, (klogErr, rc,"failed to open directory [$(D)] as archive",
+                PLOGERR (klogErr, (klogErr, rc,"failed to open directory '$(D)' as archive",
                                    PLOG_S(D),directorystr));
             else
             {

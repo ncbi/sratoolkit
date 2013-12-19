@@ -34,7 +34,7 @@
 /* =========================================================================================== */
 
 
-static int cmp_pchar( const char * a, const char * b )
+int cmp_pchar( const char * a, const char * b )
 {
     int res = 0;
     if ( ( a != NULL )&&( b != NULL ) )
@@ -665,7 +665,7 @@ static rc_t gather_flag_options( Args * args, samdump_opts * opts )
 
         /* do some mode logic ... */
         if ( !dump_cg_mappings &&
-             ( opts->dump_cga_tools_mode || opts->dump_cg_evidence || opts->dump_cg_ev_dnb ) )
+             ( opts->dump_cga_tools_mode || opts->dump_cg_evidence || opts->dump_cg_ev_dnb || opts->dump_cg_sam ) )
         {
             opts->dump_primary_alignments = false;
             opts->dump_secondary_alignments = false;
@@ -713,7 +713,7 @@ static rc_t gather_flag_options( Args * args, samdump_opts * opts )
 
         /* do we have to transform cigar into cg-style ( has B/N ) */
         /* do we have to transform cg-data(length of read/patterns in cigar) into valid SAM (cigar/READ/QUALITY) */
-        rc = gather_2_bool( args, OPT_CIGAR_CG, OPT_CIGAR_CG, &cigar_cg, &cigar_cg_merge );
+        rc = gather_2_bool( args, OPT_CIGAR_CG, OPT_CIGAR_CG_M, &cigar_cg, &cigar_cg_merge );
         if ( rc != 0 ) return rc;
         if ( cigar_cg )
             opts->cigar_treatment = ct_cg_style;
@@ -786,9 +786,23 @@ static rc_t gather_flag_options( Args * args, samdump_opts * opts )
     rc = get_bool_option( args, OPT_LEGACY, &opts->force_legacy );
     if ( rc != 0 ) return rc;
 
+    rc = get_bool_option( args, OPT_NEW, &opts->force_new );
+    if ( rc != 0 ) return rc;
+
+    if ( opts->force_new && opts->force_legacy )
+        opts->force_new = false;
+
     /* do we have to merge cigar ( and read/qual ) for cg-operations in cigar */
     rc = get_bool_option( args, OPT_CIGAR_CG_M, &opts->merge_cg_cigar );
+    if ( rc != 0 ) return rc;
 
+    /* do we enable rna-splicing */
+    rc = get_bool_option( args, OPT_RNA_SPLICE, &opts->rna_splicing );
+    if ( rc != 0 ) return rc;
+    
+    /* do we disable multi-threading */    
+    rc = get_bool_option( args, OPT_NO_MT, &opts->no_mt );
+    
     return rc;
 }
 
@@ -1257,6 +1271,9 @@ void report_options( const samdump_opts * opts )
     KOutMsg( "force legacy code     : %s\n",  opts->force_legacy ? "YES" : "NO" );
     KOutMsg( "use min-mapq          : %s\n",  opts->use_min_mapq ? "YES" : "NO" );
     KOutMsg( "min-mapq              : %i\n",  opts->min_mapq );
+    KOutMsg( "rna-splicing          : %s\n",  opts->rna_splicing ? "YES" : "NO" );
+
+    KOutMsg( "multithreading        : %s\n",  opts->no_mt ? "NO" : "YES" );    
 }
 
 
@@ -1339,9 +1356,9 @@ rc_t dump_name( const samdump_opts * opts, int64_t seq_spot_id,
     if ( opts->print_cg_names )
     {
         if ( spot_group != NULL && spot_group_len != 0 )
-            rc = KOutMsg( "%.*s_1:%d", spot_group_len, spot_group, seq_spot_id );
+            rc = KOutMsg( "%.*s-1:%lu", spot_group_len, spot_group, seq_spot_id );
         else
-            rc = KOutMsg( "%d", seq_spot_id );
+            rc = KOutMsg( "%lu", seq_spot_id );
     }
     else
     {
@@ -1349,19 +1366,19 @@ rc_t dump_name( const samdump_opts * opts, int64_t seq_spot_id,
         {
             /* we do have to print a prefix */
             if ( opts->print_spot_group_in_name && spot_group != NULL && spot_group_len > 0 )
-                rc = KOutMsg( "%s.%d.%.*s", opts->qname_prefix, seq_spot_id, spot_group_len, spot_group );
+                rc = KOutMsg( "%s.%lu.%.*s", opts->qname_prefix, seq_spot_id, spot_group_len, spot_group );
             else
             /* we do NOT have to append the spot-group */
-                rc = KOutMsg( "%s.%d", opts->qname_prefix, seq_spot_id );
+                rc = KOutMsg( "%s.%lu", opts->qname_prefix, seq_spot_id );
         }
         else
         {
             /* we do NOT have to print a prefix */
             if ( opts->print_spot_group_in_name && spot_group != NULL && spot_group_len > 0 )
-                rc = KOutMsg( "%d.%.*s", seq_spot_id, spot_group_len, spot_group );
+                rc = KOutMsg( "%lu.%.*s", seq_spot_id, spot_group_len, spot_group );
             else
             /* we do NOT have to append the spot-group */
-                rc = KOutMsg( "%d", seq_spot_id );
+                rc = KOutMsg( "%lu", seq_spot_id );
         }
     }
     return rc;

@@ -81,6 +81,7 @@ struct FastqArgs_struct
     bool readIds;
     int offset;
     bool qual_filter;
+    bool qual_filter1;
     const char* b_deffmt;
     SLList* b_defline;
     const char* q_deffmt;
@@ -590,6 +591,7 @@ static rc_t Defline_Parse( SLList** def, const char* line )
 typedef struct AlignedFilter_struct
 {
     const SRAColumn* col;
+    uint64_t rejected_reads;
     bool aligned;
     bool unaligned;
 } AlignedFilter;
@@ -613,7 +615,7 @@ static rc_t AlignedFilter_GetKey( const SRASplitter* cself, const char** key,
             const uint8_t* ac = NULL;
             bitsz_t o = 0, sz = 0;
             rc = SRAColumnRead( self->col, spot, (const void **)&ac, &o, &sz );
-            if ( rc == 0 )
+            if ( rc == 0 && sz > 0 )
             {
                 sz = sz / 8 / sizeof( *ac );
                 for( o = 0; o < sz; o++ )
@@ -622,6 +624,7 @@ static rc_t AlignedFilter_GetKey( const SRASplitter* cself, const char** key,
                          ( self->unaligned && !self->aligned   && ac[ o ] != 0 ) )
                     {
                         unset_readmask( readmask, o );
+                        self->rejected_reads ++;
                     }
                 }
             }
@@ -630,6 +633,22 @@ static rc_t AlignedFilter_GetKey( const SRASplitter* cself, const char** key,
     return rc;
 }
 
+
+static rc_t AlignedFilter_Release( const SRASplitter* cself )
+{
+    rc_t rc = 0;
+    AlignedFilter* self = ( AlignedFilter* )cself;
+    if ( self == NULL )
+    {
+        rc = RC( rcSRA, rcNode, rcExecuting, rcParam, rcNull );
+    }
+    else
+    {
+        if ( self->rejected_reads > 0 && !g_legacy_report )
+            rc = KOutMsg( "Rejected %lu READS because of aligned/unaligned filter\n", self->rejected_reads );
+    }
+    return rc;
+}
 
 typedef struct AlignedFilterFactory_struct
 {
@@ -681,12 +700,14 @@ static rc_t AlignedFilterFactory_NewObj( const SRASplitterFactory* cself, const 
     else
     {
         rc = SRASplitter_Make( splitter, sizeof( AlignedFilter ),
-                               AlignedFilter_GetKey, NULL, NULL, NULL );
+                               AlignedFilter_GetKey, NULL, NULL, AlignedFilter_Release );
         if ( rc == 0 )
         {
-            ( (AlignedFilter*)(*splitter) )->col = self->col;
-            ( (AlignedFilter*)(*splitter) )->aligned = self->aligned;
-            ( (AlignedFilter*)(*splitter) )->unaligned = self->unaligned;
+            AlignedFilter * filter = ( AlignedFilter * )( * splitter );
+            filter->col = self->col;
+            filter->aligned = self->aligned;
+            filter->unaligned = self->unaligned;
+            filter->rejected_reads = 0;
         }
     }
     return rc;
@@ -739,6 +760,7 @@ typedef struct AlignRegionFilter_struct
     const SRAColumn* col_name;
     const SRAColumn* col_seqid;
     const TAlignedRegion* alregion;
+    uint64_t rejected_spots;
     uint32_t alregion_qty;
 } AlignRegionFilter;
 
@@ -767,12 +789,14 @@ static rc_t AlignRegionFilter_GetKey( const SRASplitter* cself, const char** key
             if ( self->col_name )
             {
                 rc = SRAColumnRead( self->col_name, spot, (const void **)&nm, &o, &nm_len );
-                nm_len /= 8;
+                if ( rc == 0 && nm_len > 0 )
+                    nm_len /= 8;
             }
             if ( rc == 0 && self->col_seqid )
             {
                 rc = SRAColumnRead( self->col_seqid, spot, (const void **)&si, &o, &si_len );
-                si_len /= 8;
+                if ( rc == 0 && si_len > 0 )
+                    si_len /= 8;
             }
             for ( i = 0; rc == 0 && i < self->alregion_qty; i++ )
             {
@@ -786,7 +810,7 @@ static rc_t AlignRegionFilter_GetKey( const SRASplitter* cself, const char** key
                         INSDC_coord_zero* pos;
                         bitsz_t nreads, j;
                         rc = SRAColumnRead( self->col_pos, spot, ( const void ** )&pos, &o, &nreads );
-                        if ( rc == 0 )
+                        if ( rc == 0 && nreads > 0 )
                         {
                             nreads = nreads / sizeof(*pos) / 8;
                             for ( i = 0; !match && i < self->alregion_qty; i++ )
@@ -813,8 +837,27 @@ static rc_t AlignRegionFilter_GetKey( const SRASplitter* cself, const char** key
             if ( !match )
             {
                 clear_readmask( readmask );
+                self->rejected_spots ++;
             }
         }
+    }
+    return rc;
+}
+
+
+static rc_t AlignRegionFilter_Release( const SRASplitter* cself )
+{
+    rc_t rc = 0;
+    AlignRegionFilter* self = ( AlignRegionFilter* )cself;
+
+    if ( self == NULL )
+    {
+        rc = RC( rcSRA, rcNode, rcExecuting, rcParam, rcNull );
+    }
+    else
+    {
+        if ( self->rejected_spots > 0 && !g_legacy_report )
+            rc = KOutMsg( "Rejected %lu SPOTS because of AlignRegionFilter\n", self->rejected_spots );
     }
     return rc;
 }
@@ -922,14 +965,16 @@ static rc_t AlignRegionFilterFactory_NewObj( const SRASplitterFactory* cself, co
     else
     {
         rc = SRASplitter_Make( splitter, sizeof( AlignRegionFilter ),
-                               AlignRegionFilter_GetKey, NULL, NULL, NULL );
+                               AlignRegionFilter_GetKey, NULL, NULL, AlignRegionFilter_Release );
         if ( rc == 0 )
         {
-            ( (AlignRegionFilter*)(*splitter) )->col_pos = self->col_pos;
-            ( (AlignRegionFilter*)(*splitter) )->col_name = self->col_name;
-            ( (AlignRegionFilter*)(*splitter) )->col_seqid = self->col_seqid;
-            ( (AlignRegionFilter*)(*splitter) )->alregion = self->alregion;
-            ( (AlignRegionFilter*)(*splitter) )->alregion_qty = self->alregion_qty;
+            AlignRegionFilter * filter = ( AlignRegionFilter * )( * splitter );
+            filter->col_pos = self->col_pos;
+            filter->col_name = self->col_name;
+            filter->col_seqid = self->col_seqid;
+            filter->alregion = self->alregion;
+            filter->alregion_qty = self->alregion_qty;
+            filter->rejected_spots = 0;
         }
     }
     return rc;
@@ -980,8 +1025,9 @@ static rc_t AlignRegionFilterFactory_Make( const SRASplitterFactory** cself,
 typedef struct AlignPairDistanceFilter_struct
 {
     const SRAColumn* col_tlen;
-    bool mp_dist_unknown;
     const TMatepairDistance* mp_dist;
+    uint64_t rejected_reads;
+    bool mp_dist_unknown;
     uint32_t mp_dist_qty;
 } AlignPairDistanceFilter;
 
@@ -1018,6 +1064,7 @@ static rc_t AlignPairDistanceFilter_GetKey( const SRASplitter* cself,
                                ( tlen[ j ] < self->mp_dist[ i ].from || self->mp_dist[ i ].to < tlen[ j ] ) ) )
                         {
                             unset_readmask( readmask, j );
+                            self->rejected_reads ++;
                         }
                     }
                 }
@@ -1027,6 +1074,23 @@ static rc_t AlignPairDistanceFilter_GetKey( const SRASplitter* cself,
     return rc;
 }
 
+
+static rc_t AlignPairDistanceFilter_Release( const SRASplitter* cself )
+{
+    rc_t rc = 0;
+    AlignPairDistanceFilter* self = ( AlignPairDistanceFilter* )cself;
+
+    if ( self == NULL )
+    {
+        rc = RC( rcSRA, rcNode, rcExecuting, rcParam, rcNull );
+    }
+    else
+    {
+        if ( self->rejected_reads > 0 && !g_legacy_report )
+            rc = KOutMsg( "Rejected %lu READS because of AlignPairDistanceFilter\n", self->rejected_reads );
+    }
+    return rc;
+}
 
 typedef struct AlignPairDistanceFilterFactory_struct
 {
@@ -1085,13 +1149,15 @@ static rc_t AlignPairDistanceFilterFactory_NewObj( const SRASplitterFactory* cse
     else
     {
         rc = SRASplitter_Make( splitter, sizeof( AlignPairDistanceFilter ),
-                               AlignPairDistanceFilter_GetKey, NULL, NULL, NULL );
+                               AlignPairDistanceFilter_GetKey, NULL, NULL, AlignPairDistanceFilter_Release );
         if ( rc == 0 )
         {
-            ( (AlignPairDistanceFilter*)(*splitter) )->col_tlen = self->col_tlen;
-            ( (AlignPairDistanceFilter*)(*splitter) )->mp_dist_unknown = self->mp_dist_unknown;
-            ( (AlignPairDistanceFilter*)(*splitter) )->mp_dist = self->mp_dist;
-            ( (AlignPairDistanceFilter*)(*splitter) )->mp_dist_qty = self->mp_dist_qty;
+            AlignPairDistanceFilter * filter = ( AlignPairDistanceFilter * )( * splitter );
+            filter->col_tlen = self->col_tlen;
+            filter->mp_dist_unknown = self->mp_dist_unknown;
+            filter->mp_dist = self->mp_dist;
+            filter->mp_dist_qty = self->mp_dist_qty;
+            filter->rejected_reads = 0;
         }
     }
     return rc;
@@ -1142,6 +1208,7 @@ static rc_t AlignPairDistanceFilterFactory_Make( const SRASplitterFactory** csel
 typedef struct FastqBioFilter_struct
 {
     const FastqReader* reader;
+    uint64_t rejected_reads;
 } FastqBioFilter;
 
 
@@ -1181,6 +1248,7 @@ static rc_t FastqBioFilter_GetKey( const SRASplitter* cself, const char** key,
                             if ( !( read_type & SRA_READ_TYPE_BIOLOGICAL ) )
                             {
                                 unset_readmask( readmask, readId );
+                                self->rejected_reads ++;
                             }
                             else
                             {
@@ -1198,6 +1266,22 @@ static rc_t FastqBioFilter_GetKey( const SRASplitter* cself, const char** key,
             SRA_DUMP_DBG( 3, ( "%s skipped %u row\n", __func__, spot ) );
             rc = 0;
         }
+    }
+    return rc;
+}
+
+
+static rc_t FastqBioFilter_Release( const SRASplitter * cself )
+{
+    rc_t rc = 0;
+    FastqBioFilter * self = ( FastqBioFilter * )cself;
+
+    if ( self == NULL )
+        rc = RC( rcExe, rcNode, rcExecuting, rcParam, rcInvalid );
+    else
+    {
+        if ( self->rejected_reads > 0 && !g_legacy_report )
+            rc = KOutMsg( "Rejected %lu READS because of filtering out non-biological READS\n", self->rejected_reads );
     }
     return rc;
 }
@@ -1244,10 +1328,12 @@ static rc_t FastqBioFilterFactory_NewObj( const SRASplitterFactory* cself, const
     else
     {
         rc = SRASplitter_Make( splitter, sizeof( FastqBioFilter ),
-                               FastqBioFilter_GetKey, NULL, NULL, NULL );
+                               FastqBioFilter_GetKey, NULL, NULL, FastqBioFilter_Release );
         if ( rc == 0 )
         {
-            ( (FastqBioFilter*)(*splitter) )->reader = self->reader;
+            FastqBioFilter * filter = ( FastqBioFilter * )( * splitter );
+            filter->reader = self->reader;
+            filter->rejected_reads = 0;
         }
     }
     return rc;
@@ -1297,6 +1383,7 @@ static rc_t FastqBioFilterFactory_Make( const SRASplitterFactory** cself,
 typedef struct FastqRNumberFilter_struct
 {
     const FastqReader* reader;
+    uint64_t rejected_reads;
 } FastqRNumberFilter;
 
 
@@ -1352,6 +1439,23 @@ static rc_t FastqRNumberFilter_GetKey( const SRASplitter* cself, const char** ke
 }
 
 
+static rc_t FastqRNumberFilter_Release( const SRASplitter* cself )
+{
+    rc_t rc = 0;
+    FastqRNumberFilter * self = ( FastqRNumberFilter * )cself;
+
+    if ( self == NULL )
+    {
+        rc = RC( rcExe, rcNode, rcExecuting, rcParam, rcInvalid );
+    }
+    else
+    {
+        if ( self->rejected_reads > 0 && !g_legacy_report )
+            rc = KOutMsg( "Rejected %lu READS because of max. number of READS = %u\n", self->rejected_reads, FastqArgs.maxReads );
+    }
+    return rc;
+}
+
 typedef struct FastqRNumberFilterFactory_struct
 {
     const char* accession;
@@ -1393,10 +1497,12 @@ static rc_t FastqRNumberFilterFactory_NewObj( const SRASplitterFactory* cself, c
     else
     {
         rc = SRASplitter_Make( splitter, sizeof( FastqRNumberFilter ),
-                               FastqRNumberFilter_GetKey, NULL, NULL, NULL );
+                               FastqRNumberFilter_GetKey, NULL, NULL, FastqRNumberFilter_Release );
         if ( rc == 0 )
         {
-            ( (FastqRNumberFilter*)(*splitter) )->reader = self->reader;
+            FastqRNumberFilter * filter = ( FastqRNumberFilter * )( * splitter );
+            filter->reader = self->reader;
+            filter->rejected_reads = 0;
         }
     }
     return rc;
@@ -1443,9 +1549,87 @@ static rc_t FastqRNumberFilterFactory_Make( const SRASplitterFactory** cself,
 
 typedef struct FastqQFilter_struct
 {
-    const FastqReader* reader;
-    KDataBuffer* kdbuf;
+    const FastqReader * reader;
+    KDataBuffer * buffer_for_read_column;
+    KDataBuffer * buffer_for_quality;
+    uint64_t rejected_spots;
+    uint64_t rejected_reads;
 } FastqQFilter;
+
+
+#define MIN_QUAL_FOR_RULE_3 ( 33 + 2 )
+
+static bool QFilter_Test_new( const char * read, const char * quality, uint32_t readlen, uint32_t minlen, char N_char )
+{
+    uint32_t idx, cnt, cnt1, start;
+    char b0;
+
+    /* 1st criteria : READ has to be longer than the minlen */
+    if ( readlen < minlen ) return false;
+
+    /* 2nd criteria : READ does not contain any N's in the first minlen bases */
+    for ( idx = 0; idx < minlen; ++idx )
+    {
+        if ( read[ idx ] == N_char ) return false;
+    }
+
+    start = ( N_char == '.' ) ? 1 : 0;
+    /* 3rd criteria : QUALITY values are all 2 or higher in the first minlen values */
+    for ( idx = start; idx < minlen; ++idx )
+    {
+        if ( quality[ idx ] < MIN_QUAL_FOR_RULE_3 ) return false;
+    }
+
+    /* 4th criteria : READ contains more than one type of base in the first minlen bases */
+    b0 = read[ 0 ];
+    for ( idx = 1, cnt = 1; idx < minlen; ++idx )
+    {
+        if ( read[ idx ] == b0 ) cnt++;
+    }
+    if ( cnt == minlen ) return false;
+
+    /* 5th criteria : READ does not contain more than 50% N's in its whole length */
+    cnt = ( readlen / 2 );
+    for ( idx = 0, cnt1 = 0; idx < readlen; ++idx )
+    {
+        if ( read[ idx ] == N_char ) cnt1++;
+    }
+    if ( cnt1 > cnt ) return false;
+
+    /* 6th criteria : READ does not contain values other than ACGTN in its whole length */
+    if ( N_char != '.' )
+    {
+        for ( idx = 0; idx < readlen; ++idx )
+        {
+            if ( ! ( ( read[ idx ] == 'A' ) || ( read[ idx ] == 'C' ) || ( read[ idx ] == 'G' ) ||
+                    ( read[ idx ] == 'T' ) || ( read[ idx ] == 'N' ) ) )
+                return false;
+        }
+    }
+
+    return true;
+}
+
+
+static bool QFilter_Test_old( const char * read, uint32_t readlen, bool cs_native )
+{
+    static char const* const baseStr = "NNNNNNNNNN";
+    static char const* const colorStr = "..........";
+    static const uint32_t strLen = 10;
+    uint32_t xLen = readlen < strLen ? readlen : strLen;
+
+    if ( cs_native )
+    {
+        if ( strncmp( &read[ 1 ], colorStr, xLen ) == 0 || strcmp( &read[ readlen - xLen + 1 ], colorStr ) == 0 )
+            return false;
+    }
+    else
+    {
+        if ( strncmp( read, baseStr, xLen ) == 0 || strcmp( &read[ readlen - xLen ], baseStr ) == 0 )
+            return false;
+    }
+    return true;
+}
 
 
 /* filter out reads by leading/trialing quality */
@@ -1470,10 +1654,6 @@ static rc_t FastqQFilter_GetKey( const SRASplitter* cself, const char** key,
             rc = FastqReader_SpotInfo( self->reader, NULL, NULL, NULL, NULL, &spot_len, &num_reads );
             if ( rc == 0 )
             {
-                static char const* const baseStr = "NNNNNNNNNN";
-                static char const* const colorStr = "..........";
-                static const uint32_t strLen = 10;
-
                 SRA_DUMP_DBG( 3, ( "%s %u row reads: ", __func__, spot ) );
                 if ( FastqArgs.split_spot )
                 {
@@ -1486,20 +1666,43 @@ static rc_t FastqQFilter_GetKey( const SRASplitter* cself, const char** key,
                             rc = FastqReader_SpotReadInfo( self->reader, readId + 1, NULL, NULL, NULL, NULL, &read_len );
                             if ( rc == 0 )
                             {
-                                uint32_t xLen = read_len < strLen ? read_len : strLen;
-                                IF_BUF( ( FastqReaderBase(self->reader, readId + 1,
-                                          self->kdbuf->base, KDataBufferBytes( self->kdbuf ), NULL) ), self->kdbuf, read_len )
+                                /* FastqReaderBase() in libsra! libs/sra/fastq.h 
+                                   IF_BUF ... very, very bad macro defined in factory.h !!
+                                   it combines reading from table with resizing of a KDatabuffer in a loop until rc == 0 is reached!
+                                */
+                                IF_BUF( ( FastqReaderBase( self->reader, readId + 1,
+                                          self->buffer_for_read_column->base,
+                                          KDataBufferBytes( self->buffer_for_read_column ), NULL) ),
+                                          self->buffer_for_read_column, read_len )
                                 {
-                                    const char* b = self->kdbuf->base;
-                                    if ( ( FastqArgs.is_platform_cs_native &&
-                                           ( strncmp( &b[ 1 ], colorStr, xLen) == 0 || strcmp( &b[ read_len - xLen + 1 ], colorStr ) == 0 ) ) ||
-                                           ( strncmp( b, baseStr, xLen ) == 0 || strcmp( &b[ read_len - xLen ], baseStr ) == 0 ) )
+                                    const char * b = self->buffer_for_read_column->base;
+                                    bool filter_passed = true;
+
+                                    if ( FastqArgs.qual_filter1 )
                                     {
-                                        unset_readmask( readmask, readId );
+                                        if ( quality_N_limit > 0 )
+                                        {
+                                            IF_BUF( ( FastqReaderQuality( self->reader, readId + 1,
+                                                      self->buffer_for_quality->base,
+                                                      KDataBufferBytes( self->buffer_for_quality ), NULL) ),
+                                                      self->buffer_for_quality, read_len )
+                                            {
+                                                const char * q = self->buffer_for_quality->base;
+                                                char N_char = FastqArgs.is_platform_cs_native ? '.' : 'N';
+                                                filter_passed = QFilter_Test_new( b, q, read_len, quality_N_limit, N_char );
+                                            }
+                                        }
                                     }
                                     else
-                                    {
+                                        filter_passed = QFilter_Test_old( b, read_len, FastqArgs.is_platform_cs_native );
+
+                                    if ( filter_passed )
                                         SRA_DUMP_DBG( 3, ( " %u", readId ) );
+                                    else
+                                    {
+                                        unset_readmask( readmask, readId );
+                                        /* READ did not pass filter */
+                                        self->rejected_reads ++;
                                     }
                                 }
                             }
@@ -1509,19 +1712,37 @@ static rc_t FastqQFilter_GetKey( const SRASplitter* cself, const char** key,
                 }
                 else
                 {
-                    uint32_t xLen = spot_len < strLen ? spot_len : strLen;
-                    IF_BUF( ( FastqReaderBase( self->reader, 0, self->kdbuf->base, KDataBufferBytes( self->kdbuf ), NULL ) ), self->kdbuf, spot_len )
+                    IF_BUF( ( FastqReaderBase( self->reader, 0, self->buffer_for_read_column->base,
+                              KDataBufferBytes( self->buffer_for_read_column ), NULL ) ), self->buffer_for_read_column, spot_len )
                     {
-                        const char* b = self->kdbuf->base;
-                        if ( ( FastqArgs.is_platform_cs_native &&
-                               ( strncmp( &b[ 1 ], colorStr, xLen ) == 0 || strcmp( &b[ spot_len - xLen + 1 ], colorStr ) == 0 ) ) ||
-                               ( strncmp( b, baseStr, xLen ) == 0 || strcmp( &b[ spot_len - xLen ], baseStr ) == 0 ) )
+                        const char* b = self->buffer_for_read_column->base;
+                        bool filter_passed = true;
+
+                        if ( FastqArgs.qual_filter1 )
                         {
+                            if ( quality_N_limit > 0 )
+                            {
+                                IF_BUF( ( FastqReaderQuality( self->reader, 0, self->buffer_for_quality->base,
+                                          KDataBufferBytes( self->buffer_for_quality ), NULL ) ), self->buffer_for_quality, spot_len )
+                                {
+                                    const char * q = self->buffer_for_quality->base;
+                                    char N_char = FastqArgs.is_platform_cs_native ? '.' : 'N';
+                                    filter_passed = QFilter_Test_new( b, q, spot_len, quality_N_limit, N_char );
+                                }
+                            }
                         }
                         else
+                            filter_passed = QFilter_Test_old( b, spot_len, FastqArgs.is_platform_cs_native );
+
+                        if ( filter_passed )
                         {
                             *key = "";
                             SRA_DUMP_DBG( 3, ( " whole spot" ) );
+                        }
+                        else
+                        {
+                            /* SPOT did not pass filter */
+                            self->rejected_spots ++;
                         }
                     }
                 }
@@ -1538,12 +1759,32 @@ static rc_t FastqQFilter_GetKey( const SRASplitter* cself, const char** key,
 }
 
 
+static rc_t FastqQFilter_Release( const SRASplitter * cself )
+{
+    rc_t rc = 0;
+    FastqQFilter* self = ( FastqQFilter* )cself;
+
+    if ( self == NULL )
+        rc = RC( rcExe, rcNode, rcExecuting, rcParam, rcInvalid );
+    else if ( !g_legacy_report )
+    {
+        if ( self->rejected_reads > 0 )
+            rc = KOutMsg( "Rejected %lu READS because of Quality-Filtering\n", self->rejected_reads );
+        if ( rc == 0 && self->rejected_spots > 0 )
+            rc = KOutMsg( "Rejected %lu SPOTS because of Quality-Filtering\n", self->rejected_spots );
+
+    }
+    return rc;
+}
+
+
 typedef struct FastqQFilterFactory_struct
 {
     const char* accession;
     const SRATable* table;
     const FastqReader* reader;
     KDataBuffer kdbuf;
+    KDataBuffer kdbuf2;
 } FastqQFilterFactory;
 
 
@@ -1561,11 +1802,15 @@ static rc_t FastqQFilterFactory_Init( const SRASplitterFactory* cself )
         rc = KDataBufferMakeBytes( &self->kdbuf, DATABUFFERINITSIZE );
         if ( rc == 0 )
         {
-            rc = FastqReaderMake( &self->reader, self->table, self->accession,
+            rc = KDataBufferMakeBytes( &self->kdbuf2, DATABUFFERINITSIZE );
+            if ( rc == 0 )
+            {
+                rc = FastqReaderMake( &self->reader, self->table, self->accession,
                              /* preserve orig spot format to save on conversions */
                              FastqArgs.is_platform_cs_native, false, FastqArgs.fasta > 0, false, 
                              false, !FastqArgs.applyClip, 0,
                              FastqArgs.offset, '\0', 0, 0 );
+            }
         }
     }
     return rc;
@@ -1583,11 +1828,15 @@ static rc_t FastqQFilterFactory_NewObj( const SRASplitterFactory* cself, const S
     }
     else
     {
-        rc = SRASplitter_Make( splitter, sizeof( FastqQFilter ), FastqQFilter_GetKey, NULL, NULL, NULL );
+        rc = SRASplitter_Make( splitter, sizeof( FastqQFilter ), FastqQFilter_GetKey, NULL, NULL, FastqQFilter_Release );
         if ( rc == 0 )
         {
-            ( (FastqQFilter*)(*splitter) )->reader = self->reader;
-            ( (FastqQFilter*)(*splitter) )->kdbuf = &self->kdbuf;
+            FastqQFilter * filter = ( FastqQFilter * )( * splitter );
+            filter->reader = self->reader;
+            filter->buffer_for_read_column = &self->kdbuf;
+            filter->buffer_for_quality = &self->kdbuf2;
+            filter->rejected_spots = 0;
+            filter->rejected_reads = 0;
         }
     }
     return rc;
@@ -1600,6 +1849,7 @@ static void FastqQFilterFactory_Release( const SRASplitterFactory* cself )
     {
         FastqQFilterFactory* self = ( FastqQFilterFactory* )cself;
         KDataBufferWhack( &self->kdbuf );
+        KDataBufferWhack( &self->kdbuf2 );
         FastqReaderWhack( self->reader );
     }
 }
@@ -1638,6 +1888,8 @@ static rc_t FastqQFilterFactory_Make( const SRASplitterFactory** cself,
 typedef struct FastqReadLenFilter_struct
 {
     const FastqReader* reader;
+    uint64_t rejected_spots;
+    uint64_t rejected_reads;
 } FastqReadLenFilter;
 
 
@@ -1677,6 +1929,7 @@ static rc_t FastqReadLenFilter_GetKey( const SRASplitter* cself, const char** ke
                                 if ( read_len < FastqArgs.minReadLen )
                                 {
                                     unset_readmask( readmask, readId );
+                                    self->rejected_reads ++;
                                 }
                                 else
                                 {
@@ -1694,6 +1947,8 @@ static rc_t FastqReadLenFilter_GetKey( const SRASplitter* cself, const char** ke
                         *key = "";
                         SRA_DUMP_DBG( 3, ( " whole spot" ) );
                     }
+                    else
+                        self->rejected_spots ++;
                 }
                 SRA_DUMP_DBG( 3, ( "\n" ) );
             }
@@ -1703,6 +1958,24 @@ static rc_t FastqReadLenFilter_GetKey( const SRASplitter* cself, const char** ke
             SRA_DUMP_DBG( 3, ( "%s skipped %u row\n", __func__, spot ) );
             rc = 0;
         }
+    }
+    return rc;
+}
+
+
+static rc_t FastqReadLenFilter_Release( const SRASplitter * cself )
+{
+    rc_t rc = 0;
+    FastqReadLenFilter * self = ( FastqReadLenFilter* )cself;
+
+    if ( self == NULL )
+        rc = RC( rcExe, rcNode, rcExecuting, rcParam, rcInvalid );
+    else if ( !g_legacy_report )
+    {
+        if ( self->rejected_reads > 0 )
+            rc = KOutMsg( "Rejected %lu READS because READLEN < %u\n", self->rejected_reads, FastqArgs.minReadLen );
+        if ( self->rejected_spots > 0 && rc == 0 )
+            rc = KOutMsg( "Rejected %lu SPOTS because SPOTLEN < %u\n", self->rejected_spots, FastqArgs.minReadLen );
     }
     return rc;
 }
@@ -1749,10 +2022,13 @@ static rc_t FastqReadLenFilterFactory_NewObj( const SRASplitterFactory* cself, c
     else
     {
         rc = SRASplitter_Make( splitter, sizeof( FastqReadLenFilter ),
-                               FastqReadLenFilter_GetKey, NULL, NULL, NULL );
+                               FastqReadLenFilter_GetKey, NULL, NULL, FastqReadLenFilter_Release );
         if ( rc == 0 )
         {
-            ( (FastqReadLenFilter*)(*splitter) )->reader = self->reader;
+            FastqReadLenFilter * filter = ( FastqReadLenFilter* )( *splitter );
+            filter->reader = self->reader;
+            filter->rejected_spots = 0;
+            filter->rejected_reads = 0;
         }
     }
     return rc;
@@ -2674,6 +2950,28 @@ ver_t CC KAppVersion( void )
 }
 
 
+#define H_splip_sot 0
+#define H_clip 1
+#define H_minReadLen 2
+#define H_qual_filter 3
+#define H_skip_tech 4
+#define H_split_files 5
+#define H_split_3 6
+#define H_dumpcs 7
+#define H_dumpbase 8
+#define H_offset 9
+#define H_fasta 10
+#define H_origfmt 11
+#define H_readids 12
+#define H_helicos 13
+#define H_defline_seq 14
+#define H_defline_qual 15
+#define H_aligned 16
+#define H_unaligned 17
+#define H_aligned_region 18
+#define H_matepair_distance 19
+#define H_qual_filter_1 20
+
 rc_t FastqDumper_Usage( const SRADumperFmt* fmt, const SRADumperFmt_Arg* core_args, int first )
 {
     int i, j;
@@ -2764,6 +3062,7 @@ rc_t FastqDumper_Usage( const SRADumperFmt* fmt, const SRADumperFmt_Arg* core_ar
     OARG( &fmt->arg_desc[ 2 ], NULL );
     OARG( core[ 6 ], NULL );
     OARG( &fmt->arg_desc[ 3 ], NULL );
+    OARG( &fmt->arg_desc[ 20 ], NULL );
 
     OUTMSG(( "\nFilters based on alignments        Filters are active when alignment\n" ));
     OUTMSG(( "                                     data are present\n" ));
@@ -2891,6 +3190,10 @@ bool FastqDumper_AddArg( const SRADumperFmt* fmt, GetArg* f, int* i, int argc, c
     else if ( f( fmt, "E", "qual-filter", i, argc, argv, NULL ) )
     {
         FastqArgs.qual_filter = true;
+    }
+    else if ( f( fmt, "E1", "qual-filter-1", i, argc, argv, NULL ) )
+    {
+        FastqArgs.qual_filter1 = true;
     }
     else if ( f( fmt, "DB", "defline-seq", i, argc, argv, &arg ) )
     {
@@ -3245,7 +3548,7 @@ rc_t FastqDumper_Factories( const SRADumperFmt* fmt, const SRASplitterFactory** 
         }
     }
 
-    if ( rc == 0 && FastqArgs.qual_filter )
+    if ( rc == 0 && ( FastqArgs.qual_filter || FastqArgs.qual_filter1 ) )
     {
         rc = FastqQFilterFactory_Make( &child, fmt->accession, fmt->table );
         if ( rc == 0 )
@@ -3380,7 +3683,6 @@ rc_t FastqDumper_Factories( const SRADumperFmt* fmt, const SRASplitterFactory** 
     return rc;
 }
 
-
 /* main entry point of the file */
 rc_t SRADumper_Init( SRADumperFmt* fmt )
 {
@@ -3388,38 +3690,39 @@ rc_t SRADumper_Init( SRADumperFmt* fmt )
         {
 
             /* DO NOT ADD IN THE MIDDLE ORDER IS IMPORTANT IN USAGE FUNCTION ABOVE!!! */
-            {NULL, "split-spot", NULL, {"Split spots into individual reads", NULL}},
+            {NULL, "split-spot", NULL, {"Split spots into individual reads", NULL}},            /* H_splip_sot = 0 */
 
-            {"W", "clip", NULL, {"Apply left and right clips", NULL}},
+            {"W", "clip", NULL, {"Apply left and right clips", NULL}},                          /* H_clip = 1 */
 
-            {"M", "minReadLen", "len", {"Filter by sequence length >= <len>", NULL}},
-            {"E", "qual-filter", NULL, {"Filter used in early 1000 Genomes data:",
+            {"M", "minReadLen", "len", {"Filter by sequence length >= <len>", NULL}},           /* H_minReadLen = 2 */
+            {"E", "qual-filter", NULL, {"Filter used in early 1000 Genomes data:",              /* H_qual_filter = 3 */
                                         "no sequences starting or ending with >= 10N", NULL}},
 
-            {NULL, "skip-technical", NULL, {"Dump only biological reads", NULL}},
+            {NULL, "skip-technical", NULL, {"Dump only biological reads", NULL}},               /* H_skip_tech = 4 */
 
-            {NULL, "split-files", NULL, {"Dump each read into a separate file."
+            {NULL, "split-files", NULL, {"Dump each read into a separate file."                 /* H_split_files = 5 */
                                          "Files will receive suffix corresponding to read number", NULL}},
+
             /* DO NOT ADD IN THE MIDDLE ORDER IS IMPORTANT IN USAGE FUNCTION ABOVE!!! */
-            {NULL, "split-3", NULL, {"Legacy 3-file splitting for mate-pairs:",
+            {NULL, "split-3", NULL, {"Legacy 3-file splitting for mate-pairs:",                 /* H_split_3 = 6 */
                                      "First 2 biological reads satisfying dumping conditions",
                                      "are placed in files *_1.fastq and *_2.fastq",
                                      "If only one biological read is present - it is placed in *.fastq",
                                      "Biological reads 3 and above are ignored.", NULL}},
             
-            {"C", "dumpcs", "[cskey]", {"Formats sequence using color space (default for SOLiD),"
+            {"C", "dumpcs", "[cskey]", {"Formats sequence using color space (default for SOLiD),"   /* H_dumpcs = 7 */
                                         "\"cskey\" may be specified for translation", NULL}},
-            {"B", "dumpbase", NULL, {"Formats sequence using base space (default for other than SOLiD).", NULL}},
+            {"B", "dumpbase", NULL, {"Formats sequence using base space (default for other than SOLiD).", NULL}}, /* H_dumpbase = 8 */
 
             /* DO NOT ADD IN THE MIDDLE ORDER IS IMPORTANT IN USAGE FUNCTION ABOVE!!! */
-            {"Q", "offset", "integer", {"Offset to use for quality conversion, default is 33", NULL}},
-            {NULL, "fasta", "[line width]", {"FASTA only, no qualities, optional line wrap width (set to zero for no wrapping)", NULL}},
+            {"Q", "offset", "integer", {"Offset to use for quality conversion, default is 33", NULL}},  /* H_offset = 9 */
+            {NULL, "fasta", "[line width]", {"FASTA only, no qualities, optional line wrap width (set to zero for no wrapping)", NULL}}, /* H_fasta = 10 */
 
-            {"F", "origfmt", NULL, {"Defline contains only original sequence name", NULL}},
-            {"I", "readids", NULL, {"Append read id after spot id as 'accession.spot.readid' on defline", NULL}},
-            {NULL, "helicos", NULL, {"Helicos style defline", NULL}},
-            {NULL, "defline-seq", "fmt", {"Defline format specification for sequence.", NULL}},
-            {NULL, "defline-qual", "fmt", {"Defline format specification for quailty.",
+            {"F", "origfmt", NULL, {"Defline contains only original sequence name", NULL}}, /* H_origfmt = 11 */
+            {"I", "readids", NULL, {"Append read id after spot id as 'accession.spot.readid' on defline", NULL}}, /* H_readids = 12 */
+            {NULL, "helicos", NULL, {"Helicos style defline", NULL}}, /* H_helicos = 13 */
+            {NULL, "defline-seq", "fmt", {"Defline format specification for sequence.", NULL}}, /* H_defline_seq = 14 */
+            {NULL, "defline-qual", "fmt", {"Defline format specification for quailty.", /* H_defline_qual = 15 */
                               "<fmt> is a string of characters and/or variables. The variables can be one of:",
                               "$ac - accession, $si - spot id, $sn - spot name, $sg - spot group (barcode),",
                               "$sl - spot length in bases, $ri - read number, $rn - read name, $rl - read length in bases.",
@@ -3427,17 +3730,19 @@ rc_t SRADumper_Init( SRADumperFmt* fmt )
                               "Empty value is empty string or 0 for numeric variables.",
                               "Ex: @$sn[_$rn]/$ri - '_$rn' is omitted if name is empty\n", NULL}},
 
-            {NULL, "aligned", NULL, {"Dump only aligned sequences", NULL}},
-            {NULL, "unaligned", NULL, {"Dump only unaligned sequences", NULL}},
+            {NULL, "aligned", NULL, {"Dump only aligned sequences", NULL}}, /* H_aligned = 16 */
+            {NULL, "unaligned", NULL, {"Dump only unaligned sequences", NULL}}, /* H_unaligned = 17 */
 
             /* DO NOT ADD IN THE MIDDLE ORDER IS IMPORTANT IN USAGE FUNCTION ABOVE!!! */
-            {NULL, "aligned-region", "name[:from-to]", {"Filter by position on genome.",
+            {NULL, "aligned-region", "name[:from-to]", {"Filter by position on genome.", /* H_aligned_region = 18 */
                             "Name can either be accession.version (ex: NC_000001.10) or",
                             "file specific name (ex: \"chr1\" or \"1\").",
                             "\"from\" and \"to\" are 1-based coordinates", NULL}},
-            {NULL, "matepair-distance", "from-to|unknown", {"Filter by distance beiween matepairs.",
+            {NULL, "matepair-distance", "from-to|unknown", {"Filter by distance beiween matepairs.", /* H_matepair-distance = 19 */
                             "Use \"unknown\" to find matepairs split between the references.",
                             "Use from-to to limit matepair distance on the same reference", NULL}},
+
+            {NULL, "qual-filter-1", NULL, {"Filter used in current 1000 Genomes data", NULL}}, /* H_qual_filter_1 = 20 */
 
             {NULL, NULL, NULL, {NULL}}
         };

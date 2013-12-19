@@ -173,13 +173,13 @@ rc_t CC align_ref_pos ( void *data, const VXformInfo *info,
 {
     rc_t rc;
     RefPos const *self = (void const *)data;
-    int64_t ref_row_id;
+    int64_t ref_row_id = 0;
     INSDC_coord_zero *ref_pos;
     unsigned const ploidy = argv[REF_START].u.data.elem_count;
     unsigned i;
 
     /* get start and length of reference segment */
-    int64_t const *ref_id;
+    int64_t const *ref_id = 0;
     INSDC_coord_zero const *ref_start;
 
     assert(argv[REF_ID].u.data.elem_bits == sizeof(*ref_id) * 8);

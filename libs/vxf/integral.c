@@ -87,8 +87,12 @@ VTRANSFACT_IMPL ( vdb_integral, 1, 0, 0 ) ( const void *self, const VXfactInfo *
     VFuncDesc *rslt, const VFactoryParams *cp, const VFunctionParams *dp )
 {
     int size_idx;
-    if ( info -> fdesc . desc . domain != vtdInt)
+    switch ( info -> fdesc . desc . domain )
     {
+    case vtdUint:
+    case vtdInt:
+        break;
+    default:
         return RC ( rcXF, rcFunction, rcConstructing, rcType, rcIncorrect );
     }
 

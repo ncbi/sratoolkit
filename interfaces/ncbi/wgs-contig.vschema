@@ -42,9 +42,9 @@ include 'ncbi/stats.vschema';
  */
 
 /* component_props
- *  a signed value describing either contigs or gaps
- *  where values >= 0 refer to contigs
- *  and negatives describe gaps
+ *  a signed value describing contig or gap components of scaffolds, or
+ *  gaps in contig sequences.
+ *  Positive values refer to contigs and negatives describe gaps
  */
 typedef I16 NCBI:WGS:component_props;
 
@@ -108,7 +108,13 @@ const NCBI:WGS:component_props NCBI:WGS:gap:heterochromatin            = -20;
 const NCBI:WGS:component_props NCBI:WGS:gap:telomere                   = -24;
 const NCBI:WGS:component_props NCBI:WGS:gap:repeat                     = -28;
 
-/* gap linkage evidence
+/* gap_linkage
+ */
+typedef I32 NCBI:WGS:gap_linkage;
+
+/* gap linkage and linkage evidence 
+ * There can be multiple linkage evidences or linkage with no evidence
+ * 
  *  paired-ends       paired sequences from the two ends of a DNA fragment
  *  align_genus       alignment to a reference genome within the same genus
  *  align_xgenus      alignment to a reference genome within another genus
@@ -120,17 +126,19 @@ const NCBI:WGS:component_props NCBI:WGS:gap:repeat                     = -28;
  *                    such as RH, linkage, fingerprint or optical
  *  strobe            strobe sequencing (PacBio)
  *  unspecified
+ *  pcr               PCR
  */
-const NCBI:WGS:component_props NCBI:WGS:gap:linkage:paired_ends        = -64;
-const NCBI:WGS:component_props NCBI:WGS:gap:linkage:align_genus        = -128;
-const NCBI:WGS:component_props NCBI:WGS:gap:linkage:align_xgenus       = -192;
-const NCBI:WGS:component_props NCBI:WGS:gap:linkage:align_trnscpt      = -256;
-const NCBI:WGS:component_props NCBI:WGS:gap:linkage:within_clone       = -320;
-const NCBI:WGS:component_props NCBI:WGS:gap:linkage:clone_contig       = -384;
-const NCBI:WGS:component_props NCBI:WGS:gap:linkage:map                = -448;
-const NCBI:WGS:component_props NCBI:WGS:gap:linkage:strobe             = -512;
-const NCBI:WGS:component_props NCBI:WGS:gap:linkage:unspecified        = -576;
-
+const NCBI:WGS:gap_linkage NCBI:WGS:gap:linkage:linked                 = 1;
+const NCBI:WGS:gap_linkage NCBI:WGS:gap:linkage_evidence:paired_ends   = 2;
+const NCBI:WGS:gap_linkage NCBI:WGS:gap:linkage_evidence:align_genus   = 4;
+const NCBI:WGS:gap_linkage NCBI:WGS:gap:linkage_evidence:align_xgenus  = 8;
+const NCBI:WGS:gap_linkage NCBI:WGS:gap:linkage_evidence:align_trnscpt = 16;
+const NCBI:WGS:gap_linkage NCBI:WGS:gap:linkage_evidence:within_clone  = 32;
+const NCBI:WGS:gap_linkage NCBI:WGS:gap:linkage_evidence:clone_contig  = 64;
+const NCBI:WGS:gap_linkage NCBI:WGS:gap:linkage_evidence:map           = 128;
+const NCBI:WGS:gap_linkage NCBI:WGS:gap:linkage_evidence:strobe        = 256;
+const NCBI:WGS:gap_linkage NCBI:WGS:gap:linkage_evidence:unspecified   = 512;
+const NCBI:WGS:gap_linkage NCBI:WGS:gap:linkage_evidence:pcr           = 1024;
 
 /*--------------------------------------------------------------------------
  * functions
@@ -308,6 +316,27 @@ table NCBI:WGS:tbl:nucleotide #1.1
      *  ASN.1 annotation
      */
     extern column < NCBI:asn:binary > zip_encoding ANNOT;
+
+    /* GAP_START
+     *  Starting position of a gap
+     */
+    extern column < INSDC:coord:zero > izip_encoding GAP_START;
+
+    /* GAP_LEN
+     *  Length of a gap
+     */
+    extern column < INSDC:coord:len > izip_encoding GAP_LEN;
+
+    /* GAP_PROPS
+     *  See description of type
+     */
+    extern column < NCBI:WGS:component_props > zip_encoding GAP_PROPS;
+
+    /* GAP_LINKAGE
+     *  See description of type
+     */
+    extern column < NCBI:WGS:gap_linkage> zip_encoding GAP_LINKAGE;
+
 
     ascii out_seqid_gi = sprintf < "gi|%u" > ( .GI );
     ascii out_seqid_gb = sprintf < "gb|%s.%u|" > ( out_accession, ACC_VERSION )
@@ -487,9 +516,15 @@ table NCBI:WGS:tbl:scaffold #1
     extern column < NCBI:WGS:component_props > zip_encoding COMPONENT_PROPS;
 
     /* COMPONENT_ID
-     *  one row-id for each non-gap component in COMPONENT_TYPE
+     *  one row-id for each non-gap component
      */
     extern column < I64 > izip_encoding COMPONENT_ID;
+
+    /* COMPONENT_LINKAGE
+     *  see description of type
+     *  one row-id for each gap component
+     */
+    extern column < NCBI:WGS:gap_linkage > zip_encoding COMPONENT_LINKAGE;
 }
 
 table NCBI:WGS:view:scaffold #1 = NCBI:WGS:tbl:scaffold #1
@@ -506,7 +541,7 @@ table NCBI:WGS:view:scaffold #1 = NCBI:WGS:tbl:scaffold #1
     ascii acc_prefix
         = < ascii > simple_sub_select < 'SEQUENCE', 'ACC_PREFIX' > ( acc_row_id );
     U32 acc_contig_len
-        = < ascii > simple_sub_select < 'SEQUENCE', 'ACC_CONTIG_LEN' > ( acc_row_id );
+        = < U32 > simple_sub_select < 'SEQUENCE', 'ACC_CONTIG_LEN' > ( acc_row_id );
     ascii out_accession
         = sprintf < "%sS%0*d" > ( acc_prefix, acc_contig_len, scaffold_row_id );
 
@@ -656,5 +691,5 @@ database NCBI:WGS:db:contig #1.1
     table NCBI:WGS:tbl:nucleotide SEQUENCE;
     table NCBI:WGS:tbl:protein PROTEIN;
     table NCBI:WGS:tbl:gi_idx GI_IDX;
-    table NCBI:WGS:tbl:scaffold SCAFFOLD;
+    table NCBI:WGS:view:scaffold SCAFFOLD;
 };

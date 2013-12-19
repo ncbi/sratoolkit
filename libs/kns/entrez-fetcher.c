@@ -77,7 +77,7 @@ rc_t KEntrezFetcherRelease ( const KEntrezFetcher *cself )
                 free( self );
                 return 0;
             }
-        case krefLimit:
+        case krefNegative:
             return RC ( rcApp, rcFunction, rcReleasing, rcRange, rcExcessive );
         }
     }

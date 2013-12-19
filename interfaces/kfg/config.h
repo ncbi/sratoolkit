@@ -157,7 +157,7 @@ KFG_EXTERN rc_t CC KConfigReadVPath ( const KConfig* self, const char* path, str
  *
  * self [ IN ] - KConfig object
  * path [ IN ] - path to the node
- * result [ OUT ] - return value; caller responsible for deallocation
+ * result [ OUT, NUL-TERMINATED ] - return value; caller responsible for deallocation
  *
  */
 KFG_EXTERN rc_t CC KConfigReadString ( const KConfig* self, const char* path, struct String** result );
@@ -175,10 +175,13 @@ KFG_EXTERN rc_t CC KConfigPrint ( const KConfig * self, int indent );
  * self [ IN ] - KConfig object
  * path [ IN ] - path to the ngc file
  * pathToProtectedRepository [ IN, NULL OKAY ] - optional - the
- *  special value NULL is interpreted as ${HOME}/ncbi/dbGap-$(Project #)
+ *  special value NULL is interpreted as ${HOME}/ncbi/dbGaP-$(Project #)
+ * newRepoParentPath [ OUT, NULL OKAY ] - optional - 
+ *  path to the new protected repository: should not be released!
  */
 KFG_EXTERN rc_t CC KConfigImportNgc(KConfig *self,
-    const char *ngcPath, const char *pathToProtectedRepository);
+    const char *ngcPath, const char *pathToProtectedRepository,
+    const char **newRepoParentPath);
 
 /* DisableUserSettings
  *  for testing purposes
@@ -201,6 +204,8 @@ typedef struct KConfigNode KConfigNode;
 KFG_EXTERN rc_t CC KConfigNodeAddRef ( const KConfigNode *self );
 KFG_EXTERN rc_t CC KConfigNodeRelease ( const KConfigNode *self );
 
+
+KFG_EXTERN rc_t CC KConfigNodeGetMgr( const KConfigNode * self, KConfig ** mgr );
 
 /* OpenNodeRead
  * VOpenNodeRead

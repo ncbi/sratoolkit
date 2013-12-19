@@ -29,13 +29,10 @@ TOP ?= $(shell ../../build/abspath.sh ../..)
 MODULE = libs/klib
 
 INT_LIBS = \
-
-EXT_LIBS = \
 	libklib
 
 ALL_LIBS = \
-	$(INT_LIBS) \
-	$(EXT_LIBS)
+	$(INT_LIBS)
 
 include $(TOP)/build/Makefile.env
 
@@ -54,18 +51,13 @@ $(INT_LIBS): makedirs
 	@ $(MAKE) -C $(SRCDIR)/judy std
 	@ $(MAKE_CMD) $(ILIBDIR)/$@
 
-$(EXT_LIBS): makedirs
-	@ $(MAKE) -C $(SRCDIR)/judy std
-	@ $(MAKE_CMD) $(LIBDIR)/$@
-
 .PHONY: all std $(ALL_LIBS)
 
 #-------------------------------------------------------------------------------
 # all, std
 #
 $(TARGDIR)/all $(TARGDIR)/std: \
-	$(addprefix $(ILIBDIR)/,$(INT_LIBS)) \
-	$(addprefix $(LIBDIR)/,$(EXT_LIBS))
+	$(addprefix $(ILIBDIR)/,$(INT_LIBS))
 
 .PHONY: $(TARGDIR)/all $(TARGDIR)/std
 
@@ -80,7 +72,7 @@ clean: stdclean
 #-------------------------------------------------------------------------------
 # klib
 #
-$(LIBDIR)/libklib: $(addprefix $(LIBDIR)/libklib.,$(LIBEXT))
+$(ILIBDIR)/libklib: $(addprefix $(ILIBDIR)/libklib.,$(ILIBEXT))
 
 KLIB_SRC = \
 	text \
@@ -127,7 +119,8 @@ KLIB_SRC = \
 	rc-tbl \
 	rc-idx-tbl \
 	judy-vector \
-	report
+	report \
+	sra-release-version
 
 ifeq (win,$(OS))
 	KLIB_SRC += sysalloc
@@ -144,11 +137,5 @@ KLIB_LIB = \
 	-sjudy \
 	-lm
 
-$(LIBDIR)/libklib.$(SHLX): $(KLIB_OBJ)
-	$(LD) --dlib --vers $(SRCDIR) -o $@ $^ $(KLIB_LIB)
-
-$(LIBDIR)/libklib.$(LIBX): $(KLIB_OBJ)
-	$(LD) --slib --vers $(SRCDIR) -o $@ $^ $(KLIB_LIB)
-
-libklib_tag:
-	@ $(TOP)/build/tag-module.sh $(MODULE) libklib $(KLIB_OBJ)
+$(ILIBDIR)/libklib.$(LIBX): $(KLIB_OBJ)
+	$(LD) --slib -o $@ $^ $(KLIB_LIB)

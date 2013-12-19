@@ -2622,6 +2622,7 @@ rc_t KMetadataMake ( KMetadata **metap,
         rc = RC ( rcDB, rcMetadata, rcConstructing, rcMemory, rcExhausted );
     else
     {
+        memset ( meta, 0, sizeof * meta );
         meta -> root = calloc ( 1, sizeof * meta -> root );
         if ( meta -> root == NULL )
             rc = RC ( rcDB, rcMetadata, rcConstructing, rcMemory, rcExhausted );
@@ -2629,23 +2630,14 @@ rc_t KMetadataMake ( KMetadata **metap,
         {
             meta -> root -> meta = meta;
             meta -> dir = dir;
-            meta -> mgr = NULL;
-            meta -> db = NULL;
-            meta -> tbl = NULL;
-            meta -> col = NULL;
-            meta -> md5 = NULL;
             KRefcountInit ( & meta -> refcount, 1, "KMetadata", "make-update", path );
             meta -> opencount = 1;
-            meta -> vers = 0;
             meta -> rev = rev;
             meta -> read_only = read_only;
-            meta -> dirty = false;
-            meta -> byteswap = false;
 
             strcpy ( meta -> path, path );
 
             meta->sym.u.obj = meta;
-            meta->sym.dad = NULL;   /* not strictly needed */
             StringInitCString (&meta->sym.name, meta->path);
             meta->sym.type = kptMetadata;
 
@@ -3446,15 +3438,12 @@ static
 rc_t KMDataNodeNamelistMake ( KNamelist **names, unsigned int count )
 {
     rc_t rc;
-    KMDataNodeNamelist *self = malloc ( sizeof * self -
+    KMDataNodeNamelist *self = calloc ( 1, sizeof * self -
         sizeof self -> namelist + count * sizeof self -> namelist [ 0 ] );
     if ( self == NULL )
         rc = RC ( rcDB, rcNamelist, rcConstructing, rcMemory, rcExhausted );
     else
     {
-        self -> node = NULL;
-        self -> count = 0;
-        
         rc = KNamelistInit ( & self -> dad,
             ( const KNamelist_vt* ) & vtKMDataNodeNamelist );
         if ( rc == 0 )

@@ -91,20 +91,9 @@ VDB_VALIDATE_OBJ = \
 	$(addsuffix .$(OBJX),$(VDB_VALIDATE_SRC))
 
 VDB_VALIDATE_LIB = \
-	-dalign-reader \
-	$(READONLY_SCHEMA_LIBS) \
-	-dksrch \
-	-lsradb \
-	-lvdb \
-	-lkdb \
 	-lkapp \
-	-lvfs \
-	-lkurl \
-	-lkrypto \
-	-lkfg \
-	-lkfs \
-	-lkproc \
-	-lklib \
+	-lncbi-vdb \
+	-lxml2 \
 	-lm
 
 vdb-validate.vers.h: vdb-validate.vers

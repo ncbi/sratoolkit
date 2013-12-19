@@ -43,6 +43,7 @@
 
 #include <limits.h>
 #include <stdlib.h>
+#include <string.h>
 #include <assert.h>
 
 
@@ -105,7 +106,7 @@ LIB_EXPORT rc_t CC KDBManagerRelease ( const KDBManager *self )
         {
         case krefWhack:
             return KDBManagerWhack ( ( KDBManager* ) self );
-        case krefLimit:
+        case krefNegative:
             return RC ( rcDB, rcMgr, rcReleasing, rcRange, rcExcessive );
         }
     }
@@ -137,7 +138,7 @@ rc_t KDBManagerSever ( const KDBManager *self )
         {
         case krefWhack:
             return KDBManagerWhack ( ( KDBManager* ) self );
-        case krefLimit:
+        case krefNegative:
             return RC ( rcDB, rcMgr, rcReleasing, rcRange, rcExcessive );
         }
     }
@@ -150,7 +151,8 @@ rc_t KDBManagerSever ( const KDBManager *self )
  *  "wd" [ IN, NULL OKAY ] - optional working directory for
  *  accessing the file system. mgr will attach its own reference.
  */
-rc_t KDBManagerMake ( KDBManager **mgrp, const KDirectory *wd, const char *op )
+rc_t KDBManagerMake ( KDBManager **mgrp, const KDirectory *wd, const char *op,
+    VFSManager *vmanager )
 {
     rc_t rc;
 
@@ -163,6 +165,7 @@ rc_t KDBManagerMake ( KDBManager **mgrp, const KDirectory *wd, const char *op )
             rc = RC ( rcDB, rcMgr, rcConstructing, rcMemory, rcExhausted );
         else
         {
+            memset ( mgr, 0, sizeof * mgr );
             mgr -> wd = wd;
             if ( wd != NULL )
                 rc = KDirectoryAddRef ( wd );
@@ -171,7 +174,15 @@ rc_t KDBManagerMake ( KDBManager **mgrp, const KDirectory *wd, const char *op )
 
             if ( rc == 0 )
             {
-                rc = VFSManagerMake ( & mgr -> vfsmgr );
+                if (vmanager == NULL) {
+                    rc = VFSManagerMake ( & mgr -> vfsmgr );
+                }
+                else {
+                    rc = VFSManagerAddRef ( vmanager );
+                    if (rc == 0) {
+                        mgr -> vfsmgr = vmanager;
+                    }
+                }
 
                 if ( rc == 0 )
                 {
@@ -193,6 +204,28 @@ rc_t KDBManagerMake ( KDBManager **mgrp, const KDirectory *wd, const char *op )
     }
 
     return rc;
+}
+
+
+LIB_EXPORT rc_t CC KDBManagerGetVFSManager ( const KDBManager *self,
+    const struct VFSManager **vmanager )
+{
+    if (self == NULL) {
+        return RC ( rcDB, rcMgr, rcAccessing, rcSelf, rcNull );
+    }
+    else if (vmanager == NULL) {
+        return RC ( rcDB, rcMgr, rcAccessing, rcParam, rcNull );
+    }
+    else {
+        rc_t rc = VFSManagerAddRef(self -> vfsmgr);
+        if (rc == 0) {
+            * vmanager = self -> vfsmgr;
+        }
+        else {
+            * vmanager = NULL;
+        }
+        return rc;
+    }
 }
 
 

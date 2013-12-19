@@ -121,7 +121,7 @@ rc_t KDatabaseRelease ( const KDatabase *self )
         {
         case krefWhack:
             return KDatabaseWhack ( ( KDatabase* ) self );
-        case krefLimit:
+        case krefNegative:
             return RC ( rcDB, rcDatabase, rcReleasing, rcRange, rcExcessive );
         }
     }
@@ -153,7 +153,7 @@ rc_t KDatabaseSever ( const KDatabase *self )
         {
         case krefWhack:
             return KDatabaseWhack ( ( KDatabase* ) self );
-        case krefLimit:
+        case krefNegative:
             return RC ( rcDB, rcDatabase, rcReleasing, rcRange, rcExcessive );
         }
     }
@@ -179,8 +179,7 @@ rc_t KDatabaseMake ( KDatabase **dbp, const KDirectory *dir, const char *path )
         return RC ( rcDB, rcDatabase, rcConstructing, rcMemory, rcExhausted );
     }
 
-    db -> mgr = NULL;
-    db -> dad = NULL;
+    memset ( db, 0, sizeof * db );
     db -> dir = dir;
     KRefcountInit ( & db -> refcount, 1, "KDatabase", "make", path );
     strcpy ( db -> path, path );

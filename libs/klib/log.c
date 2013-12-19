@@ -159,7 +159,7 @@ rc_t CC KLogDefaultFormatter( void* self, KWrtHandler* writer,
 {
     rc_t rc = 0;
     size_t num_writ, nsize, msize;
-    uint32_t mlen;
+    uint64_t mlen;
     char buffer[8192], *nbuffer;
     const char* msg, *rc_msg;
 
@@ -471,7 +471,7 @@ rc_t prep_v_args( uint32_t* argc, wrt_nvp_t argv[], size_t max_argc,
     if ( rc == 0 )
     {
         /* tokenize the parameters into name/value pairs */
-        rc = logtokenizeparams(fmt, pbuffer, argc, argv, max_argc);
+        rc = logtokenizeparams(fmt, pbuffer, argc, argv, ( uint32_t ) max_argc);
     }
     return rc;
 }

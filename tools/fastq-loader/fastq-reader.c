@@ -35,8 +35,8 @@ typedef struct FastqSequence    FastqSequence;
 #include "fastq-reader.h"
 #include "fastq-parse.h"
 
-#include <stdlib.h>
 #include <sysalloc.h>
+#include <stdlib.h>
 #include <assert.h>
 #include <string.h>
 
@@ -322,6 +322,10 @@ static rc_t FastqSequenceGetQuality ( const FastqSequence *self, const int8_t **
     *quality = NULL;
     if ( self->quality.size != 0)
     {
+        uint32_t length = string_measure(self->read, NULL);
+        if (self->quality.size != length)
+            return RC(rcAlign, rcRow, rcReading, rcData, rcInconsistent);
+            
         *quality = (const int8_t *)self->quality.addr;
         *offset = self->qualityOffset;
     }
@@ -625,7 +629,7 @@ size_t CC FASTQ_input(FASTQParseBlock* pb, char* buf, size_t max_size)
     return length;
 }
 
-rc_t CC FastqReaderFileMake( const ReaderFile **reader, const KDirectory* dir, const char* file, uint8_t phredOffset, uint8_t defaultReadNumber)
+rc_t CC FastqReaderFileMake( const ReaderFile **reader, const KDirectory* dir, const char* file, uint8_t phredOffset, uint8_t phredMax, int8_t defaultReadNumber)
 {
     rc_t rc;
     FastqReaderFile* self = (FastqReaderFile*) malloc ( sizeof * self );
@@ -653,6 +657,7 @@ rc_t CC FastqReaderFileMake( const ReaderFile **reader, const KDirectory* dir, c
             self->pb.self = self;
             self->pb.input = FASTQ_input;    
             self->pb.phredOffset = phredOffset;
+            self->pb.maxPhred = phredMax;
             /* TODO: 
                 if phredOffset is 0, 
                     guess based on the raw values on the first quality line:

@@ -41,7 +41,7 @@
 /* Init
  *  initialize a timeout in milliseconds
  */
-rc_t TimeoutInit ( timeout_t *tm, uint32_t msec )
+LIB_EXPORT rc_t TimeoutInit ( timeout_t *tm, uint32_t msec )
 {
     if ( tm == NULL )
         return RC ( rcPS, rcTimeout, rcConstructing, rcSelf, rcNull );
@@ -55,7 +55,7 @@ rc_t TimeoutInit ( timeout_t *tm, uint32_t msec )
 /* Prepare
  *  ensures that a timeout is prepared with an absolute value
 */
-rc_t TimeoutPrepare ( timeout_t *self )
+LIB_EXPORT rc_t TimeoutPrepare ( timeout_t *self )
 {
     if ( self == NULL )
         return RC ( rcPS, rcTimeout, rcUpdating, rcSelf, rcNull );

@@ -155,9 +155,9 @@ struct STypeExpr
  *  resolve type expression to either a VTypedecl or VFormatdecl
  */
 rc_t STypeExprResolveAsTypedecl ( const STypeExpr *self,
-    struct VSchema const *schema, VTypedecl *td );
+    struct VSchema const *schema, VTypedecl *td, Vector *cx_bind );
 rc_t STypeExprResolveAsFormatdecl ( const STypeExpr *self,
-    struct VSchema const *schema, VFormatdecl *fd );
+    struct VSchema const *schema, VFormatdecl *fd, Vector *cx_bind );
 
 /* Mark
  */
@@ -232,7 +232,7 @@ rc_t SConstExprResolveAsU8 ( const SConstExpr *self,
 rc_t SConstExprResolveAsU16 ( const SConstExpr *self,
     struct VSchema const *schema, uint16_t *u16, uint32_t capacity );
 rc_t SConstExprResolveAsU32 ( const SConstExpr *self,
-    struct VSchema const *schema, uint32_t *u32, uint32_t capacity );
+    struct VSchema const *schema, uint32_t *u32, uint32_t capacity, Vector *cx_bind );
 rc_t SConstExprResolveAsU64 ( const SConstExpr *self,
     struct VSchema const *schema, uint32_t *u64, uint32_t capacity );
 rc_t SConstExprResolveAsF32 ( const SConstExpr *self,

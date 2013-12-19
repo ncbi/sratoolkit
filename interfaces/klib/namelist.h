@@ -35,6 +35,10 @@
 #include <klib/defs.h>
 #endif
 
+#ifndef _h_klib_text_
+#include <klib/text.h>
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -101,13 +105,15 @@ KLIB_EXTERN rc_t CC VNamelistRelease ( const VNamelist *self );
 KLIB_EXTERN rc_t CC VNamelistToNamelist ( VNamelist *self, KNamelist **cast );
 KLIB_EXTERN rc_t CC VNamelistToConstNamelist ( const VNamelist *self, const KNamelist **cast );
 
-/* AppendCopy
- *  appends a copy of string to namelist
+
+/* Append
+ *  appends a copy of string to the VNamelist
  *
- *  "src" [ IN ] - NUL terminated name string to be copied
+ *  "src" [ IN ] - NUL terminated name string / String-struct ... to be copied
  *  and appended.
  */
 KLIB_EXTERN rc_t CC VNamelistAppend ( VNamelist *self, const char* src );
+KLIB_EXTERN rc_t CC VNamelistAppendString ( VNamelist *self, const String * src );
 
 /* Remove
  *  removes a string from the namelist

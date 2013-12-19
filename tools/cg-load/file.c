@@ -254,6 +254,22 @@ rc_t CGLoaderFile_GetRead(const CGLoaderFile* cself, TReadsData* data)
     return rc;
 }
 
+rc_t CGLoaderFile_GetTagLfr(const CGLoaderFile* cself, TReadsData* data)
+{
+    rc_t rc = 0;
+
+    if( cself == NULL || data == NULL ) {
+        rc = RC(rcRuntime, rcFile, rcReading, rcParam, rcNull);
+    } else if( cself->cg_file->type != cg_eFileType_TAG_LFR ) {
+        rc = RC(rcRuntime, rcFile, rcReading, rcInterface, rcUnsupported);
+    } else if( cself->cg_file->vt->tag_lfr == NULL ) {
+        rc = RC(rcRuntime, rcFile, rcReading, rcInterface, rcIncomplete);
+    } else if( (rc = CGLoaderFile_header(cself)) == 0 ) {
+        rc = cself->cg_file->vt->tag_lfr(cself->cg_file, data);
+    }
+    return rc;
+}
+
 rc_t CGLoaderFile_GetStartRow(const CGLoaderFile* cself, int64_t* rowid)
 {
     rc_t rc = 0;

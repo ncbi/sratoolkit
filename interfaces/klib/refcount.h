@@ -35,9 +35,16 @@
 #include <atomic32.h>
 #endif
 
+#ifndef FORCE_TRACK_REFERENCES
+#define FORCE_TRACK_REFERENCES 0
+#endif
+
 /* normally turned off */
-#ifndef TRACK_REFERENCES
+#if FORCE_TRACK_REFERENCES
+#undef TRACK_REFERENCES
 #define TRACK_REFERENCES 1
+#elif ! defined TRACK_REFERENCES
+#define TRACK_REFERENCES 0
 #endif
 
 /* normally turned on */

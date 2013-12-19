@@ -148,7 +148,7 @@ KLIB_EXTERN int CC StringCompare ( const String *a, const String *b );
 /* StringCaseEqual
  *  compare strings for case-insensitive equality
  */
-KLIB_EXTERN int CC StringCaseEqual ( const String *a, const String *b );
+KLIB_EXTERN bool CC StringCaseEqual ( const String *a, const String *b );
 
 /* StringCaseCompare
  *  compare strings for relative case-insensitive ordering

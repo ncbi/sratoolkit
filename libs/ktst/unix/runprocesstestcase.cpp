@@ -29,16 +29,20 @@
 #include <signal.h> // sigaction, not necessarily in csignal :-/
 #include <cstdlib>
 #include <cstring>
+#include <sstream>
 #include <sys/wait.h>
 #include <sys/types.h>
 #include <unistd.h>
 
+using namespace std;
 using namespace ncbi::NK;
 
 #define REPORT_ERROR(msg) _REPORT_CRITICAL_ERROR_("TestEnv::" msg, __FILE__, __LINE__, true);
 
 static void alarmHandler(int)
 {
+    cerr << "child process timed out" << endl;
+    
     exit(TestEnv::TEST_CASE_TIMED_OUT);
 }
 
@@ -62,11 +66,23 @@ int TestEnv::RunProcessTestCase(TestCase& obj, void(TestCase::*meth)(), int time
         }
         try 
         {
+            in_child_process = true;
             (obj.*meth)();
         }   
-        catch(...)
+        catch (const exception& ex)
         {
+            cerr << obj.GetName() << " threw " << ex.what() << endl;
             exit(TEST_CASE_FAILED);
+        }
+        catch (const ncbi::NK::execution_aborted&)
+        {
+            cerr << obj.GetName() << " aborted " << endl;
+            exit(TEST_CASE_FAILED);
+        }
+        catch (...)
+        {
+            cerr << obj.GetName() << " threw something " << endl;
+            exit(TEST_CASE_FAILED);  
         }
         exit(0);
     }
@@ -80,6 +96,7 @@ int TestEnv::RunProcessTestCase(TestCase& obj, void(TestCase::*meth)(), int time
     {   
         REPORT_ERROR("RunProcessTestCase: child exited abnormally");
     }
+    
     return WEXITSTATUS(status); /* exit status of the child process */
 }
 
@@ -98,3 +115,11 @@ void TestEnv::set_handlers(void)
     if (sigaction(SIGILL , &act, NULL) != 0)    REPORT_ERROR("set_handlers: sigaction() failed");
     if (sigaction(SIGSEGV , &act, NULL) != 0)   REPORT_ERROR("set_handlers: sigaction() failed");
 }
+
+string TestEnv::GetPidString()
+{
+    ostringstream str;
+    str << getpid();
+    return str.str();
+}
+

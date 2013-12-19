@@ -107,21 +107,9 @@ VDB_COPY_OBJ = \
 	$(addsuffix .$(OBJX),$(VDB_COPY_SRC))
 
 VDB_COPY_LIB = \
-	-ssrapath \
-	-swsraschema \
-	$(UPDATE_SCHEMA_LIBS) \
-	-lalign-reader \
-	-lwvdb \
-	-lwkdb \
 	-lkapp \
-	-lvfs \
-	-lkurl \
-	-lkrypto \
-	-lkfg \
-	-lkfs \
-	-lksrch \
-	-lkproc \
-	-lklib \
+	-lncbi-wvdb \
+	-lxml2 \
 	-lm
 
 $(BINDIR)/vdb-copy: $(VDB_COPY_OBJ)

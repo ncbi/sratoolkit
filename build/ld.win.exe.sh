@@ -56,7 +56,7 @@ link)
 esac
 
 # EXE_CMD was started in tool-specific source
-CMD="$EXE_CMD $LDFLAGS OLE32.lib"
+CMD="$EXE_CMD $LDFLAGS OLE32.lib Ws2_32.lib"
 
 # if building a static executable against dynamic libraries
 # the main application will substitute for name lookup

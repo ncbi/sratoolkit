@@ -136,6 +136,24 @@ KFS_EXTERN rc_t CC KArrayFileRead ( const KArrayFile *self, uint8_t dim,
     uint64_t *num_read );
 
 
+/* Read_v
+ *  read one element of variable length from n-dimensional position
+ *
+ *  "dim" [ IN ] - the dimensionality of all vectors
+ *
+ *  "pos"  [ IN ] - n-dimensional starting position in elements
+ *
+ *  "buffer" [ OUT ] and "elem_count" [ IN ] - return buffer for read
+ *  where "elem_count" is length of buffer in elements
+ *
+ *  "num_read" [ OUT ] - return parameter giving back
+ *      the number of read elements in every dimension
+ */
+KFS_EXTERN rc_t CC KArrayFileRead_v ( const KArrayFile *self, uint8_t dim,
+    const uint64_t *pos, void *buffer, const uint64_t elem_count,
+    uint64_t *num_read );
+
+
 /* Write
  *  write into n-dimensional position
  *

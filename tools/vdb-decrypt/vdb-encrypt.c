@@ -219,7 +219,11 @@ rc_t CC KMain ( int argc, char *argv [] )
         ArgsWhack (args);
     }
 
-    STSMSG (1, ("exiting: %R (%u)", rc, rc));
+    if (rc)
+        STSMSG (1, ("exiting: %R (%u)", rc, rc));
+    else
+        STSMSG (1, ("exiting: success"));
+
     return rc;
 }
 

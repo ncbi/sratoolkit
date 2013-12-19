@@ -23,10 +23,11 @@
 * ===========================================================================
 */
 
-#include "factory-reads.h"
-#include "factory-mappings.h"
-#include "factory-evidence-intervals.h"
 #include "factory-evidence-dnbs.h"
+#include "factory-evidence-intervals.h"
+#include "factory-mappings.h"
+#include "factory-reads.h"
+#include "factory-tag-lfr.h"
 
 #include "file.h"
 
@@ -84,6 +85,8 @@ static const CGFileTypeFactory cg_ETypeXX_names[] = {
     /* from Cancer Sequencing Service Data File Formats file test */
     { "DIPLOID-SOMATIC-CNV-DETAILSCORES",
                 cg_eFileType_DIPLOID_SOMATIC_CNV_DETAILSCORES, NULL },
+
+    { "TAG_LFR", cg_eFileType_TAG_LFR, CGTagLfr_Make },    
 };
 
 rc_t CGFile22_Make(const CGFileType** self,

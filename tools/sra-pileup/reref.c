@@ -27,14 +27,24 @@
 #include "reref.h"
 
 #include <klib/text.h>
+#include <klib/log.h>
+
 #include <kfs/file.h>
+
 #include <vfs/manager.h>
 #include <vfs/path.h>
 #include <vfs/resolver.h>
+
 #include <align/reference.h>
+
+#include <vdb/manager.h>
+#include <vdb/vdb-priv.h>
+#include <kdb/manager.h>
 
 #include <sysalloc.h>
 #include <stdlib.h>
+
+#if 0
 
 typedef struct report_row_ctx
 {
@@ -140,6 +150,7 @@ static rc_t report_ref_table( const VDBManager *vdb_mgr, const char * path, int6
     }
     return rc;
 }
+#endif
 
 
 static rc_t report_ref_table2( const ReferenceObj* ref_obj, int64_t start, int64_t stop )
@@ -245,26 +256,32 @@ static rc_t resolve_accession( VFSManager * vfs_mgr, const char * accession, con
 {
     VResolver * resolver;
     rc_t rc = VFSManagerGetResolver( vfs_mgr, &resolver );
-    if ( rc == 0 )
+    if ( rc != 0 )
+        KOutMsg( "cannot get VResolver from VFSManger for '%s'\n", accession );
+    else
     {
-        const VPath * vpath;
-        rc = VPathMakeSysPath( ( VPath** )&vpath, accession );
-        if ( rc == 0 )
+        VPath * vpath;
+        rc = VFSManagerMakePath( vfs_mgr, &vpath, "ncbi-acc:%s?vdb-ctx=refseq", accession );
+        if ( rc != 0 )
+            KOutMsg( "cannot make VPath from VFSManger for '%s'\n", accession );
+        else
         {
-            const VPath * rpath;
-            rc = VResolverLocal( resolver, vpath, &rpath );
-            if ( GetRCState( rc ) == rcNotFound )
-                rc = VResolverRemote( resolver, vpath, &rpath, NULL );
-            if ( rc == 0 )
+            const VPath * local;
+            const VPath * remote;
+
+            rc = VResolverQuery ( resolver, eProtocolHttp, vpath, &local, &remote, NULL );
+            if ( rc != 0 )
+                KOutMsg( "cannot resolve '%s'\n", accession );
+            else
             {
-                const String * s;
-                rc = VPathMakeString( rpath, &s );
-                if ( rc == 0 )
-                {
-                    rc = StringCopy ( path, s );
-                    free ((void*)s);
-                }
-                VPathRelease ( rpath );
+                if ( local != NULL )
+                    rc = VPathMakeString( local, path );
+                else 
+                    rc = VPathMakeString( remote, path );
+                if ( local != NULL )
+                    VPathRelease ( local );
+                if ( remote != NULL )
+                    VPathRelease ( remote );
             }
             VPathRelease ( vpath );
         }

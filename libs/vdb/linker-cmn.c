@@ -162,7 +162,7 @@ rc_t VLinkerRelease ( const VLinker *self )
         {
         case krefWhack:
             return VLinkerWhack ( ( VLinker* ) self );
-        case krefLimit:
+        case krefNegative:
             return RC ( rcVDB, rcMgr, rcAttaching, rcRange, rcExcessive );
         }
     }
@@ -193,7 +193,7 @@ rc_t VLinkerSever ( const VLinker *self )
         {
         case krefWhack:
             return VLinkerWhack ( ( VLinker* ) self );
-        case krefLimit:
+        case krefNegative:
             return RC ( rcVDB, rcMgr, rcAttaching, rcRange, rcExcessive );
         }
     }
@@ -417,6 +417,8 @@ rc_t CC VLinkerScanSpecial ( VLinker *self, const KDlset *libs,
                 rc = RC ( rcVDB, rcMgr, rcResolving, rcMemory, rcExhausted );
             else
             {
+                special -> func = NULL;
+
                 /* give it the exact schema name */
                 rc = KSymTableDupSymbol ( tbl,
                     ( KSymbol** ) & special -> name, name, type, special );
@@ -613,7 +615,10 @@ rc_t VLinkerFindUntyped ( VLinker *self, const KDlset *libs,
         if ( rc == 0 )
         {
             const LSpecial *untyped = sym -> u . obj;
-            KSymAddrAsFunc ( untyped -> addr, ( fptr_t* ) func );
+            if ( untyped -> addr == NULL )
+                * func = untyped -> func;
+            else
+                KSymAddrAsFunc ( untyped -> addr, ( fptr_t* ) func );
         }
 
         KSymTableWhack ( & tbl );

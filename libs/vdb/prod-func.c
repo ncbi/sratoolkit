@@ -61,17 +61,28 @@
 /*--------------------------------------------------------------------------
  * VProdResolve
  */
+typedef struct SFunctionPushParam SFunctionPushParam;
+struct SFunctionPushParam
+{
+    /* vectors to allow recursive evaluation of types and functions */
+    Vector schema_prior;
+    Vector fact_parms, fact_prior;
+
+    VFormatdecl fd;
+    VTypedesc desc;
+};
 
 static
-rc_t SFunctionPush ( const SFunction *self, const VSchema *schema,
-    const SFuncExpr *expr, Vector *schema_prior, Vector *fact_prior,
-    const VFormatdecl *lval_fd, VFormatdecl *fd, VTypedesc *desc )
+rc_t SFunctionPush ( const SFunction *self, const VProdResolve *pr,
+    const VFormatdecl *lval_fd, const SFuncExpr *expr, SFunctionPushParam *pb )
 {
     rc_t rc;
+    const VSchema *schema = pr -> schema;
 
     /* validate input parameter counts against formal list */
     uint32_t count = VectorLength ( & expr -> pfunc );
-    if ( count < self -> func . mand ) {
+    if ( count < self -> func . mand )
+    {
         rc = RC ( rcVDB, rcFunction, rcResolving, rcParam, rcInsufficient );
         PLOGERR ( klogWarn, ( klogWarn, rc,
                    "function '$(func)' requires $(mand) params but got $(count)",
@@ -84,7 +95,8 @@ rc_t SFunctionPush ( const SFunction *self, const VSchema *schema,
     else
     {
         uint32_t end = VectorLength ( & self -> func . parms );
-        if ( end < count && ! self -> func . vararg ) {
+        if ( end < count && ! self -> func . vararg )
+        {
             rc = RC ( rcVDB, rcFunction, rcResolving, rcParam, rcExcessive );
             PLOGERR ( klogWarn, ( klogWarn, rc,
                        "function '$(func)' requires $(mand) params but got $(count)",
@@ -100,33 +112,33 @@ rc_t SFunctionPush ( const SFunction *self, const VSchema *schema,
         else
         {
             /* bind schema params */
-            rc = SFunctionBindSchemaParms ( self, schema_prior, & expr -> schem );
+            rc = SFunctionBindSchemaParms ( self, & pb -> schema_prior, & expr -> schem, pr -> cx_bind );
             if ( rc == 0 )
             {
                 /* resolve return type */
                 if ( self -> validate )
                 {
                     /* set type to "void" */
-                    fd -> td . type_id = fd -> td . dim = 1;
-                    fd -> fmt = 0;
-                    memset ( desc, 0, sizeof * desc );
-                    desc -> intrinsic_bits = 1;
-                    desc -> intrinsic_dim = 1;
+                    pb -> fd . td . type_id = pb -> fd . td . dim = 1;
+                    pb -> fd . fmt = 0;
+                    memset ( & pb -> desc, 0, sizeof pb -> desc );
+                    pb -> desc . intrinsic_bits = 1;
+                    pb -> desc . intrinsic_dim = 1;
                 }
                 else
                 {
                     rc = STypeExprResolveAsFormatdecl
-                        ( ( const STypeExpr* ) self -> rt, schema, fd );
+                        ( ( const STypeExpr* ) self -> rt, schema, & pb -> fd, pr -> cx_bind );
                     if ( rc == 0 )
                     {
                         /* pick up cast from lval when return type is "any" or typeset */
-                        if ( fd -> td . type_id == 0 ||
-                             fd -> td . type_id >= 0x40000000 )
+                        if ( pb -> fd . td . type_id == 0 ||
+                             pb -> fd . td . type_id >= 0x40000000 )
                         {
                             VFormatdecl cast;
 
-                            if ( VFormatdeclCommonAncestor ( fd, schema, lval_fd, & cast, NULL ) )
-                                * fd = cast;
+                            if ( VFormatdeclCommonAncestor ( & pb -> fd, schema, lval_fd, & cast, NULL ) )
+                                pb -> fd = cast;
                             else
                             {
                                 const KSymbol *fd_name = NULL;
@@ -136,12 +148,12 @@ rc_t SFunctionPush ( const SFunction *self, const VSchema *schema,
                                 if ( dt != NULL )
                                     lval_name = dt -> name;
                                 
-                                dt = VSchemaFindTypeid ( schema, fd -> td . type_id );
+                                dt = VSchemaFindTypeid ( schema, pb -> fd . td . type_id );
                                 if ( dt != NULL )
                                     fd_name = dt -> name;
                                 else
                                 {
-                                    const STypeset *ts = VSchemaFindTypesetid ( schema, fd -> td . type_id );
+                                    const STypeset *ts = VSchemaFindTypesetid ( schema, pb -> fd . td . type_id );
                                     if ( ts != NULL )
                                         fd_name = ts->name;
                                 }
@@ -154,7 +166,7 @@ rc_t SFunctionPush ( const SFunction *self, const VSchema *schema,
                                                self->name->name.len, self->name->name.addr,
                                                lval_name->name.len, lval_name->name.addr,
                                                fd_name->name.len, fd_name->name.addr
-                                                 ));
+                                                  ));
                                 }
                                 else
                                 {
@@ -168,7 +180,7 @@ rc_t SFunctionPush ( const SFunction *self, const VSchema *schema,
                         }
 
                         /* pick up cast from lval when return dimension is "*" */
-                        else if ( fd -> td . dim == 0 )
+                        else if ( pb -> fd . td . dim == 0 )
                         {
                             VTypedesc lh_desc, rh_desc;
                             /* since rh type is T' and is cast to lh type T,
@@ -177,35 +189,35 @@ rc_t SFunctionPush ( const SFunction *self, const VSchema *schema,
                             if ( rc == 0 )
                             {
                                 VTypedecl rh_td;
-                                rh_td . type_id = fd -> td . type_id;
+                                rh_td . type_id = pb -> fd . td . type_id;
                                 rh_td . dim = 1;
                                 rc = VSchemaDescribeTypedecl ( schema, & rh_desc, & rh_td );
                                 if ( rc == 0 )
                                 {
-                                    fd -> td . dim = VTypedescSizeof ( & lh_desc ) /
+                                    pb -> fd . td . dim = VTypedescSizeof ( & lh_desc ) /
                                         VTypedescSizeof ( & rh_desc );
 
                                     /* force dimension "*" to be at least 1 */
-                                    if ( fd -> td . dim == 0 )
-                                        fd -> td . dim = 1;
+                                    if ( pb -> fd . td . dim == 0 )
+                                        pb -> fd . td . dim = 1;
                                 }
                             }
                         }
 
                         /* evaluate type description */
-                        rc = VSchemaDescribeTypedecl ( schema, desc, & fd -> td );
+                        rc = VSchemaDescribeTypedecl ( schema, & pb -> desc, & pb -> fd . td );
                     }
                 }
                  
                 if ( rc == 0 )
                 {
                     /* bind factory params */
-                    rc = SFunctionBindFactParms ( self, fact_prior, & expr -> pfact );
+                    rc = SFunctionBindFactParms ( self, & pb -> fact_parms, & pb -> fact_prior, & expr -> pfact, pr -> cx_bind );
                     if ( rc == 0 )
                         return 0;
                 }
 
-                SFunctionRestSchemaParms ( self, schema_prior );
+                SFunctionRestSchemaParms ( self, & pb -> schema_prior, pr -> cx_bind );
             }
         }
     }
@@ -215,10 +227,12 @@ rc_t SFunctionPush ( const SFunction *self, const VSchema *schema,
 }
 
 static
-void SFunctionPop ( const SFunction *self, Vector *schema_prior, Vector *fact_prior )
+void SFunctionPop ( const SFunction *self,
+    const VProdResolve *pr, SFunctionPushParam *pb )
 {
-    SFunctionRestFactParms ( self, fact_prior );
-    SFunctionRestSchemaParms ( self, schema_prior );
+    SFunctionRestFactParms ( self, & pb -> fact_prior, pr -> cx_bind );
+    SFunctionRestSchemaParms ( self, & pb -> schema_prior, pr -> cx_bind );
+    VectorWhack ( & pb -> fact_parms, NULL, NULL );
 }
 
 static
@@ -293,7 +307,7 @@ rc_t VProdResolveValidateFuncParams ( const VProdResolve *self, Vector *out,
     /* resolve production type */
     sprod = ( const void* ) VectorGet ( & formal -> parms, 0 );
     rc = STypeExprResolveAsFormatdecl
-        ( ( const STypeExpr* ) sprod -> fd, self -> schema, & fd );
+        ( ( const STypeExpr* ) sprod -> fd, self -> schema, & fd, self -> cx_bind );
     if ( rc == 0 )
     {
         /* bring in source parameter */
@@ -310,7 +324,7 @@ rc_t VProdResolveValidateFuncParams ( const VProdResolve *self, Vector *out,
             /* comparison formal */
             sprod = ( const void* ) VectorGet ( & formal -> parms, 1 );
             rc = STypeExprResolveAsFormatdecl
-                ( ( const STypeExpr* ) sprod -> fd, self -> schema, & fd );
+                ( ( const STypeExpr* ) sprod -> fd, self -> schema, & fd, self -> cx_bind );
             if ( rc == 0 )
             {
                 /* bring in comparison parameter */
@@ -349,7 +363,7 @@ rc_t VProdResolveFuncParams ( const VProdResolve *self, Vector *out,
         /* resolve production type */
         const SProduction *sprod = ( const void* ) VectorGet ( & formal -> parms, i );
         rc = STypeExprResolveAsFormatdecl
-            ( ( const STypeExpr* ) sprod -> fd, self -> schema, & fd );
+            ( ( const STypeExpr* ) sprod -> fd, self -> schema, & fd, self -> cx_bind );
         if ( rc == 0 )
         {
             /* bring in parameter */
@@ -384,11 +398,8 @@ rc_t VProdResolveScriptExpr ( const VProdResolve *self,
 {
     const SFunction *func = expr -> func;
 
-    VTypedesc desc;
-    VFormatdecl fd;
-    Vector schema_prior, fact_prior;
-    rc_t rc = SFunctionPush ( func, self -> schema, expr,
-        & schema_prior, & fact_prior, lval_fd, & fd, & desc );
+    SFunctionPushParam pb;
+    rc_t rc = SFunctionPush ( func, self, lval_fd, expr, & pb );
     if ( rc == 0 )
     {
         Vector *inputs = malloc ( sizeof * inputs );
@@ -400,13 +411,14 @@ rc_t VProdResolveScriptExpr ( const VProdResolve *self,
                 & func -> func, & expr -> pfunc );
             if ( rc == 0 )
             {
-                /* script name */
+                /* script name
+                   heuristic - known to have been created with NUL term */
                 const char *name = expr -> func -> name -> name . addr;
 
                 /* by this time, we have bound all parameters */
                 VScriptProd *script;
-                rc = VScriptProdMake ( & script, self -> owned, self->curs,
-                    prodScriptFunction, name, & fd, & desc, self -> chain );
+                rc = VScriptProdMake ( & script, self -> owned, self -> curs,
+                    prodScriptFunction, name, & pb . fd, & pb . desc, self -> chain );
                 if ( rc == 0 )
                 {
                     VCursorCache local;
@@ -424,7 +436,7 @@ rc_t VProdResolveScriptExpr ( const VProdResolve *self,
                         inputs = NULL;
 
                         /* now evaluate the return expression */
-                        rc = VProdResolveExpr ( & spr, & script -> rtn, NULL, & fd,
+                        rc = VProdResolveExpr ( & spr, & script -> rtn, NULL, & pb . fd,
                             func -> u . script . rtn, false );
                         if ( rc != 0 || script -> rtn == NULL )
                             VProductionWhack ( & script -> dad, self -> owned );
@@ -450,18 +462,19 @@ rc_t VProdResolveScriptExpr ( const VProdResolve *self,
             }
         }
 
-        SFunctionPop ( func, & schema_prior, & fact_prior );
+        SFunctionPop ( func, self, & pb );
     }
 
     return rc;
 }
 
 static
-rc_t VFunctionProdMakeFactParms ( VFunctionProd *self, const VSchema *schema,
-    const SFormParmlist *pfact, VFactoryParams *fp, const SConstExpr **cxp )
+rc_t VFunctionProdMakeFactParms ( VFunctionProd *self, const VProdResolve *pr,
+    const SFormParmlist *pfact, const Vector *pval, VFactoryParams *fp, const SConstExpr **cxp )
 {
     rc_t rc;
     VTypedecl td;
+    const VSchema *schema = pr -> schema;
     uint32_t i, last = 0, count = fp -> argc;
 
     for ( rc = 0, i = 0; rc == 0 && i < count; ++ i )
@@ -469,30 +482,36 @@ rc_t VFunctionProdMakeFactParms ( VFunctionProd *self, const VSchema *schema,
         /* fetch the formal parameter, which can be NULL
            when the factory parameters allow varargs */
         const SIndirectConst *ic = ( const void* ) VectorGet ( & pfact -> parms, i );
-        if( ic == NULL ) {
-            assert( i != 0 );
+        if ( ic != NULL )
+            last = i;
+        else
+        {
+            assert ( i != 0 );
+
             /* just use the last parameter's type */
             ic = ( const void* ) VectorGet ( & pfact -> parms, last );
-            assert(ic != NULL);
-        } else {
-            last = i;
+            assert ( ic != NULL );
         }
+
         /* TBD - nobody is using function pointer parameters yet */
-        if( ic -> td == NULL ) {
+        if ( ic -> td == NULL )
+        {
             rc = RC ( rcVDB, rcFunction, rcConstructing, rcType, rcNull );
             LOGERR ( klogFatal, rc, "function factory with function param" );
             break;
         }
-        /* evaluate constant typedecl */
-        rc = STypeExprResolveAsTypedecl ( ( const STypeExpr* ) ic -> td, schema, & td );
 
-        if ( rc == 0 ) {
+        /* evaluate constant typedecl */
+        rc = STypeExprResolveAsTypedecl ( ( const STypeExpr* ) ic -> td, schema, & td, pr -> cx_bind );
+        if ( rc == 0 )
             rc = VSchemaDescribeTypedecl ( schema, & fp -> argv [ i ] . desc, & td );
-        }
+
         if ( rc == 0 )
         {
             /* evaluate constant expression */
-            rc = eval_const_expr ( schema, & td, ic -> expr, ( SExpression** ) & cxp [ i ] );
+            const SExpression *ic_expr = ( const void* ) VectorGet ( pval, i );
+            assert ( ic_expr != NULL );
+            rc = eval_const_expr ( schema, & td, ic_expr, ( SExpression** ) & cxp [ i ], pr -> cx_bind );
             if ( rc == 0 )
             {
                 /* catch undefined factory parameters from outer script */
@@ -534,10 +553,12 @@ rc_t VProdResolveInvokeFactory ( const VProdResolve *self, const VXfactInfo *inf
     VTransDesc *td, bool external )
 {
     rc_t rc;
+
     VFuncDesc desc;
     memset ( & desc, 0, sizeof desc );
+
     rc = ( * td -> factory ) ( td -> fself, info, & desc, cp, dp );
-    assert (rc != -1);
+    assert ( rc != -1 );
 
     /* clobber returned context */
     if ( rc != 0 )
@@ -602,18 +623,33 @@ rc_t VProdResolveBuildFuncParms ( const VProdResolve *self, const VXfactInfo *in
 
 static
 rc_t VProdResolveBuildFactParms ( const VProdResolve *self, const VXfactInfo *info,
-    VFunctionProd *fprod, const SFormParmlist *pfact, uint32_t count, VTransDesc *td, bool external )
+    VFunctionProd *fprod, const SFormParmlist *pfact, const Vector *pval,
+    VTransDesc *td, bool external )
 {
     rc_t rc;
     uint32_t i;
+
+    /* count the number of parameters */
+    uint32_t count = VectorLength ( pval );
 
     /* create a block of factory parameters
        start with data on the stack */
     VFactoryParams fpbuff, * fp = & fpbuff;
     const SConstExpr *cxbuff [ 16 ], **cxp = cxbuff;
 
+    /* 9/11/13
+       VFactoryParams has a declared array of 16 elements.
+       cxbuff is also declared to have 16 elements. the idea
+       is that they stay in sync. */
+    assert ( sizeof fpbuff . argv / sizeof fpbuff . argv [ 0 ] ==
+             sizeof cxbuff / sizeof cxbuff [ 0 ] );
+
+    /* 16 is generally more than enough parameters.
+       but in cases where it may not be ( e.g. maps ),
+       malloc the memory according to count. */
     if ( count > sizeof fpbuff . argv / sizeof fpbuff . argv [ 0 ] )
     {
+        /* allocate both structures in a single block */
         fp = malloc ( sizeof fpbuff -
                       sizeof fpbuff . argv +
                       count * ( sizeof fpbuff . argv [ 0 ] + sizeof cxbuff [ 0 ] ) );
@@ -621,20 +657,28 @@ rc_t VProdResolveBuildFactParms ( const VProdResolve *self, const VXfactInfo *in
         if ( fp == NULL )
             return RC ( rcVDB, rcFunction, rcResolving, rcMemory, rcExhausted );
 
+        /* reset expression array to point within block */
         cxp = ( const SConstExpr** ) & fp -> argv [ count ];
     }
 
     fp -> argc = count;
     fp -> align = 0;
 
-    rc = VFunctionProdMakeFactParms ( fprod, self -> schema, pfact, fp, cxp );
-    assert (rc != -1);
+    /* the purpose of this function is to bind type expressions to type ids
+       before the remainder of the function is evaluated. for this to work,
+       we need a mapping of parameterized type ids to expressions.
+
+       the purpose of the cx array is to enable recursion by saving previously
+       bound expressions upon entry ... */
+    rc = VFunctionProdMakeFactParms ( fprod, self, pfact, pval, fp, cxp );
+    assert ( rc != -1 );
     if ( rc == 0 )
         rc = VProdResolveBuildFuncParms ( self, info, fprod, fp, td, external );
-    assert (rc != -1);
+    assert ( rc != -1 );
 
     for ( i = 0; i < count; ++ i )
         SExpressionWhack ( & cxp [ i ] -> dad );
+
     if ( fp != & fpbuff )
         free ( fp );
 
@@ -647,52 +691,68 @@ rc_t VProdResolveFuncExpr ( const VProdResolve *self,
     const SFunction *sfunc = expr -> func;
     const char *name = sfunc -> name -> name . addr;
 
-    VXfactInfo info;
-    Vector schema_prior, fact_prior;
-    rc_t rc = SFunctionPush ( sfunc, self -> schema, expr,
-        & schema_prior, & fact_prior, lval_fd, & info . fdesc . fd, & info . fdesc . desc );
-    assert (rc != -1);
+    SFunctionPushParam pb;
+    rc_t rc = SFunctionPush ( sfunc, self, lval_fd, expr, & pb );
+
+    assert ( rc != -1 );
+
     if ( rc == 0 )
     {
-        /* locate factory function */
         bool external;
         VTransDesc td;
+        VXfactInfo info;
+
+        /* pass function type information */
+        info . fdesc . fd = pb . fd;
+        info . fdesc . desc = pb . desc;
+
+        /* locate factory function */
         rc = VLinkerFindFactory ( self -> ld, self -> libs, & td, sfunc, & external );
-    assert (rc != -1);
         if ( rc == 0 )
         {
+            /* create a production representing function */
             VFunctionProd *fprod;
             rc = VFunctionProdMake ( & fprod, self -> owned,
                 self -> curs, vftInvalid, name, & info . fdesc . fd,
                 & info . fdesc . desc, self -> chain );
-    assert (rc != -1);
             if ( rc == 0 )
             {
+                /* check for a validation function
+                   these functions are generally compiler-generated */
                 if ( sfunc -> validate )
                 {
                     rc = VProdResolveValidateFuncParams ( self, & fprod -> parms,
                         & sfunc -> func, & expr -> pfunc );
-    assert (rc != -1);
                 }
                 else
                 {
+                    /* resolve normal function parameters */
                     rc = VProdResolveFuncParams ( self, & fprod -> parms,
                         & sfunc -> func, & expr -> pfunc );
-    assert (rc != -1);
                 }
+
                 if ( rc == 0 )
                 {
+                    /* prepare info block for function factory */
                     info . schema = self -> schema;
                     info . tbl = self -> curs -> tbl;
                     info . mgr = info . tbl -> mgr;
-                    info . parms = (struct VCursorParams *) self -> curs;
+                    info . parms = ( struct VCursorParams * ) self -> curs;
 
-                    rc = VProdResolveBuildFactParms ( self, & info,
-                        fprod, & sfunc -> fact, VectorLength ( & expr -> pfact ),
-                        & td, external );
-    assert (rc != -1);
+                    /* by this point the schema and factory parameters
+                       have been bound: named type and constant parameters
+                       are entered into the "self -> cx_bind" Vector,
+                       factory parameter constants are positionally recorded
+                       in "pb . fact_parms", and function parameter productions
+                       are recorded in "fprod" */
+
+                    /* the following function will evaluate the parameters
+                       and invoke the factory function to construct production */
+                    rc = VProdResolveBuildFactParms ( self, & info, fprod,
+                        & sfunc -> fact, & pb . fact_parms, & td, external );
                     if ( rc == 0 )
                     {
+                        /* successfully created */
                         * out = & fprod -> dad;
                     }
                 }
@@ -715,12 +775,12 @@ rc_t VProdResolveFuncExpr ( const VProdResolve *self,
         {
             /* TBD - perhaps report what went wrong, but if function
                could not be resolved, don't stop the whole process */
-            VDB_DEBUG (("failed to find function '%S' rc %R",
-                        &sfunc->name->name, rc));
+            VDB_DEBUG (( "failed to find function '%S' rc %R",
+                        & sfunc -> name -> name, rc ));
             rc = 0;
         }
         
-        SFunctionPop ( sfunc, & schema_prior, & fact_prior );
+        SFunctionPop ( sfunc, self, & pb );
     }
 
     return rc;
@@ -735,11 +795,11 @@ rc_t VProdResolveEncodingExpr ( const VProdResolve *self,
 
     /* bind schema and factory params */
     Vector schema_prior;
-    rc_t rc = SPhysicalBindSchemaParms ( sphys, & schema_prior, & expr -> schem );
+    rc_t rc = SPhysicalBindSchemaParms ( sphys, & schema_prior, & expr -> schem, self -> cx_bind );
     if ( rc == 0 )
     {
-        Vector fact_prior;
-        rc = SPhysicalBindFactParms ( sphys, & fact_prior, & expr -> pfact );
+        Vector fact_parms, fact_prior;
+        rc = SPhysicalBindFactParms ( sphys, & fact_parms, & fact_prior, & expr -> pfact, self -> cx_bind );
         if ( rc == 0 )
         {
             /* create single input param vector */
@@ -759,14 +819,14 @@ rc_t VProdResolveEncodingExpr ( const VProdResolve *self,
                     else
                     {
                         rc = STypeExprResolveAsFormatdecl
-                            ( ( const STypeExpr* ) sphys -> td, self -> schema, & fd );
+                            ( ( const STypeExpr* ) sphys -> td, self -> schema, & fd, self -> cx_bind );
                     }
 
                     if ( rc == 0 )
                     {
                         VScriptProd *script;
                         const char *name = sphys -> name -> name . addr;
-                        rc = VScriptProdMake ( & script, self -> owned, self->curs,
+                        rc = VScriptProdMake ( & script, self -> owned, self -> curs,
                             prodScriptFunction, name, & fd, NULL, self -> chain );
                         if ( rc == 0 )
                         {
@@ -811,10 +871,11 @@ rc_t VProdResolveEncodingExpr ( const VProdResolve *self,
                 }
             }
             
-            SPhysicalRestFactParms ( sphys, & fact_prior );
+            SPhysicalRestFactParms ( sphys, & fact_prior, self -> cx_bind );
+            VectorWhack ( & fact_parms, NULL, NULL );
         }
 
-        SPhysicalRestSchemaParms ( sphys, & schema_prior );
+        SPhysicalRestSchemaParms ( sphys, & schema_prior, self -> cx_bind );
     }
 
     return rc;

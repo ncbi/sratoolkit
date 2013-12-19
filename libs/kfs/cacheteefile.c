@@ -1615,7 +1615,7 @@ LIB_EXPORT rc_t CC GetCacheCompleteness( const struct KFile * self, float * perc
                             }
                             if ( in_cache > 0 && block_count > 0 )
                             {
-                                float res = in_cache;
+                                float res = (float) in_cache;
                                 res *= 100;
                                 res /= block_count;
                                 * percent = res;

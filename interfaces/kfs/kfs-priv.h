@@ -44,6 +44,7 @@ extern "C" {
  * struct/class forwards
  */
 struct KDirectory;
+struct KSysDir;
 struct KFile;
 struct KPath;
 struct KDlset;
@@ -73,7 +74,27 @@ KFS_EXTERN rc_t CC KArrayFileGetMeta ( struct KArrayFile const *self, const char
  */
 KFS_EXTERN rc_t CC KDlsetList ( struct KDlset const *self, struct KNamelist **list );
 
-    
+
+#if WINDOWS
+/* PosixStringToSystemString
+ * converts posix path string to system path
+ *  "buffer" [ OUT ] - NUL terminated system path string
+ *  "bsize" [ IN ] - buffer length
+ *  "path" [ IN ] - NUL terminated posix path string
+ */
+KFS_EXTERN rc_t KDirectoryPosixStringToSystemString (
+    const struct KDirectory *self,
+    char *buffer, size_t bsize, const char *path, ... );
+#endif
+
+
+/* OSPath
+ *  returns a real OS path
+ */
+rc_t KSysDirOSPath ( struct KSysDir const *self,
+    wchar_t *real, size_t bsize, const char *path, va_list args );
+
+
 #ifdef __cplusplus
 }
 #endif

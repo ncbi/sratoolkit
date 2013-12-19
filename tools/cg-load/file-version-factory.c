@@ -93,6 +93,7 @@ static const CGFileType_vt CGIgnored_vt =
     NULL,
     NULL,
     NULL,
+    NULL, /* tag_lfr */
     NULL,
     NULL,
     NULL,

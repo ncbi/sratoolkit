@@ -463,7 +463,7 @@ static __inline__ rc_t MEMBER(Init)(KCipherByte * self,
     size_t block_size = block_cipher->byte.v1.block_size();
     size_t key_size = block_cipher->byte.v1.key_size();
 
-    KCipherInit (dad, block_size,
+    KCipherInit (dad, (uint32_t) block_size,
                  (const KCipher_vt*)&MEMBER(_vt_v1),
                  MEMBER(ClassName));
 

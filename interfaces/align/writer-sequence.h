@@ -64,7 +64,8 @@ enum ETableWriterSeq_ColOptions {
     ewseq_co_NoLabelData = 0x08, /* LABEL and related columns will not be written */
     ewseq_co_ColorSpace = 0x10,  /* CMP_CSREAD will be written instead of CMP_READ */
     ewseq_co_SpotGroup = 0x20,   /* SPOT_GROUP will be written */
-    ewseq_co_TI = 0x40           /* TI will be written */
+    ewseq_co_TI = 0x40,          /* TI will be written */
+    ewseq_co_SaveQual = 0x80     /* write quality even when there are alignments */
 };
 
 typedef struct TableWriterSeqData_struct {

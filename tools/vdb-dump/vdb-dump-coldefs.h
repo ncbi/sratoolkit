@@ -95,4 +95,8 @@ void vdcd_reset_content( col_defs* defs );
 void vdcd_ins_trans_fkt( col_defs* defs, const VSchema *my_schema );
 void vdcd_exclude_these_columns( col_defs* defs, const char* column_names );
 
+#ifdef __cplusplus
+}
+#endif
+
 #endif

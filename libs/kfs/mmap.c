@@ -141,7 +141,7 @@ LIB_EXPORT rc_t CC KMMapRelease ( const KMMap *self )
         {
         case krefWhack:
             return KMMapWhack ( ( KMMap* ) self );
-        case krefLimit:
+        case krefNegative:
             return RC ( rcFS, rcMemMap, rcReleasing, rcRange, rcExcessive );
         }
     }

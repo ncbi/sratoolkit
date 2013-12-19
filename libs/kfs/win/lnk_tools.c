@@ -140,7 +140,7 @@ static bool lnk_file_exists( const wchar_t *path )
     }
     else
         return false;
-}
+} 
 
 
 static unsigned char * lnk_file_read( HANDLE hfile, const size_t n_bytes, DWORD * read )
@@ -152,7 +152,7 @@ static unsigned char * lnk_file_read( HANDLE hfile, const size_t n_bytes, DWORD 
     if ( res != NULL )
     {
         DWORD dwBytesRead;
-        if ( FALSE == ReadFile( hfile, res, n_bytes, &dwBytesRead, NULL ) )
+        if ( FALSE == ReadFile( hfile, res, ( DWORD ) n_bytes, &dwBytesRead, NULL ) )
         {
             free( res );
             res = NULL;

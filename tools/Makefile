@@ -40,10 +40,10 @@ SUBDIRS = \
 	sra-load \
 	sra-pileup \
 	bam-loader \
+	fastq-loader \
 	srapath \
 	sra-stat \
 	vdb-copy \
-	sra-dbcc \
 	vdb-config \
 	align-info \
 	prefetch \
@@ -52,76 +52,15 @@ SUBDIRS = \
 	vdb-decrypt \
 	vdb-validate \
 	sra-sort \
-	cg-load \
-    fastq-loader
+    cache-mgr
 
-default: $(SUBDIRS)
+# common targets for non-leaf Makefiles; must follow a definition of SUBDIRS
+include $(TOP)/build/Makefile.targets
 
 $(SUBDIRS):
 	@ $(MAKE) -C $@
 
-.PHONY: default $(SUBDIRS)
-
-#-------------------------------------------------------------------------------
-# all
-#
-SUBDIRS_ALL = $(addsuffix _all,$(SUBDIRS))
-
-all: $(SUBDIRS_ALL)
-
-$(SUBDIRS_ALL):
-	@ $(MAKE) -C $(subst _all,,$@) all
-
-.PHONY: all $(SUBDIRS_ALL)
-
-#-------------------------------------------------------------------------------
-# std
-#
-SUBDIRS_STD = $(addsuffix _std,$(SUBDIRS))
-
-std: $(SUBDIRS_STD)
-
-$(SUBDIRS_STD):
-	@ $(MAKE) -C $(subst _std,,$@) std
-
-.PHONY: std $(SUBDIRS_STD)
-
-#-------------------------------------------------------------------------------
-# clean
-#
-SUBDIRS_CLEAN = $(addsuffix _clean,$(SUBDIRS))
-
-clean: $(SUBDIRS_CLEAN)
-
-$(SUBDIRS_CLEAN):
-	@ $(MAKE) -C $(subst _clean,,$@) clean
-
-.PHONY: clean $(SUBDIRS_CLEAN)
-
-
-#-------------------------------------------------------------------------------
-# tag
-#
-SUBDIRS_TAG = $(addsuffix _tag,$(SUBDIRS))
-
-tag: $(SUBDIRS_TAG)
-
-$(SUBDIRS_TAG):
-	@ $(MAKE) -C $(subst _tag,,$@) tag
-
-.PHONY: tag $(SUBDIRS_TAG)
-
-#-------------------------------------------------------------------------------
-# runtests
-#
-SUBDIRS_RUNTESTS = $(addsuffix _runtests, bam-loader fastq-loader)
-
-runtests: std $(SUBDIRS_RUNTESTS)
-
-$(SUBDIRS_RUNTESTS):
-	@ $(MAKE) -C $(subst _runtests,,$@) runtests
-
-.PHONY: runtests $(SUBDIRS_RUNTESTS)
+.PHONY: default $(SUBDIRS) 
 
 #-------------------------------------------------------------------------------
 # pass-through

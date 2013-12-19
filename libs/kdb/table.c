@@ -127,7 +127,7 @@ LIB_EXPORT rc_t CC KTableRelease ( const KTable *self )
         {
         case krefWhack:
             return KTableWhack ( ( KTable* ) self );
-        case krefLimit:
+        case krefNegative:
             return RC ( rcDB, rcTable, rcReleasing, rcRange, rcExcessive );
         }
     }
@@ -162,7 +162,7 @@ rc_t KTableSever ( const KTable *self )
         {
         case krefWhack:
             return KTableWhack ( ( KTable* ) self );
-        case krefLimit:
+        case krefNegative:
             return RC ( rcDB, rcTable, rcReleasing, rcRange, rcExcessive );
         }
     }
@@ -188,11 +188,9 @@ rc_t KTableMake ( KTable **tblp, const KDirectory *dir, const char *path )
         return RC ( rcDB, rcTable, rcConstructing, rcMemory, rcExhausted );
     }
 
-    tbl -> mgr = NULL;
-    tbl -> db = NULL;
+    memset ( tbl, 0, sizeof * tbl );
     tbl -> dir = dir;
     KRefcountInit ( & tbl -> refcount, 1, "KTable", "make", path );
-    tbl -> prerelease = 0;
     strcpy ( tbl -> path, path );
 
     * tblp = tbl;

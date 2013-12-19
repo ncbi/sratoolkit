@@ -176,6 +176,11 @@ rc_t VPhysicalRead ( VPhysical *self,
 rc_t VPhysicalReadBlob ( VPhysical *self,
     struct VBlob **vblob, int64_t id, uint32_t elem_bits );
 
+/* IsStatic
+ *  is this a static column
+ */
+rc_t VPhysicalIsStatic ( const VPhysical *self, bool *is_static );
+
 #ifdef __cplusplus
 }
 #endif

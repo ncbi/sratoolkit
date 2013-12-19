@@ -59,7 +59,7 @@ rc_t AcrhiveFASTQ(CommonWriterSettings* G,
                 unsigned seqFiles, 
                 char const *seqFile[], 
                 uint8_t qualityOffset, 
-                const uint8_t defaultReadNumbers[])
+                const int8_t defaultReadNumbers[])
 {
     rc_t rc = 0;
     unsigned i;
@@ -79,7 +79,11 @@ rc_t AcrhiveFASTQ(CommonWriterSettings* G,
     
     for (i = 0; i < seqFiles; ++i) {
         const ReaderFile *reader;
-        rc = FastqReaderFileMake(&reader, dir, seqFile[i], qualityOffset, defaultReadNumbers[i]);
+        if (G->platform == SRA_PLATFORM_PACBIO_SMRT)  
+            rc = FastqReaderFileMake(&reader, dir, seqFile[i], 33, 33 + 93, -1); 
+        else
+            rc = FastqReaderFileMake(&reader, dir, seqFile[i], qualityOffset, 0, defaultReadNumbers[i]);
+        
         if (rc == 0) 
         {
             rc = CommonWriterArchive( &cw, reader );
@@ -92,9 +96,9 @@ rc_t AcrhiveFASTQ(CommonWriterSettings* G,
             break;
     }
     if (rc == 0)
-        rc = CommonWriterComplete( &cw, Quitting() != 0 );
+        rc = CommonWriterComplete( &cw, Quitting() != 0, 0 );
     else
-        CommonWriterComplete( &cw, true );
+        CommonWriterComplete( &cw, true, 0 );
         
     G->errCount = cw.err_count;
         
@@ -161,7 +165,7 @@ rc_t ConvertDatabaseToUnmapped(VDatabase* db)
     return rc;
 }
 
-rc_t run(char const progName[], CommonWriterSettings* G, unsigned seqFiles, const char *seqFile[], uint8_t qualityOffset, const uint8_t defaultReadNumbers[])
+rc_t run(char const progName[], CommonWriterSettings* G, unsigned seqFiles, const char *seqFile[], uint8_t qualityOffset, const int8_t defaultReadNumbers[])
 {
     VDBManager *mgr;
     rc_t rc;

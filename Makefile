@@ -37,6 +37,9 @@ SUBDIRS = \
 	libs \
 	tools
 
+# common targets for non-leaf Makefiles; must follow a definition of SUBDIRS
+include $(TOP)/build/Makefile.targets
+
 default: $(SUBDIRS)
 
 test: $(SUBDIRS)
@@ -49,51 +52,20 @@ $(SUBDIRS) test:
 #-------------------------------------------------------------------------------
 # all
 #
-SUBDIRS_ALL = $(addsuffix _all,$(SUBDIRS))
-
-all: $(SUBDIRS_ALL)
-
 $(SUBDIRS_ALL):
-	@ $(MAKE) -C $(subst _all,,$@) all
-
-.PHONY: all $(SUBDIRS_ALL)
 
 #-------------------------------------------------------------------------------
 # std
 #
-SUBDIRS_STD = $(addsuffix _std,$(SUBDIRS))
-
-std: $(SUBDIRS_STD)
-
 $(SUBDIRS_STD):
-	@ $(MAKE) -C $(subst _std,,$@) std
-
-.PHONY: std $(SUBDIRS_STD)
 
 #-------------------------------------------------------------------------------
 # clean
 #
-SUBDIRS_CLEAN = $(addsuffix _clean,$(SUBDIRS_ALL))
+clean: clean_test
 
-clean: $(SUBDIRS_CLEAN)
-
-$(SUBDIRS_CLEAN):
-	@ $(MAKE) -s -C $(subst _all_clean,,$@) clean
-
-.PHONY: clean $(SUBDIRS_CLEAN)
-
-
-#-------------------------------------------------------------------------------
-# runtests
-#
-SUBDIRS_RUNTESTS = $(addsuffix _runtests, libs tools test)
-
-runtests: std $(SUBDIRS_RUNTESTS)
-
-$(SUBDIRS_RUNTESTS):
-	@ $(MAKE) -C $(subst _runtests,,$@) runtests
-
-.PHONY: runtests $(SUBDIRS_RUNTESTS)
+clean_test:
+	@ $(MAKE) -s -C test clean
 
 #-------------------------------------------------------------------------------
 # pass-through targets

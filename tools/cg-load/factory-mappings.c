@@ -272,6 +272,7 @@ static const CGFileType_vt CGMappings15_vt =
     CGMappings15_Read,
     NULL,
     NULL,
+    NULL, /* tag_lfr */
     CGMappings15_GetAssemblyId,
     CGMappings15_GetSlide,
     CGMappings15_GetLane,
@@ -289,6 +290,7 @@ static const CGFileType_vt CGMappings22_vt =
     CGMappings22_Read,
     NULL,
     NULL,
+    NULL, /* tag_lfr */
     CGMappings15_GetAssemblyId,
     CGMappings15_GetSlide,
     CGMappings15_GetLane,

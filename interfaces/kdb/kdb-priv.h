@@ -35,6 +35,8 @@
 #include <klib/defs.h>
 #endif
 
+#include <stdarg.h> /* va_list */
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -50,7 +52,7 @@ struct KIndex;
 struct KColumn;
 struct KMetadata;
 struct KDirectory;
-
+struct VFSManager;
 
 
 /*--------------------------------------------------------------------------
@@ -64,6 +66,15 @@ KDB_EXTERN rc_t CC KDBManagerGetTableModDate ( struct KDBManager const *self,
     KTime_t *mtime, const char *path, ... );
 KDB_EXTERN rc_t CC KDBManagerVGetTableModDate ( struct KDBManager const *self,
     KTime_t *mtime, const char *path, va_list args );
+
+
+/* Make using custom VFSManager */
+KDB_EXTERN rc_t CC KDBManagerMakeReadWithVFSManager (
+    const struct KDBManager **mgrp, const struct KDirectory *wd,
+    struct VFSManager *vmanager );
+
+KDB_EXTERN rc_t CC KDBManagerGetVFSManager ( const struct KDBManager *self,
+    const struct VFSManager **vmanager );
 
 
 /*--------------------------------------------------------------------------

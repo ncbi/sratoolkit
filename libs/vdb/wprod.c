@@ -176,7 +176,7 @@ rc_t VProdResolveColumn ( const VProdResolve *self,
         vcol = VCursorCacheGet ( & curs -> col, & scol -> cid );
         if ( vcol == NULL )
         {
-            rc = VCursorMakeColumn ( curs, & vcol, scol );
+            rc = VCursorMakeColumn ( curs, & vcol, scol, self -> cx_bind );
             if ( rc != 0 )
                 return rc;
 
@@ -227,7 +227,7 @@ rc_t VProdResolveColumn ( const VProdResolve *self,
         /* auto-create writable column for purposes of discovery */
         if ( scol -> read_only )
             return 0;
-        rc = VCursorMakeColumn ( curs, & vcol, scol );
+        rc = VCursorMakeColumn ( curs, & vcol, scol, self -> cx_bind );
         if ( rc != 0 )
             return rc;
 
@@ -345,7 +345,7 @@ rc_t VProdResolvePhysicalWrite ( const VProdResolve *self, VPhysical *phys )
     /* build encoding schema in steps:
          in <- page-to-blob
     */
-    rc = VSimpleProdMake ( & prod, pr . owned,  self->curs,
+    rc = VSimpleProdMake ( & prod, pr . owned,  pr . curs,
         prodSimplePage2Blob, name, & fd, & desc, NULL, phys -> in, chainEncoding );
     if ( rc == 0 && enc != NULL )
     {
@@ -361,7 +361,7 @@ rc_t VProdResolvePhysicalWrite ( const VProdResolve *self, VPhysical *phys )
     }
     if ( rc == 0 )
     {
-        rc = VSimpleProdMake ( & phys -> b2s, pr . owned, self->curs,
+        rc = VSimpleProdMake ( & phys -> b2s, pr . owned, pr . curs,
             prodSimpleBlob2Serial, name, & fd, & desc, NULL, prod, chainEncoding );
     }
 

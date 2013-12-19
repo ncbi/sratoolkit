@@ -234,6 +234,7 @@ static const CGFileType_vt CGEvidenceIntervals15_vt =
     NULL,
     CGEvidenceIntervals15_Read,
     NULL,
+    NULL, /* tag_lfr */
     CGEvidenceIntervals15_GetAssemblyId,
     NULL,
     NULL,
@@ -251,6 +252,7 @@ static const CGFileType_vt CGEvidenceIntervals20_vt =
     NULL,
     CGEvidenceIntervals20_Read,
     NULL,
+    NULL, /* tag_lfr */
     CGEvidenceIntervals15_GetAssemblyId,
     NULL,
     NULL,

@@ -49,7 +49,9 @@ struct KDatabase;
 struct KTable;
 struct KMetadata;
 struct KDBManager;
+struct KDirectory;
 struct VDBManager;
+struct VFSManager;
 struct VSchema;
 struct VTypedef;
 struct VDatabase;
@@ -88,6 +90,12 @@ VDB_EXTERN rc_t CC VDBManagerListExternalSchemaModules ( struct VDBManager const
 VDB_EXTERN rc_t CC VDBManagerDisablePagemapThread ( struct VDBManager const *self );
 
 
+/* Make with custom VFSManager */
+VDB_EXTERN rc_t CC VDBManagerMakeReadWithVFSManager (
+    const struct VDBManager **mgr,
+    struct KDirectory const *wd, struct VFSManager *vmgr );
+
+
 /*--------------------------------------------------------------------------
  * VSchema
  */
@@ -120,6 +128,11 @@ VDB_EXTERN rc_t CC VSchemaListLegacyTables ( struct VSchema const *self, struct 
 VDB_EXTERN rc_t CC VDatabaseOpenKDatabaseRead ( struct VDatabase const *self, struct KDatabase const **kdb );
 VDB_EXTERN rc_t CC VDatabaseOpenKDatabaseUpdate ( struct VDatabase *self, struct KDatabase **kdb );
 
+
+/* IsCSRA
+ *  ask an open database if it conforms to cSRA schema
+ */
+VDB_EXTERN bool CC VDatabaseIsCSRA ( struct VDatabase const *self );
 
 
 /*--------------------------------------------------------------------------
@@ -234,6 +247,13 @@ VDB_EXTERN struct VSchema const* CC VCursorGetSchema ( struct VCursor const *sel
  */
 VDB_EXTERN rc_t CC VCursorPageIdRange ( struct VCursor const *self,
     uint32_t idx, int64_t id, int64_t *first, int64_t *last );
+
+
+/* IsStaticColumn
+ *  answers question: "does this column have the same value for every cell?"
+ */
+VDB_EXTERN rc_t CC VCursorIsStaticColumn ( struct VCursor const *self,
+    uint32_t col_idx, bool *is_static );
 
 
 VDB_EXTERN rc_t CC VCursorLinkedCursorGet(const struct VCursor *cself,const char *tbl, struct VCursor const **curs);

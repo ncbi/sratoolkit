@@ -40,6 +40,7 @@
 
 #include <vdb/manager.h>
 #include <vdb/schema.h>
+#include <kdb/kdb-priv.h> /* KDBManagerMakeReadWithVFSManager */
 #include <kdb/manager.h>
 #include <kfs/directory.h>
 #include <klib/text.h>
@@ -57,6 +58,7 @@
 
 
 /* MakeRead
+ * MakeReadWithVFSManager
  *  create library handle for specific use
  *  NB - only one of the functions will be implemented
  *
@@ -64,6 +66,12 @@
  *  accessing the file system. mgr will attach its own reference.
  */
 LIB_EXPORT rc_t CC VDBManagerMakeRead ( const VDBManager **mgrp, const KDirectory *wd )
+{
+    return VDBManagerMakeReadWithVFSManager(mgrp, wd, NULL);
+}
+
+LIB_EXPORT rc_t CC VDBManagerMakeReadWithVFSManager ( const VDBManager **mgrp,
+    const KDirectory *wd, struct VFSManager *vmgr )
 {
     rc_t rc;
 
@@ -76,7 +84,7 @@ LIB_EXPORT rc_t CC VDBManagerMakeRead ( const VDBManager **mgrp, const KDirector
             rc = RC ( rcVDB, rcMgr, rcConstructing, rcMemory, rcExhausted );
         else
         {
-            rc = KDBManagerMakeRead ( & mgr -> kmgr, wd );
+            rc = KDBManagerMakeReadWithVFSManager ( & mgr -> kmgr, wd, vmgr );
             if ( rc == 0 )
             {
                 rc = VSchemaMakeIntrinsic ( & mgr -> schema );

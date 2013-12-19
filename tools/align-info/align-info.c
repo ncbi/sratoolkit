@@ -343,7 +343,6 @@ static rc_t align_info(const Params* prm) {
     }
 
     if (rc == 0) {
-/*      const char path[] = "/panfs/pan1/trace_work/scratch/XXX000013"; */
         rc = VDBManagerOpenDBRead(mgr, &db, schema, prm->dbPath);
         if (rc == 0) {
             is_db = true;

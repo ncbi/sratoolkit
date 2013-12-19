@@ -26,6 +26,8 @@
 
 #include "latf-load.vers.h"
 
+#include <sysalloc.h>
+
 #include <string.h>
 #include <stdlib.h>
 #include <limits.h>
@@ -46,7 +48,7 @@ extern rc_t run(char const argv0[],
                 unsigned countReads, 
                 const char* reads[],
                 uint8_t qualityOffset,
-                const uint8_t defaultReadNumbers[]);
+                const int8_t defaultReadNumbers[]);
 
 /* MARK: Arguments and Usage */
 static char const option_input[] = "input";
@@ -281,7 +283,7 @@ rc_t CC KMain (int argc, char * argv[])
     Args * args;
     rc_t rc;
     char *files[256];
-    uint8_t defaultReadNumbers[256];
+    int8_t defaultReadNumbers[256];
     char *name_buffer = NULL;
     unsigned next_name = 0;
     unsigned nbsz = 0;

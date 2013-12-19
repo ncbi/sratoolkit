@@ -632,10 +632,8 @@ void STypeExprMark ( const STypeExpr *self, const VSchema *schema )
         SDatatypeMark ( self -> dt );
     if ( self -> ts != NULL )
         STypesetMark ( self -> ts, schema );
-    if ( self -> id != NULL )
-        SIndirectTypeMark ( ( void * )self -> id, ( void * )schema );
     if ( self -> dim )
-        SExpressionMark ( ( void * )self -> dim, ( void * )schema );
+        SExpressionMark ( ( void * ) self -> dim, ( void * ) schema );
 }
 
 
@@ -2145,15 +2143,17 @@ rc_t phys_encoding_expr ( KSymTable *tbl, KTokenSource *src, KToken *t,
         if ( td != NULL )
         {
             /* bind schema parameters */
-            Vector prior;
-            rc = SPhysicalBindSchemaParms ( x -> phys, & prior, & x -> schem );
+            Vector prior, cx_bind;
+            VectorInit ( & cx_bind, 1, self -> num_indirect ? self -> num_indirect : 16 );
+            rc = SPhysicalBindSchemaParms ( x -> phys, & prior, & x -> schem, & cx_bind );
             if ( rc == 0 )
             {
                 const SExpression *tx = x -> phys -> td;
                 assert ( tx != NULL );
-                rc = STypeExprResolveAsTypedecl ( ( const STypeExpr* ) tx, self, td );
-                SPhysicalRestSchemaParms ( x -> phys, & prior );
+                rc = STypeExprResolveAsTypedecl ( ( const STypeExpr* ) tx, self, td, & cx_bind );
+                SPhysicalRestSchemaParms ( x -> phys, & prior, & cx_bind );
             }
+            VectorWhack ( & cx_bind, NULL, NULL );
         }
 
         if ( rc == 0 )

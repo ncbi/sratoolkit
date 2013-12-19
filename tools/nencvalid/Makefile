@@ -73,14 +73,6 @@ clean: stdclean
 .PHONY: clean
 
 #-------------------------------------------------------------------------------
-# tag
-#
-tag: \
-	$(addsuffix _tag,$(ALL_TOOLS))
-
-.PHONY: tag $(addsuffix _tag,$(ALL_LIBS)) $(addsuffix _tag,$(ALL_TOOLS))
-
-#-------------------------------------------------------------------------------
 # nencvalid
 #  Copy files from one directory to another while cataloging the contents.
 #  XML files can be redirected as well.
@@ -104,8 +96,6 @@ NENCVALID_LIB = \
 $(BINDIR)/nencvalid: $(NENCVALID_OBJ)
 	$(LD) --exe --vers $(SRCDIR) -o $@ $^ $(NENCVALID_LIB)
 
-nencvalid_tag:
-	@ $(TOP)/build/tag-module.sh $(MODULE) nencvalid $(NENCVALID_OBJ)
 
 
 

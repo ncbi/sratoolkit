@@ -161,7 +161,7 @@ int pthread_cond_waitImpl (pthread_cond_t *cv,
   // semaphore until <pthread_cond_signal> or <pthread_cond_broadcast>
   // are called by another thread.
   if (!infinite && abstime != NULL)
-  { dwMilliseconds = abstime->tv_sec * 1000 + abstime->tv_nsec / 1000000; }
+  { dwMilliseconds = ( DWORD ) ( abstime->tv_sec * 1000 + abstime->tv_nsec / 1000000 ) ; }
   SignalObjectAndWait (*external_mutex, cv->sema_, dwMilliseconds, FALSE);
 
   // Reacquire lock to avoid race conditions.
@@ -433,7 +433,7 @@ LIB_EXPORT rc_t CC KConditionTimedWait ( KCondition *self, struct KLock *lock, t
 
     memset(&ts, 0, sizeof ts);
     ts.tv_sec = tm -> mS / 1000;
-    ts.tv_nsec = (tm -> mS - ts.tv_sec * 1000) * 1000000;
+    ts.tv_nsec = ( long ) ( (tm -> mS - ts.tv_sec * 1000) * 1000000 );
 
     status = pthread_cond_timedwait ( & self -> cond, & lock -> mutex, & ts );
     switch ( status )

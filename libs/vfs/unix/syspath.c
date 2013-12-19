@@ -26,102 +26,124 @@
 
 #include <vfs/extern.h>
 
-#include <vfs/path.h>
 #include "path-priv.h"
 
+#include <vfs/manager.h>
+#include <klib/text.h>
+#include <klib/refcount.h>
 #include <klib/rc.h>
-#include <klib/log.h>
-#include <klib/debug.h>
 
 #include <stdlib.h>
-
 #include <string.h>
-#include <unistd.h>
+#include <assert.h>
 
-rc_t VPathTransformSysPath (VPath * self)
+#include <sysalloc.h>
+
+
+/*--------------------------------------------------------------------------
+ * VFSManager
+ */
+
+
+/* MakeSysPath
+ *  make a path object from an OS native filesystem path string
+ *
+ *  "new_path" [ OUT ] - return parameter for new path object
+ *
+ *  "sys_path" [ IN ] - a UTF-8 NUL-terminated string
+ *  representing a native filesystem path
+ *
+ *  "wide_sys_path" [ IN ] - a wide NUL-terminated string
+ *  representing a native filesystem path, where
+ *  wchar_t is either USC-2 or UTF-32 depending upon libraries
+ */
+LIB_EXPORT rc_t CC VFSManagerMakeSysPath ( const VFSManager * self,
+    VPath ** new_path, const char * sys_path )
 {
-#if 1
-    return 0;
-#else
-    size_t path_size = strlen (sys_path) + 1; /* includes NUL */
-    rc_t rc = 0;
-    void * temp = self->storage;
+    rc_t rc;
 
-    if (self->storage == self->buffer)
+    if ( sys_path != NULL )
     {
-        if (path_size > sizeof (self->buffer))
-            temp = self->storage = NULL;
-    }
-    else if (self->alloc_size < path_size)
-    {
-        temp = NULL;
+        /* POSIX paths are our normal path type */
+        return VFSManagerMakePath ( self, new_path, "%s", sys_path );
     }
 
-    if (temp == NULL)
+    if ( new_path == NULL )
+        rc = RC ( rcVFS, rcMgr, rcConstructing, rcParam, rcNull );
+    else
     {
-        temp = realloc (self->storage, path_size);
-        if (temp == NULL)
-        {
-            rc = RC (rcFS, rcPath, rcConstructing, rcMemory, rcExhausted);
-            if (self->alloc_size == 0)
-                self->storage = self->buffer;
-        }
+        if ( self == NULL )
+            rc = RC ( rcVFS, rcMgr, rcConstructing, rcSelf, rcNull );
+        else
+            rc = RC ( rcVFS, rcMgr, rcConstructing, rcPath, rcNull );
+
+        * new_path = NULL;
+    }
+
+    return rc;
+}
+
+LIB_EXPORT rc_t CC VFSManagerWMakeSysPath ( const VFSManager * self,
+    VPath ** new_path, const wchar_t * wide_sys_path )
+{
+    rc_t rc;
+
+    if ( new_path == NULL )
+        rc = RC ( rcVFS, rcMgr, rcConstructing, rcParam, rcNull );
+    else
+    {
+        if ( self == NULL )
+            rc = RC ( rcVFS, rcMgr, rcConstructing, rcSelf, rcNull );
+        else if ( wide_sys_path == NULL )
+            rc = RC ( rcVFS, rcMgr, rcConstructing, rcPath, rcNull );
         else
         {
-            self->alloc_size = path_size;
-            self->storage = temp;
-        }
-    }
-    if (rc == 0)
-    {
-        /* replace this with a minimal path validator */
-        strcpy (self->storage, sys_path);
-        self->asciz_size = path_size-1;
-    }
-    return rc;
-#endif
-}
-
-
-rc_t VPathGetCWD (char * buffer, size_t buffer_size)
-{
-    char * temp = getcwd (buffer, buffer_size);
-    if (temp == NULL)
-        return RC (rcFS, rcPath, rcAccessing, rcBuffer, rcInsufficient);
-    return 0;
-}
-
-
-rc_t VPathTransformPathHier (char ** ppath)
-{
-#if USE_EXPERIMENTAL_CODE && 0
-/* turning this off until http urls are better handled. */
-    char * pc;
-
-    pc = *ppath;
-    PATH_DEBUG (("%s: incoming path '%s'\n",__func__, *ppath));
-
-    if ((pc[0] == '/') && (pc[1] == '/'))
-    {
-        pc += 2;
-
-        if (pc[0] != '/')
-        {
-            static const char localhost[] = "localhost";
-            size_t z = strlen (localhost);
-
-            if (strncmp (localhost, pc, z ) == 0)
-                pc += z;
+            size_t src_size, dst_size;
+            uint32_t len = wchar_cvt_string_measure ( wide_sys_path, & src_size, & dst_size );
+            if ( len == 0 )
+                rc = RC ( rcVFS, rcMgr, rcConstructing, rcPath, rcEmpty );
             else
             {
-                rc_t rc =  RC (rcFS, rcPath, rcConstructing, rcUri, rcIncorrect);
-                LOGERR (klogErr, rc, "illegal host in kfs/path url");
-                return rc;
+                /* transform to UTF-8 */
+                size_t copy_size;
+                char utf8_path [ 4096 ], *dst = utf8_path;
+                if ( dst_size < sizeof utf8_path )
+                    dst_size = sizeof utf8_path;
+                else
+                {
+                    dst = malloc ( ++ dst_size );
+                    if ( dst == NULL )
+                        rc = RC ( rcVFS, rcMgr, rcConstructing, rcMemory, rcExhausted );
+                }
+
+                copy_size = wchar_cvt_string_copy ( dst, dst_size, wide_sys_path, src_size );
+                if ( copy_size >= dst_size )
+                    rc = RC ( rcVFS, rcMgr, rcConstructing, rcBuffer, rcInsufficient );
+                else
+                {
+                    dst [ copy_size ] = 0;
+                    rc = VFSManagerMakePath ( self, new_path, "%s", dst );
+                }
+
+                if ( dst != utf8_path )
+                    free ( dst );
+
+                if ( rc == 0 )
+                    return 0;
             }
         }
-        *ppath = pc;
+
+        * new_path = NULL;
     }
-    PATH_DEBUG (("%s: outgoing path '%s'\n",__func__, *ppath));
-#endif
-    return 0;
+
+    return rc;
+}
+
+/* ==========================================
+             HACK O' MATIC
+ */
+
+LIB_EXPORT rc_t LegacyVPathMakeSysPath ( VPath ** new_path, const char * sys_path )
+{
+    return LegacyVPathMake ( new_path, sys_path );
 }

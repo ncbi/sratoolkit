@@ -74,42 +74,42 @@ rc_t CC simple_sub_select ( void *data, const VXformInfo *info,
     if(argv [ 0 ] . u . data . elem_count == 0){/** alow empty returns ***/
         rc = KDataBufferResize ( rslt -> data, 0 );
         rslt -> elem_count = 0;
-	return 0;
+        return 0;
     }
     assert ( argv [ 0 ] . u . data . elem_count == 1 );
     if(argc > 1 ){
     	const int32_t *remote_idx = argv[1].u.data.base;
-	idx=remote_idx[argv[1].u.data.first_elem];
+        idx=remote_idx[argv[1].u.data.first_elem];
     }
     if(self->native_curs && self->first_time){ /*** can we use native cursor for the data? ***/
-	SubSelect *mself = (SubSelect *)self;
-	uint32_t idx;
-	rc = VCursorAddColumn ( mself->native_curs, & idx, "%.*s", mself->col_name_len, mself->col_name );
-	if(rc == 0 || GetRCState(rc) == rcExists){
-		VCursorRelease( mself->curs);
-		mself->curs = mself->native_curs;
-		mself->idx  = idx;
-	}
-	mself->first_time = false;
-	rc = 0; /** reset rc? **/
+        SubSelect *mself = (SubSelect *)self;
+        uint32_t idx;
+        rc = VCursorAddColumn ( mself->native_curs, & idx, "%.*s", mself->col_name_len, mself->col_name );
+        if(rc == 0 || GetRCState(rc) == rcExists){
+            VCursorRelease( mself->curs);
+            mself->curs = mself->native_curs;
+            mself->idx  = idx;
+        }
+        mself->first_time = false;
+        rc = 0; /** reset rc? **/
     }
 	
     /* sub-select */
     rc = VCursorCellDataDirect ( self -> curs, * remote_row_id, self -> idx,
-        & elem_bits, & base, & boff, & row_len );
+                                 & elem_bits, & base, & boff, & row_len );
     if ( rc == 0 )
     {
-	uint8_t *cbase=(uint8_t*)base + (boff>>3);
+        uint8_t *cbase=(uint8_t*)base + (boff>>3);
         rslt -> data -> elem_bits = elem_bits;
-	if(idx < 0 || idx > row_len){ /** out of bounds **/
-		rc = KDataBufferResize ( rslt -> data, 0 );
-		rslt -> elem_count = 0;
-		return rc;
-	} else if (idx > 0){ /*** do subset ***/
-		row_len=1;
-		cbase += (elem_bits>>3)*(idx-1);
-		boff  += elem_bits * (idx-1);
-	}
+        if(idx < 0 || idx > row_len){ /** out of bounds **/
+            rc = KDataBufferResize ( rslt -> data, 0 );
+            rslt -> elem_count = 0;
+            return rc;
+        } else if (idx > 0){ /*** do subset ***/
+            row_len=1;
+            cbase += (elem_bits>>3)*(idx-1);
+            boff  += elem_bits * (idx-1);
+        }
 	
         rc = KDataBufferResize ( rslt -> data, row_len );
         if ( rc == 0 )
@@ -119,9 +119,9 @@ rc_t CC simple_sub_select ( void *data, const VXformInfo *info,
             if ( ( elem_bits & 7 ) != 0 )
                 bitcpy ( rslt -> data -> base, 0, base, boff, bits );
             else{
-		assert((boff&7)==0);
+                assert((boff&7)==0);
                 memcpy ( rslt -> data -> base, cbase, bits>>3 );
- 	    }	
+            }	
 
             rslt -> elem_count = row_len;
         }
@@ -148,83 +148,83 @@ rc_t open_sub_cursor ( SubSelect **fself, const VXfactInfo *info, const VFactory
 
     if ( cp -> argv [ 0 ] . count > 0 )
     {
-	sprintf(name,"%.*s",(int)cp->argv[0].count,cp->argv[0].data.ascii);
-	rc = VCursorLinkedCursorGet(native_curs,name,&curs);
-	if(rc == 0){
-		rc = VCursorOpenParentRead(curs,&ftbl);
-		if(rc != 0)
-			return rc;
-		VCursorAddRef(curs);
-		tbl = ftbl;
-	} else {
-		const VDatabase *db;
-		rc = VTableOpenParentRead ( info -> tbl, & db );
-		if(rc != 0) return rc;
-		rc = VDatabaseOpenTableRead ( db, & ftbl,name);
-		if(rc != 0) return rc;
-		VDatabaseRelease ( db );
-		tbl = ftbl;
-		rc = VTableCreateCachedCursorRead ( tbl, (const VCursor**)& curs, 256*1024*1024 ); /*** some random io is expected ***/
-		if(rc != 0) return rc;
-		rc = VCursorPermitPostOpenAdd( curs );
-		if(rc != 0) return rc;
-		rc = VCursorOpen( curs );
-		if(rc != 0) return rc;
-		rc = VCursorLinkedCursorSet(native_curs,name,curs);
-		if(rc != 0) return rc;
-	}
-	native_curs = NULL;
+        sprintf(name,"%.*s",(int)cp->argv[0].count,cp->argv[0].data.ascii);
+        rc = VCursorLinkedCursorGet(native_curs,name,&curs);
+        if(rc == 0){
+            rc = VCursorOpenParentRead(curs,&ftbl);
+            if(rc != 0)
+                return rc;
+            VCursorAddRef(curs);
+            tbl = ftbl;
+        } else {
+            const VDatabase *db;
+            rc = VTableOpenParentRead ( info -> tbl, & db );
+            if(rc != 0) return rc;
+            rc = VDatabaseOpenTableRead ( db, & ftbl,name);
+            if(rc != 0) return rc;
+            VDatabaseRelease ( db );
+            tbl = ftbl;
+            rc = VTableCreateCachedCursorRead ( tbl, (const VCursor**)& curs, 256*1024*1024 ); /*** some random io is expected ***/
+            if(rc != 0) return rc;
+            rc = VCursorPermitPostOpenAdd( curs );
+            if(rc != 0) return rc;
+            rc = VCursorOpen( curs );
+            if(rc != 0) return rc;
+            rc = VCursorLinkedCursorSet(native_curs,name,curs);
+            if(rc != 0) return rc;
+        }
+        native_curs = NULL;
     }
     else /** we don't now if native_curs permits adding columns **/
     {
         tbl = info -> tbl;
-	rc = VTableCreateCachedCursorRead ( tbl, & curs, 0 ); /*** some random io is expected ***/
+        rc = VTableCreateCachedCursorRead ( tbl, & curs, 0 ); /*** some random io is expected ***/
     }
     if ( rc == 0 )
     {
-            uint32_t idx;
-            rc = VCursorAddColumn ( curs, & idx, "%.*s",
-                ( int ) cp -> argv [ 1 ] . count, cp -> argv [ 1 ] . data . ascii );
-            if ( rc == 0 || GetRCState(rc) == rcExists)
+        uint32_t idx;
+        rc = VCursorAddColumn ( curs, & idx, "%.*s",
+                                ( int ) cp -> argv [ 1 ] . count, cp -> argv [ 1 ] . data . ascii );
+        if ( rc == 0 || GetRCState(rc) == rcExists)
+        {
+            rc = VCursorOpen ( curs );
+            if ( rc == 0 )
             {
-                rc = VCursorOpen ( curs );
+                VTypedesc src;
+                rc = VCursorDatatype ( curs, idx, NULL, & src );
                 if ( rc == 0 )
                 {
-                    VTypedesc src;
-                    rc = VCursorDatatype ( curs, idx, NULL, & src );
-                    if ( rc == 0 )
+                    /* selected column should have same characteristics */
+                    if ( src . domain != info -> fdesc . desc . domain                 ||
+                         src . intrinsic_bits != info -> fdesc . desc . intrinsic_bits ||
+                         src . intrinsic_dim != info -> fdesc . desc. intrinsic_dim )
                     {
-                        /* selected column should have same characteristics */
-                        if ( src . domain != info -> fdesc . desc . domain                 ||
-                             src . intrinsic_bits != info -> fdesc . desc . intrinsic_bits ||
-                             src . intrinsic_dim != info -> fdesc . desc. intrinsic_dim )
-                        {
-                            rc = RC ( rcXF, rcFunction, rcConstructing, rcType, rcInconsistent );
-                        }
+                        rc = RC ( rcXF, rcFunction, rcConstructing, rcType, rcInconsistent );
+                    }
+                    else
+                    {
+                        SubSelect *self = malloc ( sizeof * self );
+                        if ( self == NULL )
+                            rc = RC ( rcXF, rcFunction, rcConstructing, rcMemory, rcExhausted );
                         else
                         {
-                            SubSelect *self = malloc ( sizeof * self );
-                            if ( self == NULL )
-                                rc = RC ( rcXF, rcFunction, rcConstructing, rcMemory, rcExhausted );
-                            else
-                            {
-                                self -> curs = curs;
-                                self -> idx = idx;
-				self->native_curs = native_curs;
-				self->first_time  = true;
-				self->col_name_len  = cp->argv[1].count;
-				self->col_name = malloc(self->col_name_len);
-				memcpy(self->col_name,cp->argv[1].data.ascii,self->col_name_len);
-                                * fself = self;
-                                if ( ftbl != NULL )
-                                    VTableRelease ( ftbl );
-                                return 0;
-                            }
+                            self -> curs = curs;
+                            self -> idx = idx;
+                            self->native_curs = native_curs;
+                            self->first_time  = true;
+                            self->col_name_len  = cp->argv[1].count;
+                            self->col_name = malloc(self->col_name_len);
+                            memcpy(self->col_name,cp->argv[1].data.ascii,self->col_name_len);
+                            * fself = self;
+                            if ( ftbl != NULL )
+                                VTableRelease ( ftbl );
+                            return 0;
                         }
                     }
                 }
             }
-            VCursorRelease ( curs );
+        }
+        VCursorRelease ( curs );
     }
     if ( ftbl != NULL )
         VTableRelease ( ftbl );

@@ -30,6 +30,10 @@
 #include <kns/extern.h>
 #endif
 
+#ifndef _h_klib_defs_
+#include <klib/defs.h>
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -41,7 +45,7 @@ struct KDataBuffer;
 
 struct KCurlRequest;
 
-KNS_EXTERN rc_t CC KNSManagerMakeRequest( struct KNSManager const *kns_mgr, struct KCurlRequest **self, const char * url, bool verbose );
+KNS_EXTERN rc_t CC KNSManagerMakeCurlRequest( struct KNSManager const *kns_mgr, struct KCurlRequest **self, const char * url, bool verbose );
 
 KNS_EXTERN rc_t CC KCurlRequestAddRef ( const struct KCurlRequest *self );
 

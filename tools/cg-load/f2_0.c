@@ -23,10 +23,11 @@
 * ===========================================================================
 */
 
-#include "factory-reads.h"
-#include "factory-mappings.h"
-#include "factory-evidence-intervals.h"
 #include "factory-evidence-dnbs.h"
+#include "factory-evidence-intervals.h"
+#include "factory-mappings.h"
+#include "factory-reads.h"
+#include "factory-tag-lfr.h"
 
 #include "file.h"
 
@@ -68,6 +69,8 @@ static const CGFileTypeFactory cg_ETypeXX_names[] = {
     { "SV-EVENTS", cg_eFileType_SV_EVENTS, NULL },
     { "VAR-OLPL", cg_eFileType_VAR_OLPL, NULL },
     { "MEI", cg_eFileType_MEI, NULL },    
+
+    { "TAG_LFR", cg_eFileType_TAG_LFR, CGTagLfr_Make },    
 };
 
 rc_t CGFile20_Make(const CGFileType** self,

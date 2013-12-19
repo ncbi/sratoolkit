@@ -254,7 +254,7 @@ static rc_t z_read ( KGZipFile * self, void * buffer, size_t bsize, size_t * _nu
         int zret;
         
         strm->next_out  = (uint8_t*)buffer + num_read;
-        strm->avail_out = bleft;
+        strm->avail_out = (uInt) bleft;
 
         GZIP_DEBUG(("%s: call inflate\n",__func__));
 
@@ -313,7 +313,7 @@ static rc_t z_read ( KGZipFile * self, void * buffer, size_t bsize, size_t * _nu
                 if (rc)
                     break;
 
-                strm->avail_in = src_read;
+                strm->avail_in = (uInt) src_read;
                 self->filePosition += src_read;
                 strm->next_in = self->buff;
                 if (src_read)
@@ -523,7 +523,7 @@ static rc_t CC KGZipFile_OutWrite( struct KGZipFile *self,
 
     strm = &self->strm;
     strm->next_in  = (Bytef*) buffer;
-    strm->avail_in = bsize;
+    strm->avail_in = (uInt) bsize;
 
     rc = 0;
     ret = s_GzipAndWrite( self, Z_NO_FLUSH, num_writ, &rc );

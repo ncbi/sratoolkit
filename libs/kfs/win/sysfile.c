@@ -191,7 +191,7 @@ static bool set_not_sparse (KSysFile * self)
  */
 static rc_t set_zero_region (KSysFile * self, uint64_t start, uint64_t size)
 {
-    FILE_ZERO_DATA_INFORMATION b = { start, start + size };
+    FILE_ZERO_DATA_INFORMATION b = { ( DWORD ) start, ( LONG ) ( start + size ) };
     DWORD ret;
     BOOL worked;
 
@@ -515,7 +515,6 @@ rc_t KSysFileReadCommon ( const KSysFile *cself,
         bytes_read = 0;
         if ( ReadFile ( self -> handle, buffer, to_read, & bytes_read, NULL ) == 0 )
         {
-            rc_t rc;
             DWORD last_error;
 
             switch ( last_error = GetLastError () )
@@ -524,6 +523,14 @@ rc_t KSysFileReadCommon ( const KSysFile *cself,
                 break;
             case ERROR_IO_PENDING:
                 continue; 
+            default:
+                {
+                    rc_t rc = RC ( rcFS, rcFile, rcReading, rcNoObj, rcUnknown);
+                    PLOGERR ( klogErr,
+                            ( klogErr, rc, "error reading system file - $(E)($(C))",
+                                            "E=%!,C=%u", last_error, last_error ) ); 
+                    return rc;
+                }
            }
         }
         
@@ -539,7 +546,6 @@ static
 rc_t CC KSysDiskFileRead ( const KSysFile *cself, uint64_t pos,
     void *buffer, size_t bsize, size_t *num_read )
 {
-    DWORD to_read, bytes_read;
     KSysFile *self = ( KSysFile* ) cself;
 
     if ( self -> pos != pos )
@@ -568,7 +574,7 @@ rc_t CC KSysDiskFileRead ( const KSysFile *cself, uint64_t pos,
         }
 
         /* if we try to read beyond the end of the file... */
-        if ( pos >= p . QuadPart )
+        if ( ( LONGLONG ) pos >= p . QuadPart )   
         {   /* We've defined reading beyond EOF as return RC of 0 but bytes read as 0 */
             /*return RC ( rcFS, rcFile, rcPositioning, rcFileDesc, rcInvalid );*/
             return 0;
@@ -618,7 +624,6 @@ static
 rc_t CC KSysFileRead ( const KSysFile *cself, uint64_t pos,
     void *buffer, size_t bsize, size_t *num_read )
 {
-    DWORD to_read, bytes_read;
     KSysFile *self = ( KSysFile* ) cself;
 
     if ( self -> pos != pos )
