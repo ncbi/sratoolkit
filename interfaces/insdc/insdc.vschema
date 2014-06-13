@@ -200,3 +200,11 @@ typedef INSDC:coord:val INSDC:coord:one;
 // POSITION types for relating bases to their location in signal
 typedef INSDC:coord:zero INSDC:position:zero;
 typedef INSDC:coord:one INSDC:position:one;
+
+// one-based coordinate limits
+const INSDC:coord:one INSDC:coord:min:one = 0x80000001;
+const INSDC:coord:one INSDC:coord:max:one = 0x3FFFFFFF;
+
+// zero-based coordinate limits
+const INSDC:coord:zero INSDC:coord:min:zero = 0x80000000;
+const INSDC:coord:zero INSDC:coord:max:zero = 0x3FFFFFFE;

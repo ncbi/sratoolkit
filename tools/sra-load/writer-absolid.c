@@ -38,8 +38,8 @@
 #include <ctype.h>
 #include <assert.h>
 
-const int AbisolidReadType2ReadNumber [] = {0, 0, 0, 1, 1, 1, 1, 1, 1};
-const char *AbisolidReadType2ReadLabel [] = {"", "", "F3", "R3", "F5-P2", "F5-BC", "F5-RNA", "F5-DNA", "F3-DNA"};
+const int AbisolidReadType2ReadNumber [] = {0, 0, 0, 1, 1, 1, 1, 1, 1, 1};
+const char *AbisolidReadType2ReadLabel [] = {"", "", "F3", "R3", "F5-P2", "F5-BC", "F5-RNA", "F5-DNA", "F3-DNA", "BC"};
 
 void AbsolidRead_Init(AbsolidRead* read)
 {
@@ -81,6 +81,8 @@ EAbisolidReadType AbsolidRead_Suffix2ReadType(const char* s)
         type = eAbisolidReadType_F5_DNA;
     } else if( len > 5 && strcmp(&s[len - 6], "F3-DNA") == 0 ) {
         type = eAbisolidReadType_F3_DNA;
+    } else if( len > 1 && strcmp(&s[len - 2], "BC") == 0 ) {
+        type = eAbisolidReadType_BC;
     } else {
         int i;
         for(i = 0; i < len; i++) {

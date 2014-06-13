@@ -215,7 +215,7 @@ rc_t HttpTest ( const KFile *input )
                 ver_t version;
                 uint32_t status;
 
-                rc = KHttpGetStatusLine ( http, &msg, &status, &version );
+                rc = KHttpGetStatusLine ( http, NULL, &msg, &status, &version );
                 if ( rc != 0 )
                     OUTMSG (( "%s: KHttpGetStatusLine failed with rc=%R\n", __func__, rc ));
                 else
@@ -228,7 +228,7 @@ rc_t HttpTest ( const KFile *input )
                     BSTreeInit ( & hdrs );
 
                     for ( blank = close_connection = false; ! blank && rc == 0; )
-                        rc = KHttpGetHeaderLine ( http, & hdrs, & blank, & close_connection );
+                        rc = KHttpGetHeaderLine ( http, NULL, & hdrs, & blank, & close_connection );
                     
                     if ( rc != 0 )
                         OUTMSG (( "%s: KHttpGetHeaderLine failed with rc=%R\n", __func__, rc ));

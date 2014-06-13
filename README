@@ -32,9 +32,6 @@ http://trace.ncbi.nlm.nih.gov/Traces/sra/std
 The SRA Toolkit and SDK from NCBI is a collection of tools and
 libraries for using data in the INSDC Sequence Read Archives.
 
-With this release, NCBI has implemented Automatic Remote Access by accession,
-making it possible to access data using NCBI servers without prior download.
-
 For additional information on using and building the toolkit,
 please visit our web site at:
 

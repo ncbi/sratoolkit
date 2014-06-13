@@ -33,8 +33,7 @@ include $(TOP)/build/Makefile.shell
 #
 SUBDIRS = \
 	zlib \
-	bzip2 \
-	curl
+	bzip2
 
 include $(TOP)/build/Makefile.targets
 

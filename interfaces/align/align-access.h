@@ -114,11 +114,16 @@ ALIGN_EXTERN rc_t CC AlignAccessDBRelease ( const AlignAccessDB *self );
  */
 typedef struct AlignAccessRefSeqEnumerator AlignAccessRefSeqEnumerator;
 
+#define AlignAccessRefSeqEnumeratorEOFCode (RC(rcAlign, rcTable, rcReading, rcRow, rcNotFound))
+#define AlignAccessRefSeqEnumeratorIsEOF(RESULT_CODE) (GetRCObject(RESULT_CODE) == rcRow && GetRCState(RESULT_CODE) == rcNotFound)
 
 /* EnumerateRefSequences
  *  make an enumerator of reference sequences visible in database
  *
  *  "refseq_enum" [ OUT ] - return parameter for enumerator
+ *
+ *  return codes:
+ *   object: rcRow, state: rcNotFound - if the index is empty
  */
 ALIGN_EXTERN rc_t CC AlignAccessDBEnumerateRefSequences ( const AlignAccessDB *self,
     AlignAccessRefSeqEnumerator **refseq_enum );
@@ -130,7 +135,11 @@ ALIGN_EXTERN rc_t CC AlignAccessDBEnumerateRefSequences ( const AlignAccessDB *s
 ALIGN_EXTERN rc_t CC AlignAccessRefSeqEnumeratorAddRef ( const AlignAccessRefSeqEnumerator *self );
 ALIGN_EXTERN rc_t CC AlignAccessRefSeqEnumeratorRelease ( const AlignAccessRefSeqEnumerator *self );
 
-/* advance the enumerator to the next element */
+/* advance the enumerator to the next element
+ *
+ *  return codes:
+ *   object: rcRow, state: rcNotFound - if there is no next element
+ */
 ALIGN_EXTERN rc_t CC AlignAccessRefSeqEnumeratorNext(const AlignAccessRefSeqEnumerator *cself);
 
 /* GetID
@@ -157,11 +166,16 @@ ALIGN_EXTERN rc_t CC AlignAccessRefSeqEnumeratorGetLength
  */
 typedef struct AlignAccessAlignmentEnumerator AlignAccessAlignmentEnumerator;
 
+#define AlignAccessAlignmentEnumeratorEOFCode (RC(rcAlign, rcTable, rcReading, rcRow, rcNotFound))
+#define AlignAccessAlignmentEnumeratorIsEOF(RESULT_CODE) (GetRCObject(RESULT_CODE) == rcRow && GetRCState(RESULT_CODE) == rcNotFound)
 
 /* EnumerateAlignments
  *  make an enumerator of all alignments in database
  *
  *  "align_enum" [ OUT ] - return parameter for enumerator
+ *
+ *  return codes:
+ *   object: rcRow, state: rcNotFound - if there is no first element
  *
  * NB - this is a BAD interface, here only to support dumping a BAM file
  *  it may not be available under all circumstances
@@ -179,6 +193,9 @@ ALIGN_EXTERN rc_t CC AlignAccessDBEnumerateAlignments ( const AlignAccessDB *sel
  *
  *  "pos" [ IN ] and "wsize" [ IN ] - starting position and size of window
  *  on reference sequence
+ *
+ *  return codes:
+ *   object: rcRow, state: rcNotFound - if there is no first element
  */
 ALIGN_EXTERN rc_t CC AlignAccessDBWindowedAlignments ( const AlignAccessDB *self,
     AlignAccessAlignmentEnumerator **align_enum, const char *refseq_id,
@@ -194,6 +211,9 @@ ALIGN_EXTERN rc_t CC AlignAccessAlignmentEnumeratorRelease ( const AlignAccessAl
 
 /* Next
  * advance the enumerator to the next element
+ *
+ *  return codes:
+ *   object: rcRow, state: rcNotFound - if there is no next element
  */
 ALIGN_EXTERN rc_t CC AlignAccessAlignmentEnumeratorNext ( const AlignAccessAlignmentEnumerator *self );
 

@@ -260,6 +260,7 @@ rc_t AbsolidLabelerFilterFactory_NewObj(const SRASplitterFactory* cself, const S
             ((AbsolidLabelerFilter*)(*splitter))->keys[4].key = "F5-RNA";
             ((AbsolidLabelerFilter*)(*splitter))->keys[5].key = "F5-DNA";
             ((AbsolidLabelerFilter*)(*splitter))->keys[6].key = "F3-DNA";
+            ((AbsolidLabelerFilter*)(*splitter))->keys[7].key = "BC";
             ((AbsolidLabelerFilter*)(*splitter))->key_sz[0] = 2;
             ((AbsolidLabelerFilter*)(*splitter))->key_sz[1] = 2;
             ((AbsolidLabelerFilter*)(*splitter))->key_sz[2] = 5;
@@ -267,6 +268,7 @@ rc_t AbsolidLabelerFilterFactory_NewObj(const SRASplitterFactory* cself, const S
             ((AbsolidLabelerFilter*)(*splitter))->key_sz[4] = 6;
             ((AbsolidLabelerFilter*)(*splitter))->key_sz[5] = 6;
             ((AbsolidLabelerFilter*)(*splitter))->key_sz[6] = 6;
+            ((AbsolidLabelerFilter*)(*splitter))->key_sz[7] = 2;
         }
     }
     return rc;

@@ -202,7 +202,7 @@ static rc_t VDBDependenciesReportDepend1(const VDBDependencies *self,
     rc_t rc = 0;
     uint32_t i = ~0;
 
-    assert(count && missing);
+    assert(missing);
 
     *missing = 0;
 

@@ -110,7 +110,10 @@ public:
     bool catch_system_errors;
 
     static int RunProcessTestCase(TestCase&, void(TestCase::*)(), int);
-    static unsigned int Sleep(unsigned int seconds);
+    
+    // Sleep functions return false if sleep was interrupted
+    static bool Sleep(unsigned int seconds);
+    static bool SleepMs(unsigned int milliseconds);
     
     static const int TEST_CASE_TIMED_OUT=14;
     static const int TEST_CASE_FAILED=255;

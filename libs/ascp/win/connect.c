@@ -28,7 +28,7 @@
 
 #include <kfs/directory.h> /* KDirectory */
 #include <kfs/impl.h> /* KSysDir */
-#include <kfs/kfs-priv.h> /* KSysDirOSPath */
+#include <kfs/kfs-priv.h> /* KDirectoryPosixStringToSystemString */
 
 #include <klib/log.h> /* LOGERR */
 #include <klib/out.h> /* OUTMSG */
@@ -41,30 +41,10 @@
 #include <assert.h>
 #include <stdio.h> /* stderr */
 
-#define STS_FIN 3
+#define RELEASE(type, obj) do { rc_t rc2 = type##Release(obj); \
+    if (rc2 && !rc) { rc = rc2; } obj = NULL; } while (false)
 
-static rc_t posixStringToSystemString(char *buffer, size_t len,
-    const char *path, ...)
-{
-    KDirectory *wd = NULL;
-    rc_t rc = KDirectoryNativeDir(&wd);
-    struct KSysDir *sysDir = KDirectoryGetSysDir(wd);
-    wchar_t wd_path[MAX_PATH];
-    size_t ret = 0;
-    va_list args;
-    va_start(args, path);
-    rc = KSysDirOSPath(sysDir, wd_path, sizeof wd_path, path, args);
-    va_end(args);
-    KDirectoryRelease(wd);
-    if (rc == 0) {
-        ret = wcstombs(buffer, wd_path, len);
-        if (ret >= MAX_PATH) {
-            return RC(rcExe, rcPath, rcConverting, rcPath, rcExcessive);
-        }
-    }
-    
-    return rc;
-}
+#define STS_FIN 3
 
 static void beat(uint64_t heartbeat, bool flush) {
     static int i = 0;
@@ -102,6 +82,7 @@ static rc_t mkAscpCommand(char *buffer, size_t len,
     const char *path, const char *key,
     const char *src, const char *dest, const AscpOptions *opt)
 {
+    KDirectory *dir = NULL;
     const char *maxRate = NULL;
     const char *host = NULL;
     const char *user = NULL;
@@ -110,30 +91,36 @@ static rc_t mkAscpCommand(char *buffer, size_t len,
     size_t pos = 0;
 
     char system[MAX_PATH] = "";
-    rc_t rc = posixStringToSystemString(system, sizeof system, dest);
+
+    rc_t rc = KDirectoryNativeDir(&dir);
     if (rc != 0) {
         return rc;
     }
 
-    if (opt != NULL) {
-        host = opt->host;
-        maxRate = opt->target_rate;
-        user = opt->user;
+    rc = KDirectoryPosixStringToSystemString(dir, system, sizeof system, dest);
+    if (rc == 0) {
+        if (opt != NULL) {
+            host = opt->host;
+            maxRate = opt->target_rate;
+            user = opt->user;
+        }
+
+        rc = string_printf(buffer, len, &num_writ,
+            "\"%s\" -i \"%s\" -pQTk1%s%s%s%s%s%s %s %s",
+            path, key,
+            maxRate == NULL ? "" : " -l", maxRate == NULL ? "" : maxRate,
+            host == NULL ? "" : " --host ", host == NULL ? "" : host,
+            user == NULL ? "" : " --user ", user == NULL ? "" : host,
+            src, system);
+        if (rc != 0) {
+            LOGERR(klogInt, rc, "while creating ascp command line");
+        }
+        else {
+            assert(num_writ < len);
+        }
     }
 
-    rc = string_printf(buffer, len, &num_writ,
-        "\"%s\" -i \"%s\" -pQTk1%s%s%s%s%s%s %s %s",
-        path, key,
-        maxRate == NULL ? "" : " -l", maxRate == NULL ? "" : maxRate,
-        host == NULL ? "" : " --host ", host == NULL ? "" : host,
-        user == NULL ? "" : " --user ", user == NULL ? "" : host,
-        src, system);
-    if (rc != 0) {
-        LOGERR(klogInt, rc, "while creating ascp command line");
-    }
-    else {
-        assert(num_writ < len);
-    }
+    RELEASE(KDirectory, dir);
 
     return rc;
 }

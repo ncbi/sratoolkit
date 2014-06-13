@@ -62,12 +62,12 @@ extern "C" {
 #define OPTION_EXCLUDED_COLUMNS  "exclude"
 #define OPTION_BOOLEAN           "boolean"
 #define OPTION_OBJVER            "obj_version"
+#define OPTION_OBJTS             "obj_timestamp"
 #define OPTION_OBJTYPE           "obj_type"
 #define OPTION_NUMELEM           "numelem"
 #define OPTION_NUMELEMSUM        "numelemsum"
 #define OPTION_SHOW_BLOBBING     "blobbing"
 #define OPTION_ENUM_PHYS         "phys"
-#define OPTION_CHECK_CURL        "check-curl"
 #define OPTION_IDX_ENUM          "idx-report"
 #define OPTION_IDX_RANGE         "idx-range"
 #define OPTION_CUR_CACHE         "cur-cache"
@@ -159,12 +159,12 @@ typedef struct dump_context
     bool without_sra_types;
     bool dont_check_accession;
     bool objver_requested;
+    bool objts_requested;
     bool objtype_requested;
     bool print_num_elem;
     bool sum_num_elem;
     bool show_blobbing;
     bool enum_phys;
-    bool check_curl;
 	bool idx_enum_requested;
 	bool idx_range_requested;
     bool disable_multithreading;

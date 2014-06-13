@@ -41,6 +41,7 @@
 #include <sysalloc.h>
 
 #define MAX_ACCESSION_LEN 20
+#define TREAT_URI_RESERVED_AS_FILENAME 0
 
 
 /*--------------------------------------------------------------------------
@@ -579,13 +580,15 @@ rc_t VPathParse ( VPath * self, const char * uri, size_t uri_size )
                 state = vppFullOrUNCPath;
                 break;
 
+#if ! TREAT_URI_RESERVED_AS_FILENAME
             case ':':
             case '?':
             case '#':
                 return RC ( rcVFS, rcPath, rcParsing, rcChar, rcUnexpected );
+#endif
 
             default:
-                state =vppNamePath;
+                state = vppNamePath;
             }
             break;
 
@@ -629,9 +632,11 @@ rc_t VPathParse ( VPath * self, const char * uri, size_t uri_size )
                 state = vppAccOidRelOrSlash;
                 break;
 
+#if ! TREAT_URI_RESERVED_AS_FILENAME
             case '?':
             case '#':
                 return RC ( rcVFS, rcPath, rcParsing, rcChar, rcUnexpected );
+#endif
 
             default:
                 acc_alpha = 0;
@@ -660,10 +665,12 @@ rc_t VPathParse ( VPath * self, const char * uri, size_t uri_size )
                 state = vppRelPath;
                 break;
 
+#if ! TREAT_URI_RESERVED_AS_FILENAME
             case ':':
             case '?':
             case '#':
                 return RC ( rcVFS, rcPath, rcParsing, rcChar, rcUnexpected );
+#endif
 
             default:
                 acc_prefix = acc_alpha = 0;
@@ -708,9 +715,11 @@ rc_t VPathParse ( VPath * self, const char * uri, size_t uri_size )
                 state = vppAccOidRelOrSlash;
                 break;
 
+#if ! TREAT_URI_RESERVED_AS_FILENAME
             case '?':
             case '#':
                 return RC ( rcVFS, rcPath, rcParsing, rcChar, rcUnexpected );
+#endif
 
             default:
                 acc_prefix = acc_alpha = acc_digit = 0;
@@ -738,10 +747,12 @@ rc_t VPathParse ( VPath * self, const char * uri, size_t uri_size )
                 state = vppAccDotNamePath;
                 break;
 
+#if ! TREAT_URI_RESERVED_AS_FILENAME
             case ':':
             case '?':
             case '#':
                 return RC ( rcVFS, rcPath, rcParsing, rcChar, rcUnexpected );
+#endif
 
             default:
                 acc_prefix = acc_alpha = acc_digit = 0;
@@ -786,9 +797,11 @@ rc_t VPathParse ( VPath * self, const char * uri, size_t uri_size )
                 state = vppAccOidRelOrSlash;
                 break;
 
+#if ! TREAT_URI_RESERVED_AS_FILENAME
             case '?':
             case '#':
                 return RC ( rcVFS, rcPath, rcParsing, rcChar, rcUnexpected );
+#endif
 
             case '_':
                 if ( acc_prefix != 0 && acc_alpha == 0 && acc_digit == 9 )
@@ -825,10 +838,12 @@ rc_t VPathParse ( VPath * self, const char * uri, size_t uri_size )
                 state = vppAccDotNamePath;
                 break;
 
+#if ! TREAT_URI_RESERVED_AS_FILENAME
             case ':':
             case '?':
             case '#':
                 return RC ( rcVFS, rcPath, rcParsing, rcChar, rcUnexpected );
+#endif
 
             case '_':
                 if ( acc_prefix != 0 && acc_alpha == 0 && acc_digit == 9 && acc_ext == 1 )
@@ -861,10 +876,12 @@ rc_t VPathParse ( VPath * self, const char * uri, size_t uri_size )
                 state = vppRelPath;
                 break;
 
+#if ! TREAT_URI_RESERVED_AS_FILENAME
             case ':':
             case '?':
             case '#':
                 return RC ( rcVFS, rcPath, rcParsing, rcChar, rcUnexpected );
+#endif
 
             default:
                 acc_prefix = acc_alpha = acc_digit = acc_ext = acc_suffix = 0;
@@ -909,9 +926,11 @@ rc_t VPathParse ( VPath * self, const char * uri, size_t uri_size )
                 state = vppAccOidRelOrSlash;
                 break;
 
+#if ! TREAT_URI_RESERVED_AS_FILENAME
             case '?':
             case '#':
                 return RC ( rcVFS, rcPath, rcParsing, rcChar, rcUnexpected );
+#endif
 
             default:
                 acc_prefix = acc_alpha = acc_digit = acc_ext = 0;
@@ -938,10 +957,12 @@ rc_t VPathParse ( VPath * self, const char * uri, size_t uri_size )
                 state = vppRelPath;
                 break;
 
+#if ! TREAT_URI_RESERVED_AS_FILENAME
             case ':':
             case '?':
             case '#':
                 return RC ( rcVFS, rcPath, rcParsing, rcChar, rcUnexpected );
+#endif
 
             default:
                 acc_prefix = acc_alpha = acc_digit = acc_ext = 0;
@@ -968,10 +989,12 @@ rc_t VPathParse ( VPath * self, const char * uri, size_t uri_size )
                 state = vppRelPath;
                 break;
 
+#if ! TREAT_URI_RESERVED_AS_FILENAME
             case ':':
             case '?':
             case '#':
                 return RC ( rcVFS, rcPath, rcParsing, rcChar, rcUnexpected );
+#endif
 
             default:
                 acc_prefix = acc_alpha = acc_digit = acc_ext = 0;
@@ -1001,9 +1024,11 @@ rc_t VPathParse ( VPath * self, const char * uri, size_t uri_size )
                 state = vppAccOidRelOrSlash;
                 break;
 
+#if ! TREAT_URI_RESERVED_AS_FILENAME
             case '?':
             case '#':
                 return RC ( rcVFS, rcPath, rcParsing, rcChar, rcUnexpected );
+#endif
 
             default:
                 state = vppNamePath;
@@ -3068,7 +3093,7 @@ rc_t LegacyVPathResolveAccession ( VPath ** new_path, const VPath * path )
         {
             rc = VResolverLocal ( resolver, path, ( const VPath** ) new_path );
             if ( GetRCState ( rc ) == rcNotFound )
-                rc = VResolverRemote ( resolver, eProtocolHttp, path, ( const VPath** ) new_path, NULL );
+                rc = VResolverRemote ( resolver, eProtocolHttp, path, ( const VPath** ) new_path );
 
             VResolverRelease ( resolver );
         }
@@ -3314,7 +3339,7 @@ rc_t LegacyVPathMakeVFmt ( VPath ** new_path, const char * fmt, va_list args )
 
 LIB_EXPORT rc_t CC LegacyVPathGetScheme_t ( const VPath * self, VPUri_t * uri_type )
 {
-    rc_t rc;
+    rc_t rc = 0;
 
     if ( uri_type == NULL )
         rc = RC ( rcVFS, rcPath, rcAccessing, rcParam, rcNull );

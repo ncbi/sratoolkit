@@ -50,9 +50,10 @@ typedef struct KKeyRing KKeyRing;
  /* Make
  * Open an IPC connection to a keyring server. Will start the server if none is running.
  * KKeyRingMakeRead will reject Add/Delete operations 
+ * dataDir [ IN, NULL OK ] = path to the directory with keyring database. NULL - use default location (~/.ncbi)
  */
-VFS_EXTERN rc_t CC KKeyRingMakeRead( const KKeyRing** self );
-VFS_EXTERN rc_t CC KKeyRingMakeUpdate( KKeyRing** self );
+VFS_EXTERN rc_t CC KKeyRingMakeRead( const KKeyRing** self, const char* dataDir );
+VFS_EXTERN rc_t CC KKeyRingMakeUpdate( KKeyRing** self, const char* dataDir );
 
  /* AddRef
  * Release
@@ -91,9 +92,9 @@ VFS_EXTERN rc_t CC KKeyRingDeleteObject(KKeyRing* self,
 VFS_EXTERN rc_t CC KKeyRingReencrypt(KKeyRing** self, const char* new_passwd); 
 
  /* IsServerRunning
- * 
+ * dataDir [ IN, NULL OK ] = path to the directory with keyring database. NULL - use default location (~/.ncbi)
  */
-VFS_EXTERN bool CC KKeyRingIsServerRunning();
+VFS_EXTERN bool CC KKeyRingIsServerRunning(const char* dataDir);
 
 /* 
  * private API for libkrypto 

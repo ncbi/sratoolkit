@@ -94,9 +94,9 @@ struct KEncFileHeader
  *    same size as the rest but with only some of the data portion being
  *    a part of the file.
  *
- *    An crypted file is longer than an unencrypted file by 
+ *    An encrypted file is longer than an unencrypted file by 
  *       a constant: the lengths of the header and the footer
- *       proportinally by the length of the block key and crc
+ *       proportionally by the length of the block key and crc
  */
 
 /* -----
@@ -208,8 +208,8 @@ KRYPTO_EXTERN rc_t CC KEncFileMakeUpdate_v2 (struct KFile ** pself,
 
 /* ----------
  * Validate mode can not be read or written.
- * Upon open the whole file is read from begining to end and all CRC
- * and other integrity checks are performed immedaitely
+ * Upon open the whole file is read from beginning to end and all CRC
+ * and other integrity checks are performed immediately
  */
 KRYPTO_EXTERN rc_t CC KEncFileValidate_v1 (const struct KFile * encrypted);
 

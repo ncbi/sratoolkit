@@ -1062,6 +1062,19 @@ static rc_t gather_string_options( Args * args, samdump_opts * opts )
         }
     }
 
+    rc = get_str_option( args, OPT_HDR_FILE, &s );
+    if ( rc == 0 && s != NULL )
+    {
+        opts->header_file = string_dup_measure( s, NULL );
+        if ( opts->header_file == NULL )
+        {
+            rc = RC( rcExe, rcNoTarg, rcValidating, rcMemory, rcExhausted );
+            (void)LOGERR( klogErr, rc, "error storing HDR-FILE" );
+        }
+        else
+            opts->header_mode = hm_file;
+    }
+
     return rc;
 }
 
@@ -1163,6 +1176,7 @@ void report_options( const samdump_opts * opts )
         case hm_none   : KOutMsg( "header-mode           : dont print\n" ); break;
         case hm_recalc : KOutMsg( "header-mode           : recalculate\n" ); break;
         case hm_dump   : KOutMsg( "header-mode           : print meta-data\n" ); break;
+        case hm_file   : KOutMsg( "header-mode           : take from '%s'\n", opts->header_file ); break;
         default        : KOutMsg( "header-mode           : unknown\n" ); break;
     }
 
@@ -1289,6 +1303,8 @@ void release_options( samdump_opts * opts )
         free( (void*)opts->qual_quant );
     if( opts->outputfile != NULL )
         free( (void*)opts->outputfile );
+    if( opts->header_file != NULL )
+        free( (void*)opts->header_file );
     VNamelistRelease( opts->hdr_comments );
     VNamelistRelease( opts->input_files );
     VectorWhack ( &opts->mp_dist, release_range_wrapper, NULL );

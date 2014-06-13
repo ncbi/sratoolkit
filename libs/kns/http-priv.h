@@ -39,12 +39,27 @@
 #include <klib/data-buffer.h>
 #endif
 
+#ifndef _h_klib_container
+#include <klib/container.h>
+#endif
+
+#ifndef MAX_HTTP_READ_LIMIT
+#define MAX_HTTP_READ_LIMIT ( 30 * 1000 )
+#endif
+
+#ifndef MAX_HTTP_WRITE_LIMIT
+#define MAX_HTTP_WRITE_LIMIT ( 15 * 1000 )
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
     
 struct KFile;
 struct KHttp;
+struct KNSManager;
+struct KStream;
+struct timeout_t;
 
 /*--------------------------------------------------------------------------
  * URLBlock
@@ -78,15 +93,19 @@ struct KHttpHeader
 };
     
 extern void KHttpHeaderWhack ( BSTNode *n, void *ignore );
-extern rc_t KHttpGetHeaderLine ( struct KHttp *self, BSTree *hdrs, bool *blank, bool *close_connection );
-extern rc_t KHttpGetStatusLine ( struct KHttp *self, String *msg, uint32_t *status, ver_t *version );
+extern rc_t KHttpGetHeaderLine ( struct KHttp *self, struct timeout_t *tm, BSTree *hdrs, bool *blank, bool *close_connection );
+extern rc_t KHttpGetStatusLine ( struct KHttp *self, struct timeout_t *tm, String *msg, uint32_t *status, ver_t *version );
 
 /* exported private functions
 */
-extern rc_t HttpTest ( const struct KFile *input );
+extern rc_t HttpTest ( struct KFile const *input );
 extern void URLBlockInitTest ( void );
 extern rc_t ParseUrlTest ( void );
 extern rc_t MakeRequestTest ( void );    
+
+/* tmp fix */
+rc_t SecretKNSManagerMakeHttpFile(const struct KNSManager *self,
+    const struct KFile **file, struct KStream *conn, ver_t vers, const char *url, ...);
 
 #ifdef __cplusplus
 }

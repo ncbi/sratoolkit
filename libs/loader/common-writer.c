@@ -170,6 +170,7 @@ rc_t GetKeyIDOld(const CommonWriterSettings* settings, SpotAssembler* const ctx,
     return rc;
 }
 
+#if _DEBUGGING
 static char const *Print_ctx_value_t(ctx_value_t const *const self)
 {
     static char buffer[4096];
@@ -188,6 +189,7 @@ static char const *Print_ctx_value_t(ctx_value_t const *const self)
         return 0;
     return buffer;
 }
+#endif
 
 static unsigned HashKey(void const *const key, size_t const keylen)
 {
@@ -1071,7 +1073,11 @@ rc_t ArchiveFile(const struct ReaderFile *const reader,
         const CGData* cg = NULL;
 
         rc = ReaderFileGetRecord(reader, &record);
-        if (rc || record == 0)
+        if (GetRCObject(rc) == rcRow && (GetRCState(rc) == rcInvalid || GetRCState(rc) == rcEmpty)) {
+            (void)PLOGERR(klogWarn, (klogWarn, rc, "ArchiveFile: '$(file)' - row $(row)", "file=%s,row=%lu", ReaderFileGetPathname(reader), reccount + 1));
+            rc = CheckLimitAndLogError(G);
+        }
+        else if (rc || record == 0)
             break;
 
         {
@@ -1538,7 +1544,22 @@ rc_t ArchiveFile(const struct ReaderFile *const reader,
         if (aligned) {
             if (G->editAlignedQual ) EditAlignedQualities  (G, qual, AR_HAS_MISMATCH(data), readlen);
             if (G->keepMismatchQual) EditUnalignedQualities(qual, AR_HAS_MISMATCH(data), readlen);
-            AR_NUM_MISMATCH_QUAL(data) = (AR_MISMATCH_QUAL(data) == NULL) ? (size_t)0 : ReferenceMgr_CompressHelper(AR_MISMATCH_QUAL(data), &data.data, qual);
+
+            if (AR_MISMATCH_QUAL(data) == NULL) {
+                AR_NUM_MISMATCH_QUAL(data) = 0;
+            }
+            else {
+                size_t i;
+                size_t n;
+                bool const *const has_mismatch = AR_HAS_MISMATCH(data);
+                uint8_t *const mismatch = AR_MISMATCH_QUAL(data);
+                
+                for (n = i = 0; i < readlen; ++i) {
+                    if (has_mismatch[i])
+                        mismatch[n++] = qual[i];
+                }
+                AR_NUM_MISMATCH_QUAL(data) = n;
+            }
         }
         else if (isPrimary) {
             switch (AR_READNO(data)) {

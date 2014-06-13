@@ -51,6 +51,7 @@ extern "C" {
 /*--------------------------------------------------------------------------
  * forwards
  */
+struct KRWLock;
 struct KSymbol;
 struct KDirectory;
 struct VFSManager;
@@ -65,6 +66,7 @@ struct KDBManager
     struct KDirectory KONST *wd;
 
     /* open objects */
+    struct KRWLock *open_objs_lock;
     BSTree open_objs;
 
     /* open references */

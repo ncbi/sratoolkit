@@ -76,7 +76,11 @@
 
 
 #define PERMIT_POST_OPEN_ADD 1
+#if _ARCH_BITS == 32
+#define DISABLE_READ_CACHE 1
+#else
 #define DISABLE_READ_CACHE 0
+#endif
 
 /* normally false
    can be set for certain applications using VDBManagerDisablePagemapThread
@@ -505,19 +509,6 @@ rc_t VCursorSupplementSchema ( const VCursor *self )
  *  "capacity" [ IN ] - the maximum bytes to cache on the cursor before
  *  dropping least recently used blobs
  */
-static rc_t VTableCreateCachedCursorReadImpl(const VTable *self, const VCursor **cursp, size_t capacity,bool create_pagemap_thread);
-LIB_EXPORT rc_t CC VTableCreateCachedCursorRead ( const VTable *self,
-    const VCursor **cursp, size_t capacity )
-{
-	return VTableCreateCachedCursorReadImpl(self,cursp,capacity,true);
-}
-/**
-*** VTableCreateCursorReadInternal is only visible in vdb and needed for schema resolutions
-****/
-rc_t  VTableCreateCursorReadInternal(const VTable *self, const VCursor **cursp)
-{
-	return VTableCreateCachedCursorReadImpl(self,cursp,0,false);
-}
 static rc_t VTableCreateCachedCursorReadImpl ( const VTable *self,
     const VCursor **cursp, size_t capacity, bool create_pagemap_thread  )
 {
@@ -568,6 +559,20 @@ static rc_t VTableCreateCachedCursorReadImpl ( const VTable *self,
         * cursp = NULL;
     }
     return rc;
+}
+
+LIB_EXPORT rc_t CC VTableCreateCachedCursorRead ( const VTable *self,
+    const VCursor **cursp, size_t capacity )
+{
+	return VTableCreateCachedCursorReadImpl(self,cursp,capacity,true);
+}
+
+/**
+*** VTableCreateCursorReadInternal is only visible in vdb and needed for schema resolutions
+****/
+rc_t  VTableCreateCursorReadInternal(const VTable *self, const VCursor **cursp)
+{
+	return VTableCreateCachedCursorReadImpl(self,cursp,0,false);
 }
 
 /* CreateCursor
@@ -2350,15 +2355,15 @@ CHECK_AGAIN:
 		}
 		self->pmpr.state = ePMPR_STATE_DESERIALIZE_DONE;
 		/*fprintf(stderr,"Pagemap %p Done R:%6d|DR:%d|LR:%d\n",self->pmpr.lock, self->pmpr.pm->row_count,self->pmpr.pm->data_recs,self->pmpr.pm->leng_recs);*/
-		KLockUnlock(self -> pmpr.lock);
 		KConditionSignal ( self -> pmpr.cond );
+		KLockUnlock(self -> pmpr.lock);
 		break;
 	 case ePMPR_STATE_SERIALIZE_REQUESTED:
 		MTCURSOR_DBG (( "run_pagemap_thread: request to serialize\n" ));
 		self->pmpr.rc = PageMapSerialize(self->pmpr.pm,&self->pmpr.data,0,&self->pmpr.elem_count);
 		self->pmpr.state = ePMPR_STATE_SERIALIZE_DONE;
-		KLockUnlock(self -> pmpr.lock);
 		KConditionSignal ( self -> pmpr.cond );
+		KLockUnlock(self -> pmpr.lock);
 		break;
 	 default:
 		assert(0);

@@ -27,26 +27,13 @@
 #ifndef _h_klib_defs_
 #define _h_klib_defs_
 
-#ifndef _h_klib_callconv_
-#include <klib/callconv.h>
+#ifndef _h_kfc_defs_
+#include <kfc/defs.h>
 #endif
-
-#include <stdint.h>
-#include <stddef.h>
 
 #ifdef __cplusplus
 extern "C" {
-#else
-#include <stdbool.h>
 #endif
-
-/*--------------------------------------------------------------------------
- * rc_t
- *  upon success, all functions will return code 0
- *  other codes indicate failure or additional status information
- */
-typedef uint32_t rc_t;
-
 
 /*--------------------------------------------------------------------------
  * bitsz_t
@@ -87,62 +74,10 @@ typedef int64_t KTime_t;
 
 
 /*--------------------------------------------------------------------------
- * ver_t
- *  32 bit 4 part type
- */
-typedef uint32_t ver_t;
-
-/* GetMajor
- *  return major component
- */
-#define VersionGetMajor( self ) \
-    ( ( self ) >> 24 )
-
-/* GetMinor
- *  return minor component
- */
-#define VersionGetMinor( self ) \
-    ( ( ( self ) >> 16 ) & 0xFF )
-
-/* GetRelease
- *  return release component
- */
-#define VersionGetRelease( self ) \
-    ( ( self ) & 0xFFFF )
-
-
-/*--------------------------------------------------------------------------
  * KCreateMode
  *  values are defined in <kfs/defs.h>
  */
 typedef uint32_t KCreateMode;
-
-
-/*--------------------------------------------------------------------------
- * stringize
- *  it is useful to be able to convert PP defines on the command line
- */
-#define stringize( tok ) tok_to_string ( tok )
-#define tok_to_string( tok ) # tok
-
-
-/*--------------------------------------------------------------------------
- * __mod__, __file__ and __fext__
- *  these guys are slightly different from __FILE__
- *  and they complement __func__
- */
-#if ! defined __mod__ && defined __mod_name__
-#define __mod__ stringize ( __mod_name__ )
-#endif
-
-#if ! defined __file__ && defined __file_name__
-#define __file__ stringize ( __file_name__ )
-#endif
-
-#if ! defined __fext__ && defined __file_ext__
-#define __fext__ stringize ( __file_ext__ )
-#endif
-
 
 #if 1
 

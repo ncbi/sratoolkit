@@ -44,7 +44,6 @@ operating systems on Intel x86-compatible 32 and 64 bit architectures.
   make              # GNU make version 3.81 or later
   gcc, g++          # tested with 4.4.2, but should work with others
   libxml2           # tested with version 2.7.6
-  libcurl           # tested with version 7.27
 
 WINDOWS BUILD:
 
@@ -204,12 +203,6 @@ STATIC BUILD RESULTS:
   libwvdb               # virtual layer update library
   libz                  # gzip library
 
-<OUTDIR>/mod64/         # (mod32 for 32-bit builds)
-  -- empty --
-
-<OUTDIR>/wmod64/        # (wmod32 for 32-bit builds)
-  -- empty --
-
 
 
 DYNAMIC BUILD RESULTS:
@@ -244,16 +237,3 @@ DYNAMIC BUILD RESULTS:
   libwsraschema         # static version of SRA schema for update
   libwvdb               # virtual layer update library
   libz                  # static gzip library
-
-<OUTDIR>/mod64/         # (mod32 for 32-bit builds)
-  libaxf                # cSRA-specific VDB external functions
-  libsraxf              # SRA-specific VDB external functions
-  libvxf                # generic VDB external functions
-  libwgsxf              # WGS-specific VDB external functions
-
-<OUTDIR>/wmod64/        # (wmod32 for 32-bit builds)
-  libwaxf               # cSRA-specific VDB external functions for update
-  libwsraxf             # SRA-specific VDB external functions for update
-  libwvxf               # update VDB external functions
-  libwwgsxf             # WGS-specific VDB external functions for update
-

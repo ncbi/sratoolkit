@@ -52,6 +52,7 @@ SUBDIRS = \
 	wgsxf \
 	ktst \
 	loader \
+	blast \
 	ascp \
 	sra \
 	ncbi-vdb

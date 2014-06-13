@@ -24,46 +24,47 @@
 
 
 ## build rules
+LOC_INFO = -D__mod_name__=$(MODULE) -D__file_name__=$*
 
 # executable image
 %.$(OBJX): %.c
-	$(CC) -o $@ $(OPT) $<
+	$(CC) -o $@ $(OPT) $< $(LOC_INFO) -D__file_ext__=c
 %.$(OBJX): %.cpp
-	$(CP) -o $@ $(OPT) $<
+	$(CP) -o $@ $(OPT) $< $(LOC_INFO) -D__file_ext__=cpp
 %.$(OBJX): %.cxx
-	$(CP) -o $@ $(OPT) $<
+	$(CP) -o $@ $(OPT) $< $(LOC_INFO) -D__file_ext__=cxx
 
 # non-optimized executable image
 %.nopt.$(OBJX): %.c
-	$(CC) -o $@ $(NOPT) $<
+	$(CC) -o $@ $(NOPT) $< $(LOC_INFO) -D__file_ext__=c
 %.nopt.$(OBJX): %.cpp
-	$(CP) -o $@ $(NOPT) $<
+	$(CP) -o $@ $(NOPT) $< $(LOC_INFO) -D__file_ext__=cpp
 %.nopt.$(OBJX): %.cxx
-	$(CP) -o $@ $(NOPT) $<
+	$(CP) -o $@ $(NOPT) $< $(LOC_INFO) -D__file_ext__=cxx
 
 # relocatable image
 %.$(LOBX): %.c
-	$(CC) -o $@ -fPIC $(OPT) -D_LIBRARY $<
+	$(CC) -o $@ -fPIC $(OPT) -D_LIBRARY $< $(LOC_INFO) -D__file_ext__=c
 %.$(LOBX): %.cpp
-	$(CP) -o $@ -fPIC $(OPT) -D_LIBRARY $<
+	$(CP) -o $@ -fPIC $(OPT) -D_LIBRARY $< $(LOC_INFO) -D__file_ext__=cpp
 %.$(LOBX): %.cxx
-	$(CP) -o $@ -fPIC $(OPT) -D_LIBRARY $<
+	$(CP) -o $@ -fPIC $(OPT) -D_LIBRARY $< $(LOC_INFO) -D__file_ext__=cxx
 
 # non-optimized relocatable image
 %.nopt.$(LOBX): %.c
-	$(CC) -o $@ -fPIC $(NOPT) -D_LIBRARY $<
+	$(CC) -o $@ -fPIC $(NOPT) -D_LIBRARY $< $(LOC_INFO) -D__file_ext__=c
 %.nopt.$(LOBX): %.cpp
-	$(CP) -o $@ -fPIC $(NOPT) -D_LIBRARY $<
+	$(CP) -o $@ -fPIC $(NOPT) -D_LIBRARY $< $(LOC_INFO) -D__file_ext__=cpp
 %.nopt.$(LOBX): %.cxx
-	$(CP) -o $@ -fPIC $(NOPT) -D_LIBRARY $<
+	$(CP) -o $@ -fPIC $(NOPT) -D_LIBRARY $< $(LOC_INFO) -D__file_ext__=cxx
 
 # non-optimized relocatable image with persisted image byte swapping
 %.swap.nopt.$(LOBX): %.c
-	$(CC) -o $@ -fPIC -DSWAP_PERSISTED $(NOPT) -D_LIBRARY $<
+	$(CC) -o $@ -fPIC -DSWAP_PERSISTED $(NOPT) -D_LIBRARY $< $(LOC_INFO) -D__file_ext__=c
 %.swap.nopt.$(LOBX): %.cpp
-	$(CP) -o $@ -fPIC -DSWAP_PERSISTED $(NOPT) -D_LIBRARY $<
+	$(CP) -o $@ -fPIC -DSWAP_PERSISTED $(NOPT) -D_LIBRARY $< $(LOC_INFO) -D__file_ext__=cpp
 %.swap.nopt.$(LOBX): %.cxx
-	$(CP) -o $@ -fPIC -DSWAP_PERSISTED $(NOPT) -D_LIBRARY $<
+	$(CP) -o $@ -fPIC -DSWAP_PERSISTED $(NOPT) -D_LIBRARY $< $(LOC_INFO) -D__file_ext__=cxx
 
 # assembly
 %.$(OBJX) %.$(LOBX): %.s

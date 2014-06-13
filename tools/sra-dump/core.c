@@ -1535,11 +1535,19 @@ rc_t CC KMain ( int argc, char* argv[] )
                         /* platform constands in insdc/sra.h */
                         switch( *platform )
                         {
-                            case SRA_PLATFORM_454           : quality_N_limit = 30;   break;
+                            case SRA_PLATFORM_454           : quality_N_limit = 30; nreads_max = 8;  break;
                             case SRA_PLATFORM_ION_TORRENT   : ;
-                            case SRA_PLATFORM_ILLUMINA      : quality_N_limit = 35;   break;
-                            case SRA_PLATFORM_ABSOLID       : quality_N_limit = 25;   break;
-                            case SRA_PLATFORM_PACBIO_SMRT   : nreads_max = 32; break;
+                            case SRA_PLATFORM_ILLUMINA      : quality_N_limit = 35; nreads_max = 8;  break;
+                            case SRA_PLATFORM_ABSOLID       : quality_N_limit = 25; nreads_max = 8;  break;
+
+                            case SRA_PLATFORM_PACBIO_SMRT   : if ( fmt.split_files )
+                                                               {
+                                                                    /* only if we split into files we limit the number of reads */
+                                                                    nreads_max = 32;
+                                                               }
+                                                               break;
+
+                            default : nreads_max = 8; break;    /* for unknown platforms */
                         }
                     }
                     SRAColumnRelease( c );

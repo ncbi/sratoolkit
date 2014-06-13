@@ -122,6 +122,20 @@ KLIB_EXTERN rc_t CC VNamelistAppendString ( VNamelist *self, const String * src 
  */
 KLIB_EXTERN rc_t CC VNamelistRemove( VNamelist *self, const char* s );
 
+/* Remove all
+ *  removes all strings from the namelist ( calls free on them internally )
+ *
+ */
+KLIB_EXTERN rc_t CC VNamelistRemoveAll( VNamelist *self );
+
+
+/* Remove string at index ( and calls fron on it internally )
+ *  returns error code if index is invalid
+ *
+ */
+KLIB_EXTERN rc_t CC VNamelistRemoveIdx( VNamelist *self, uint32_t idx );
+
+
 /* IndexOf
  *  searches linear in the namelist for the string
  *
@@ -129,6 +143,8 @@ KLIB_EXTERN rc_t CC VNamelistRemove( VNamelist *self, const char* s );
  *
  *  "found" [ OUT ] - index of the string if found
  *  unchanged if not found
+ *
+ *  returns RC( rcCont, rcNamelist, rcSearching, rcString, rcNotFound ) if not found
  */
 KLIB_EXTERN rc_t CC VNamelistIndexOf( VNamelist *self, const char* s, uint32_t *found );
 

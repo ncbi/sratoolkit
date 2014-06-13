@@ -26,17 +26,22 @@
 
 #include <ktst/unit_test_suite.hpp>
 
-#include <signal.h> // sigaction, not necessarily in csignal :-/
+#include <sstream>
+
+#include <csignal> // sigaction, not necessarily in csignal :-/
 #include <cstdlib>
 #include <cstring>
-#include <sstream>
+
+#include <time.h>
+#include <unistd.h> /* fork */
+
 #include <sys/wait.h>
 #include <sys/types.h>
-#include <unistd.h>
 
 using namespace std;
 using namespace ncbi::NK;
 
+#undef REPORT_ERROR
 #define REPORT_ERROR(msg) _REPORT_CRITICAL_ERROR_("TestEnv::" msg, __FILE__, __LINE__, true);
 
 static void alarmHandler(int)
@@ -100,9 +105,10 @@ int TestEnv::RunProcessTestCase(TestCase& obj, void(TestCase::*meth)(), int time
     return WEXITSTATUS(status); /* exit status of the child process */
 }
 
-unsigned int TestEnv::Sleep(unsigned int seconds)
+bool TestEnv::SleepMs(unsigned int milliseconds)
 {
-    return sleep(seconds);
+    struct timespec time = { milliseconds / 1000, (milliseconds % 1000) * 1000 * 1000 };
+    return nanosleep(&time, NULL) == 0; 
 }
 
 void TestEnv::set_handlers(void)

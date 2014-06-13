@@ -36,7 +36,6 @@
 #include <errno.h>
 #include <assert.h>
 
-
 /*--------------------------------------------------------------------------
  * KLock
  *  a mutual exclusion lock
@@ -153,8 +152,121 @@ LIB_EXPORT rc_t CC KLockAcquire ( KLock *self )
     return RC ( rcPS, rcLock, rcLocking, rcNoObj, rcUnknown );
 }
 
+/* Unlock
+ *  releases lock
+ */
+LIB_EXPORT rc_t CC KLockUnlock ( KLock *self )
+{
+    if ( self == NULL )
+        return RC ( rcPS, rcLock, rcUnlocking, rcSelf, rcNull );
 
-LIB_EXPORT rc_t CC KLockTimedAcquire ( KLock *self, timeout_t *tm )
+    if ( ReleaseMutex ( self -> mutex ) )
+        return 0;
+
+    switch ( GetLastError () )
+    {
+    case ERROR_INVALID_HANDLE:
+        return RC ( rcPS, rcLock, rcUnlocking, rcLock, rcInvalid );
+    }
+
+    return RC ( rcPS, rcLock, rcUnlocking, rcNoObj, rcUnknown );
+}
+
+
+/*--------------------------------------------------------------------------
+ * KTimedLock
+ *  a mutual exclusion lock with support for timed Acquire
+ */
+
+/* Whack
+ */
+static
+rc_t KTimedLockWhack ( KTimedLock *self )
+{
+    if ( CloseHandle ( self -> mutex ) )
+    {
+        free ( self );
+        return 0;
+    }
+
+    switch ( GetLastError () )
+    {
+    case ERROR_INVALID_HANDLE:
+        return RC ( rcPS, rcLock, rcDestroying, rcLock, rcInvalid );
+    }
+
+    return RC ( rcPS, rcLock, rcDestroying, rcNoObj, rcUnknown );
+}
+
+
+/* Make
+ *  make a simple mutex
+ */
+LIB_EXPORT rc_t CC KTimedLockMake ( KTimedLock **lockp )
+{
+    rc_t rc;
+    if ( lockp == NULL )
+        rc = RC ( rcPS, rcLock, rcConstructing, rcParam, rcNull );
+    else
+    {
+        KTimedLock *lock = malloc ( sizeof * lock );
+        if ( lock == NULL )
+            rc = RC ( rcPS, rcLock, rcConstructing, rcMemory, rcExhausted );
+        else
+        {
+            lock -> mutex = CreateMutex ( NULL, false, NULL );
+            if ( lock -> mutex != NULL )
+            {
+                atomic32_set ( & lock -> refcount, 1 );
+                * lockp = lock;
+                return 0;
+            }
+
+            switch ( GetLastError () )
+            {
+            default:
+                rc = RC ( rcPS, rcLock, rcConstructing, rcNoObj, rcUnknown );
+            }
+
+            free ( lock );
+        }
+
+        * lockp = NULL;
+    }
+    return rc;
+}
+
+
+/* AddRef
+ * Release
+ */
+LIB_EXPORT rc_t CC KTimedLockAddRef ( const KTimedLock *cself )
+{
+    if ( cself != NULL )
+        atomic32_inc ( & ( ( KTimedLock* ) cself ) -> refcount );
+    return 0;
+}
+
+
+LIB_EXPORT rc_t CC KTimedLockRelease ( const KTimedLock *cself )
+{
+    KTimedLock *self = ( KTimedLock* ) cself;
+    if ( cself != NULL )
+    {
+        if ( atomic32_dec_and_test ( & self -> refcount ) )
+        {
+            atomic32_set ( & self -> refcount, 1 );
+            return KTimedLockWhack ( self );
+        }
+    }
+    return 0;
+}
+
+
+/* Acquire
+ *  acquires lock
+ */
+LIB_EXPORT rc_t CC KTimedLockAcquire ( KTimedLock *self, timeout_t *tm )
 {
     if ( self == NULL )
         return RC ( rcPS, rcLock, rcLocking, rcSelf, rcNull );
@@ -183,7 +295,7 @@ LIB_EXPORT rc_t CC KLockTimedAcquire ( KLock *self, timeout_t *tm )
 /* Unlock
  *  releases lock
  */
-LIB_EXPORT rc_t CC KLockUnlock ( KLock *self )
+LIB_EXPORT rc_t CC KTimedLockUnlock ( KTimedLock *self )
 {
     if ( self == NULL )
         return RC ( rcPS, rcLock, rcUnlocking, rcSelf, rcNull );
@@ -413,7 +525,7 @@ rc_t KRWLockAcquireSharedInt ( KRWLock *self, DWORD mS )
             /* drop count and go */
             -- self -> rwait;
             ReleaseMutex ( self -> mutex );
-            return RC ( rcPS, rcRWLock, rcLocking, rcRWLock, rcExhausted );
+            return RC ( rcPS, rcRWLock, rcLocking, rcTimeout, rcExhausted );
 
         case WAIT_FAILED:
             switch ( GetLastError () )
@@ -517,7 +629,7 @@ rc_t KRWLockAcquireExclInt ( KRWLock *self, DWORD mS )
             /* drop count and go */
             -- self -> wwait;
             ReleaseMutex ( self -> mutex );
-            return RC ( rcPS, rcRWLock, rcLocking, rcRWLock, rcExhausted );
+            return RC ( rcPS, rcRWLock, rcLocking, rcTimeout, rcExhausted );
 
         case WAIT_FAILED:
             switch ( GetLastError () )

@@ -1,4 +1,4 @@
-/*=======================================================================================
+/*==============================================================================
 *
 *                            PUBLIC DOMAIN NOTICE
 *               National Center for Biotechnology Information
@@ -38,6 +38,7 @@ struct KGZipFile;
 #include <zlib.h>      /* z_stream */
 #include <assert.h>
 #include <stdlib.h>    /* malloc */
+#include <string.h> /* memset */
 
 #ifdef _DEBUGGING
 #define GZIP_DEBUG(msg) DBGMSG(DBG_KFS,DBG_FLAG(DBG_KFS_GZIP), msg)
@@ -581,3 +582,65 @@ static int s_GzipAndWrite ( KGZipFile *self,
 }
 
 /* EOF */
+
+#include <stdio.h> /* printf */
+LIB_EXPORT rc_t CC KFileMakeGzip2ForRead( const struct KFile **result,
+    const struct KFile *file )
+{
+    rc_t rc;
+    z_stream* strm;
+    KGZipFile *obj;
+
+    if ( result == NULL || file == NULL )
+        return RC ( rcFS, rcFile, rcConstructing, rcParam, rcNull );
+
+    obj = (KGZipFile*) malloc(sizeof(KGZipFile));
+    if (!obj)
+        return RC ( rcFS, rcFile, rcConstructing, rcMemory, rcExhausted );
+
+printf("KFileMakeGzip2ForRead %d\n", __LINE__);
+    rc = KFileInit(&obj->dad, (const KFile_vt*) &s_vtKFile_InGz, "KGZipFile", "no-name", true, false);
+printf("KFileMakeGzip2ForRead %d\n", __LINE__);
+    if (rc != 0) {
+        free(obj);
+        return rc;
+    }
+
+    strm = &obj->strm;
+    memset(strm, 0, sizeof *strm);
+    strm->zalloc   = Z_NULL;
+    strm->zfree    = Z_NULL;
+    strm->opaque   = Z_NULL;
+    strm->avail_in = 0;
+    strm->next_in  = Z_NULL;
+
+    /* TBD - this should check gzlib error codes */
+printf("KFileMakeGzip2ForRead %d\n", __LINE__);
+    if (inflateInit2(strm, WINDOW_BITS) != Z_OK) {
+        free(obj);
+        return RC ( rcFS, rcFile, rcConstructing, rcNoObj, rcUnknown );
+    }
+
+printf("KFileMakeGzip2ForRead %d\n", __LINE__);
+        obj->myPosition   = 0;
+        obj->filePosition = 0;
+
+printf("KFileMakeGzip2ForRead %d\n", __LINE__);
+    rc = KFileAddRef(file);
+    if ( rc != 0 )
+    {
+printf("KFileMakeGzip2ForRead %d\n", __LINE__);
+        obj->file = NULL;
+        KGZipFile_InDestroy ( obj );
+    }
+    else
+    {
+printf("KFileMakeGzip2ForRead %d\n", __LINE__);
+        obj->file = (KFile*) file;
+        obj->completed = true; /* we could have an empty file and this would be okay */
+        *result = &obj->dad;
+    }
+
+printf("KFileMakeGzip2ForRead %d\n", __LINE__);
+    return rc;
+}

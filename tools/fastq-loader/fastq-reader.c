@@ -83,8 +83,6 @@ static rc_t FastqRecordWhack( const FastqRecord* cself )
     FastqRecord* self = (FastqRecord*)cself;
     assert(self);
     
-    free((void*)self->seq.read);
-    
     rc = KDataBufferWhack( & self->source );
     
     if (rc)
@@ -221,8 +219,7 @@ FastqSequenceInit(FastqSequence* self)
     StringInit(&self->spotname, 0, 0, 0);
     StringInit(&self->spotgroup, 0, 0, 0);
     self->readnumber = 0; 
-
-    self->read = 0;
+    StringInit(&self->read, 0, 0, 0);
     self->is_colorspace = false;
     StringInit(&self->quality, 0, 0, 0);
     self->qualityOffset = 0;
@@ -270,13 +267,13 @@ static rc_t FastqSequenceRelease( const FastqSequence* self )
 static rc_t FastqSequenceGetReadLength ( const FastqSequence *self, uint32_t *length )
 {
     assert(self);
-    if ( self->read == NULL || self->is_colorspace )
+    if ( self->is_colorspace )
     {
         *length = 0;
     }
     else
     {
-        *length = string_measure(self->read, NULL);
+        *length = self->read.len;
     }
     return 0;
 }
@@ -285,11 +282,8 @@ static rc_t FastqSequenceGetRead ( const FastqSequence *self, char *sequence )
 {
     assert(self);
     assert(sequence);
-    if ( self->read != NULL && !self->is_colorspace )
-    {
-        uint32_t length = string_measure(self->read, NULL);
-        string_copy(sequence, length, self->read, length);
-    }
+    if ( !self->is_colorspace )
+        string_copy(sequence, self->read.len, self->read.addr, self->read.len);
     return 0;
 }
 
@@ -297,18 +291,18 @@ static rc_t FastqSequenceGetRead2 ( const FastqSequence *self, char *sequence, u
 {
     assert(self);
     assert(sequence);
-    if ( self->read == NULL || self->is_colorspace )
+    if ( self->is_colorspace )
     {
         return RC( RC_MODULE, rcData, rcAccessing, rcItem, rcEmpty );
     }
     else
     {
-        uint32_t length = string_measure(self->read, NULL);
+        uint32_t length = self->read.len;
         if (start >= length || stop >= length || start >= stop)
         {
             return RC( RC_MODULE, rcData, rcAccessing, rcRange, rcInvalid);
         }
-        string_copy(sequence, stop - start, self->read + start, stop - start);
+        string_copy(sequence, stop - start, self->read.addr + start, stop - start);
     }
     return 0;
 }
@@ -322,7 +316,7 @@ static rc_t FastqSequenceGetQuality ( const FastqSequence *self, const int8_t **
     *quality = NULL;
     if ( self->quality.size != 0)
     {
-        uint32_t length = string_measure(self->read, NULL);
+        uint32_t length = self->read.len;
         if (self->quality.size != length)
             return RC(rcAlign, rcRow, rcReading, rcData, rcInconsistent);
             
@@ -366,21 +360,15 @@ static rc_t FastqSequenceGetCSKey ( const FastqSequence *self, char cskey[1] )
 {
     assert(self);
     if (self->is_colorspace)
-        cskey[0] = self->read[0];
+        cskey[0] = self->read.addr[0];
     return 0;
 }
 
 static rc_t FastqSequenceGetCSReadLength ( const FastqSequence *self, uint32_t *length )
 {
     assert(self);
-    if ( self->read == NULL )
-    {
-        *length = 0;
-    }
-    else if (self->is_colorspace)
-    {
-        *length = string_measure(self->read + 1, NULL);
-    }
+    if (self->is_colorspace)
+        *length = self->read.len - 1;
     return 0;
 }
 
@@ -388,11 +376,8 @@ static rc_t FastqSequenceGetCSRead ( const FastqSequence *self, char *sequence )
 {
     assert(self);
     assert(sequence);
-    if ( self->read != NULL && self->is_colorspace )
-    {
-        uint32_t length = string_measure(self->read + 1, NULL);
-        string_copy(sequence, length, self->read + 1, length);
-    }
+    if ( self->is_colorspace )
+        string_copy(sequence, self->read.len - 1, self->read.addr + 1, self->read.len - 1);
     return 0;
 }
 
@@ -513,6 +498,20 @@ rc_t FastqReaderFileWhack( FastqReaderFile* f )
     return 0;
 }
 
+void FASTQ_ParseBlockInit ( FASTQParseBlock* pb )
+{
+    pb->length = 0;
+    pb->spotNameOffset = 0;
+    pb->spotNameLength = 0;
+    pb->spotNameDone = false;
+    pb->spotGroupOffset = 0;
+    pb->spotGroupLength = 0;
+    pb->readOffset = 0;
+    pb->readLength = 0;
+    pb->qualityOffset = 0;
+    pb->qualityLength = 0;
+}
+
 rc_t FastqReaderFileGetRecord ( const FastqReaderFile *f, const Record** result )
 {
     rc_t rc;
@@ -531,18 +530,15 @@ rc_t FastqReaderFileGetRecord ( const FastqReaderFile *f, const Record** result 
     if (rc != 0)
         return rc;
 
-    self->pb.length = 0;
-    KDataBufferResize( & self->pb.tagLine, 0 );
-    KDataBufferResize( & self->pb.quality, 0 );
-    self->pb.spotNameDone = false;
-
+    FASTQ_ParseBlockInit( & self->pb );
+    
     if ( FASTQ_parse( & self->pb ) == 0 && self->pb.record->rej == 0 )
     {   /* normal end of input */
         RecordRelease((const Record*)self->pb.record);
         *result = 0;
         return 0;
     }
-
+    
     /*TODO: remove? compensate for an artificially inserted trailing \n */
     if ( self->eolInserted )
     {
@@ -552,7 +548,7 @@ rc_t FastqReaderFileGetRecord ( const FastqReaderFile *f, const Record** result 
 
     if (self->pb.record->rej != 0) /* had error(s) */
     {   /* save the complete raw source in the Rejected object */
-        StringInit(& self->pb.record->rej->source, string_dup(self->recordStart, self->pb.length), self->pb.length, self->pb.length);
+        StringInit(& self->pb.record->rej->source, string_dup(self->recordStart, self->pb.length), self->pb.length, (uint32_t)self->pb.length);
         self->pb.record->rej->fatal = self->pb.fatalError;
     }
 
@@ -567,9 +563,10 @@ rc_t FastqReaderFileGetRecord ( const FastqReaderFile *f, const Record** result 
         self->curPos -= self->pb.length;
     }
 
-    StringInit( & self->pb.record->seq.spotname,    (const char*)self->pb.tagLine.base, self->pb.spotNameLength, self->pb.spotNameLength);
-    StringInit( & self->pb.record->seq.spotgroup,   (const char*)self->pb.tagLine.base + self->pb.spotGroupOffset, self->pb.spotGroupLength, self->pb.spotGroupLength);
-    StringInit( & self->pb.record->seq.quality,     (const char*)self->pb.quality.base, self->pb.quality.elem_count, self->pb.quality.elem_count); 
+    StringInit( & self->pb.record->seq.spotname,    (const char*)self->pb.record->source.base + self->pb.spotNameOffset,    self->pb.spotNameLength, (uint32_t)self->pb.spotNameLength);
+    StringInit( & self->pb.record->seq.spotgroup,   (const char*)self->pb.record->source.base + self->pb.spotGroupOffset,   self->pb.spotGroupLength, (uint32_t)self->pb.spotGroupLength);
+    StringInit( & self->pb.record->seq.read,        (const char*)self->pb.record->source.base + self->pb.readOffset,        self->pb.readLength, (uint32_t)self->pb.readLength); 
+    StringInit( & self->pb.record->seq.quality,     (const char*)self->pb.record->source.base + self->pb.qualityOffset,     self->pb.qualityLength, (uint32_t)self->pb.qualityLength); 
     self->pb.record->seq.qualityOffset = self->pb.phredOffset;
     
     if (self->pb.record->seq.readnumber == 0)
@@ -624,8 +621,10 @@ size_t CC FASTQ_input(FASTQParseBlock* pb, char* buf, size_t max_size)
     }
 
     memcpy(buf, self->recordStart + self->curPos, length);
+
     self->lastEol = ( buf[length-1] == '\n' );
     self->curPos += length;
+    
     return length;
 }
 
@@ -671,8 +670,9 @@ rc_t CC FastqReaderFileMake( const ReaderFile **reader, const KDirectory* dir, c
                         if a value below MIN_PHRED_64 seen, abort 
             */
             self->pb.defaultReadNumber = defaultReadNumber;
+            self->pb.secondaryReadNumber = 0;
             
-            rc = FASTQScan_yylex_init(& self->pb, true); 
+            rc = FASTQScan_yylex_init(& self->pb, false); 
             if (rc == 0)
             {
                 *reader = (const ReaderFile *) self;

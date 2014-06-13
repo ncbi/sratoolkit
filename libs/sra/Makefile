@@ -85,7 +85,7 @@ SRA_DFLT_SCHEMA_LIBS = \
 	-salign-reader \
 	-skdb \
 	-svfs \
-	-skurl \
+	-skns \
 	-sksrch \
 	-skrypto \
 	-skfg \

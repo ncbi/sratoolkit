@@ -5,7 +5,7 @@
 // these macros are available outside of test cases' code
 
 #define LOG(log_level, msg) \
-if (log_level >= ncbi::NK::TestEnv::verbosity) std::cerr << msg
+    (log_level >= ncbi::NK::TestEnv::verbosity ? (std::cerr << msg) : std::cerr)
 
 #define TEST_MESSAGE(M) \
 { ncbi_NK_saveLocation(__FILE__,__LINE__); \

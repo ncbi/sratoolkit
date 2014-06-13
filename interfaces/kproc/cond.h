@@ -73,7 +73,7 @@ KPROC_EXTERN rc_t CC KConditionRelease ( const KCondition *self );
 
 
 /* Wait
- *  block on external lock until signaled
+ *  block on external lock until signalled
  */
 KPROC_EXTERN rc_t CC KConditionWait ( KCondition *self, struct KLock *lock );
 KPROC_EXTERN rc_t CC KConditionTimedWait ( KCondition *self, struct KLock *lock, struct timeout_t *tm );
@@ -95,7 +95,6 @@ KPROC_EXTERN rc_t CC KConditionSignal ( KCondition *self );
  * NB - external lock used for synchronization must be locked by current thread
  */
 KPROC_EXTERN rc_t CC KConditionBroadcast ( KCondition *self );
-
 
 #ifdef __cplusplus
 }

@@ -45,7 +45,8 @@
 #include <vfs/resolver.h> /* VResolver */
 
 #include <kns/ascp.h> /* ascp_locate */
-#include <kns/curl-file.h> /* KCurlFileMake */
+#include <kns/manager.h>
+#include <kns/http.h>
 
 #include <kfs/file.h> /* KFile */
 #include <kfs/gzip.h> /* KFileMakeGzipForRead */
@@ -87,7 +88,7 @@
 #define STS_DBG 2
 #define STS_FIN 3
 
-#define USE_CURL 1
+#define USE_CURL 0
 
 #define rcResolver   rcTree
 static bool NotFoundByResolver(rc_t rc) {
@@ -171,6 +172,7 @@ typedef struct {
     const KRepositoryMgr *repoMgr;
     const VDBManager *mgr;
     VFSManager *vfsMgr;
+    KNSManager *kns;
 
     VResolver *resolver;
 
@@ -262,17 +264,15 @@ bool _StringIsFasp(const String *self, const char **withoutScheme)
 }
 
 /********** KFile extension **********/
-static rc_t _KFileOpenRemote(const KFile **self, const char *path) {
+static
+rc_t _KFileOpenRemote(const KFile **self, KNSManager *kns, const char *path)
+{
     rc_t rc = 0;
     assert(self);
     if (*self != NULL) {
         return 0;
     }
-#if USE_CURL
-    rc = KCurlFileMake(self, path, false);
-#else
-    rc = KNSManagerMakeHttpFile(kns, &file, NULL, 0x01010000, "%S", s);
-#endif
+    rc = KNSManagerMakeHttpFile(kns, self, NULL, 0x01010000, path);
     return rc;
 }
 
@@ -538,7 +538,7 @@ static rc_t _VResolverRemote(VResolver *self, VRemoteProtocols protocols,
         if (vcache == NULL) {
             rc = RC(rcExe, rcResolver, rcResolving, rcPath, rcNotFound);
             PLOGERR(klogInt, (klogInt, rc, "cannot get cache location "
-                "for $(acc). Try to cd out of protected repository.",
+                "for $(acc).", /* Try to cd out of protected repository.", */
                 "acc=%s" , name));
         }
         if (rc == 0) {
@@ -934,10 +934,11 @@ static rc_t MainDownloadFile(Resolved *self,
 {
     rc_t rc = 0;
     KFile *out = NULL;
-    uint64_t pos = 0;
     size_t num_read = 0;
     uint64_t opos = 0;
     size_t num_writ = 0;
+    uint64_t pos = 0;
+    uint64_t prevPos = 0;
 
     assert(self && main);
 
@@ -951,7 +952,7 @@ static rc_t MainDownloadFile(Resolved *self,
     assert(self->remote);
 
     if (self->file == NULL) {
-        rc = _KFileOpenRemote(&self->file, self->remote->addr);
+        rc = _KFileOpenRemote(&self->file, main->kns, self->remote->addr);
         if (rc != 0) {
             PLOGERR(klogInt, (klogInt, rc, "failed to open file for $(path)",
                 "path=%s", self->remote->addr));
@@ -960,20 +961,25 @@ static rc_t MainDownloadFile(Resolved *self,
 
     STSMSG(STS_INFO, ("%s -> %s", self->remote->addr, to));
     do {
+        bool print = pos - prevPos > 200000000;
         rc = Quitting();
 
         if (rc == 0) {
-            STSMSG(STS_FIN,
-                ("> Reading %lu bytes from pos. %lu", main->bsize, pos));
+            if (print) {
+                STSMSG(STS_FIN,
+                    ("Reading %lu bytes from pos. %lu", main->bsize, pos));
+            }
             rc = KFileRead(self->file,
                 pos, main->buffer, main->bsize, &num_read);
             if (rc != 0) {
                 DISP_RC2(rc, "Cannot KFileRead", self->remote->addr);
             }
             else {
-                STSMSG(STS_FIN,
-                    ("< Read %lu bytes from pos. %lu", num_read, pos));
                 pos += num_read;
+            }
+
+            if (print) {
+                prevPos = pos;
             }
         }
 
@@ -1315,7 +1321,7 @@ static rc_t _ItemSetResolverAndAssessionInResolved(Item *item,
 /* resolve locations */
 static rc_t _ItemResolveResolved(VResolver *resolver,
     VRemoteProtocols protocols, Item *item, const KRepositoryMgr *repoMgr,
-    const KConfig *cfg, const VFSManager *vfs, size_t minSize, size_t maxSize)
+    const KConfig *cfg, const VFSManager *vfs, KNSManager *kns, size_t minSize, size_t maxSize)
 {
     Resolved *resolved = NULL;
     rc_t rc = 0;
@@ -1367,7 +1373,7 @@ static rc_t _ItemResolveResolved(VResolver *resolver,
                 rc_t rc3 = 0;
                 if (resolved->file == NULL) {
                     rc3 = _KFileOpenRemote(&resolved->file,
-                        resolved->remote->addr);
+                                           kns, resolved->remote->addr);
                     DISP_RC2(rc3,
                         "cannot open remote file", resolved->remote->addr);
                 }
@@ -1405,7 +1411,7 @@ static rc_t _ItemResolveResolved(VResolver *resolver,
                 assert(resolved->remote);
                 if (!_StringIsFasp(resolved->remote, NULL)) {
                     rc2 = _KFileOpenRemote(
-                        &resolved->file, resolved->remote->addr);
+                        &resolved->file, kns, resolved->remote->addr);
                 }
             }
             if (rc2 == 0 && resolved->file != NULL && resolved->remoteSz == 0) {
@@ -1422,7 +1428,7 @@ static rc_t _ItemResolveResolved(VResolver *resolver,
 /* Resolved: resolve locations */
 static rc_t ItemInitResolved(Item *self, VResolver *resolver,
     KDirectory *dir, bool ascp, const KRepositoryMgr *repoMgr,
-    const KConfig *cfg, const VFSManager *vfs, size_t minSize, size_t maxSize)
+    const KConfig *cfg, const VFSManager *vfs, KNSManager *kns, size_t minSize, size_t maxSize)
 {
     Resolved *resolved = NULL;
     rc_t rc = 0;
@@ -1463,7 +1469,7 @@ static rc_t ItemInitResolved(Item *self, VResolver *resolver,
     }
 
     rc = _ItemResolveResolved(resolver, protocols, self,
-        repoMgr, cfg, vfs, minSize, maxSize);
+        repoMgr, cfg, vfs, kns, minSize, maxSize);
 
     STSMSG(STS_DBG, ("Resolve(%s) = %R:", resolved->name, rc));
     STSMSG(STS_DBG, ("local(%s)",
@@ -1523,7 +1529,7 @@ static rc_t ItemResolve(Item *item, int32_t row) {
 
     rc = ItemInitResolved(item, item->main->resolver, item->main->dir, ascp,
         item->main->repoMgr, item->main->cfg, item->main->vfsMgr,
-        item->main->minSize, item->main->maxSize);
+        item->main->kns, item->main->minSize, item->main->maxSize);
 
     return rc;
 }
@@ -2457,6 +2463,7 @@ static rc_t MainFini(Main *self) {
     RELEASE(VDBManager, self->mgr);
     RELEASE(KDirectory, self->dir);
     RELEASE(KRepositoryMgr, self->repoMgr);
+    RELEASE(KNSManager, self->kns);
     RELEASE(VFSManager, self->vfsMgr);
     RELEASE(Args, self->args);
 
@@ -2500,6 +2507,12 @@ static rc_t MainInit(int argc, char *argv[], Main *self) {
     if (rc == 0) {
         rc = VFSManagerMake(&self->vfsMgr);
         DISP_RC(rc, "VFSManagerMake");
+    }
+
+    if ( rc == 0 )
+    {
+        rc = VFSManagerGetKNSMgr (self->vfsMgr, & self->kns);
+        DISP_RC(rc, "VFSManagerGetKNSMgr");
     }
 
     if (rc == 0) {

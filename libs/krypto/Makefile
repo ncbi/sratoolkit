@@ -49,7 +49,7 @@ endif
 # VEC_SUPPORTED, VECREG_SUPPORTED and AESNI_SUPPORTED
 # The successive symbols are additive
 # In order they are the compiler supports  the vector 'container' type,
-# the preocessor has supported vector registers
+# the processor has supported vector registers
 # the processor supports the Intel AES-NI instruction set
 #
 # The prerequisite call to make compiler-test will have tried to compile objects

@@ -64,7 +64,7 @@ typedef struct FastqReader FastqReader;
 SRA_RD_EXTERN rc_t CC FastqReaderMake(const FastqReader** self, const SRATable* table, const char* accession,
                                       bool colorSpace, bool origFormat, bool fasta,
                                       bool printLabel, bool printReadId,
-                                      bool noClip, uint32_t minReadLen,
+                                      bool noClip, bool SuppressQualForCSKey, uint32_t minReadLen,
                                       char offset, char csKey,
                                       spotid_t minSpotId, spotid_t maxSpotId);
 

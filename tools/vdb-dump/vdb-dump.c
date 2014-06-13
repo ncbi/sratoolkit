@@ -55,6 +55,7 @@
 #include <klib/printf.h>
 #include <klib/rc.h>
 #include <klib/namelist.h>
+#include <klib/time.h>
 
 #include <os-native.h>
 #include <sysalloc.h>
@@ -95,6 +96,7 @@ static const char * without_accession_usage[] = { "without accession-test", NULL
 static const char * excluded_columns_usage[] = { "exclude these columns", NULL };
 static const char * boolean_usage[] = { "defines how boolean's are printed (1,T)", NULL };
 static const char * objver_usage[] = { "request vdb-version", NULL };
+static const char * objts_usage[] = { "request object modification date", NULL };
 static const char * numelem_usage[] = { "print only element-count", NULL };
 static const char * numelemsum_usage[] = { "sum element-count", NULL };
 static const char * show_blobbing_usage[] = { "show blobbing", NULL };
@@ -138,8 +140,8 @@ OptDef DumpOptions[] =
     { OPTION_NUMELEMSUM, ALIAS_NUMELEMSUM, NULL, numelemsum_usage, 1, false, false },
     { OPTION_SHOW_BLOBBING, NULL, NULL, show_blobbing_usage, 1, false, false },
     { OPTION_ENUM_PHYS, NULL, NULL, enum_phys_usage, 1, false, false },
-    { OPTION_CHECK_CURL, NULL, NULL, NULL, 1, false, false },
     { OPTION_OBJVER, ALIAS_OBJVER, NULL, objver_usage, 1, false, false },
+    { OPTION_OBJTS, NULL, NULL, objts_usage, 1, false, false },
     { OPTION_OBJTYPE, ALIAS_OBJTYPE, NULL, objtype_usage, 1, false, false },
     { OPTION_IDX_ENUM, NULL, NULL, idx_enum_usage, 1, false, false },
     { OPTION_IDX_RANGE, NULL, NULL, idx_range_usage, 1, true, false },
@@ -203,6 +205,7 @@ rc_t CC Usage ( const Args * args )
     HelpOptionLine ( ALIAS_EXCLUDED_COLUMNS, OPTION_EXCLUDED_COLUMNS, NULL, excluded_columns_usage );
     HelpOptionLine ( ALIAS_BOOLEAN, OPTION_BOOLEAN, NULL, boolean_usage );
     HelpOptionLine ( ALIAS_OBJVER, OPTION_OBJVER, NULL, objver_usage );
+    HelpOptionLine ( NULL, OPTION_OBJTS, NULL, objts_usage );
     HelpOptionLine ( ALIAS_OBJTYPE, OPTION_OBJTYPE, NULL, objtype_usage );
     HelpOptionLine ( ALIAS_NUMELEM, OPTION_NUMELEM, NULL, numelem_usage );
     HelpOptionLine ( ALIAS_NUMELEMSUM, OPTION_NUMELEMSUM, NULL, numelemsum_usage );
@@ -467,26 +470,26 @@ static rc_t vdm_dump_rows( p_row_context r_ctx )
 }
 
 
-static bool vdm_extract_or_parse_columns( const p_dump_context ctx,
+static uint32_t vdm_extract_or_parse_columns( const p_dump_context ctx,
                                           const VTable *my_table,
                                           p_col_defs my_col_defs )
 {
-    bool res = false;
+    uint32_t count = 0;
     if ( ctx != NULL && my_col_defs != NULL )
     {
         bool cols_unknown = ( ( ctx->columns == NULL ) || ( string_cmp( ctx->columns, 1, "*", 1, 1 ) == 0 ) );
         if ( cols_unknown )
             /* the user does not know the column-names or wants all of them */
-            res = vdcd_extract_from_table( my_col_defs, my_table );
+            count = vdcd_extract_from_table( my_col_defs, my_table );
         else
             /* the user knows the names of the wanted columns... */
-            res = vdcd_parse_string( my_col_defs, ctx->columns, my_table );
+            count = vdcd_parse_string( my_col_defs, ctx->columns, my_table );
 
         if ( ctx->excluded_columns != NULL )
             vdcd_exclude_these_columns( my_col_defs, ctx->excluded_columns );
     }
 
-    return res;
+    return count;
 }
 
 
@@ -545,9 +548,11 @@ static rc_t vdm_dump_opened_table( const p_dump_context ctx, const VTable *my_ta
 
         if ( rc == 0 )
         {
-            if ( vdm_extract_or_parse_columns( ctx, my_table, r_ctx.col_defs ) )
+            uint32_t n = vdm_extract_or_parse_columns( ctx, my_table, r_ctx.col_defs );
+            if ( n > 0 )
             {
-                if ( vdcd_add_to_cursor( r_ctx.col_defs, r_ctx.cursor ) )
+                n = vdcd_add_to_cursor( r_ctx.col_defs, r_ctx.cursor );
+                if ( n > 0 )
                 {
                     const VSchema *my_schema;
                     rc = VTableOpenSchema( my_table, &my_schema );
@@ -592,6 +597,14 @@ static rc_t vdm_dump_opened_table( const p_dump_context ctx, const VTable *my_ta
                         }
                     }
                 }
+                else
+                {
+                    rc = RC( rcVDB, rcNoTarg, rcConstructing, rcParam, rcInvalid );
+                }
+            }
+            else
+            {
+                rc = RC( rcVDB, rcNoTarg, rcConstructing, rcParam, rcInvalid );
             }
             vdcd_destroy( r_ctx.col_defs );
         }
@@ -1451,6 +1464,28 @@ static rc_t vdm_print_objver( const p_dump_context ctx, const VDBManager *mgr )
     return rc;
 }
 
+static rc_t vdm_print_objts ( const p_dump_context ctx, const VDBManager *mgr )
+{
+    KTime_t timestamp;
+    rc_t rc = VDBManagerGetObjModDate ( mgr, &timestamp, ctx-> path );
+    DISP_RC ( rc, "VDBManagerGetObjModDate () failed" );
+    if ( rc == 0 )
+    {
+        KTime kt;
+        KTimeGlobal ( & kt, timestamp );
+        rc = KOutMsg ( "%04u-%02u-%02uT"
+                       "%02u:%02u:%02uZ"
+                       "\n",
+                       kt . year,
+                       kt . month,
+                       kt . day,
+                       kt . hour,
+                       kt . minute,
+                       kt . second
+            );
+    }
+    return rc;
+}
 
 static void vdm_print_objtype( const VDBManager *mgr, const char * acc_or_path )
 {
@@ -1550,6 +1585,10 @@ static rc_t vdm_main_one_obj( const p_dump_context ctx,
     {
         rc = vdm_print_objver( ctx, mgr );
     }
+    else if ( ctx->objts_requested )
+    {
+        rc = vdm_print_objts ( ctx, mgr );
+    }
     else if ( ctx->objtype_requested )
     {
         vdm_print_objtype( mgr, acc_or_path );
@@ -1572,33 +1611,6 @@ static rc_t vdm_main_one_obj( const p_dump_context ctx,
     return rc;
 }
 
-
-static rc_t vdm_check_curl( void )
-{
-    struct KNSManager * knsmgr;
-    rc_t rc = KNSManagerMake( &knsmgr );
-    if ( rc == 0 )
-    {
-        rc = KNSManagerAvail( knsmgr );
-        if ( rc == 0 )
-        {
-            const char *vers = NULL;
-            rc = KNSManagerCurlVersion( knsmgr, &vers );
-            if ( rc == 0 )
-                KOutMsg( "libcurl-version = %s\n", vers );
-        }
-        else
-        {
-            rc = KOutMsg( "libcurl not available... %R\n", rc );
-        }
-        KNSManagerRelease( knsmgr );
-    }
-    else
-    {
-        rc = KOutMsg( "cannot create knsmgr... %R\n", rc );
-    }
-    return rc;
-}
 
 /***************************************************************************
     dump_main:
@@ -1642,10 +1654,6 @@ static rc_t vdm_main( const p_dump_context ctx, Args * args )
             {
                 rc = vdh_show_manager_version( mgr );
                 DISP_RC( rc, "show_manager_version() failed" );
-            }
-            else if ( ctx->check_curl )
-            {
-                rc = vdm_check_curl();
             }
             else
             {

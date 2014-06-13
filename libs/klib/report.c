@@ -30,15 +30,17 @@
 
 #include <kfs/directory.h> /* KDirectoryNativeDir */
 
-#include <klib/report.h> /* ReportInit */
+#include <klib/klib-priv.h>
+#include <klib/log.h> /* LOGERR */
+#include <klib/misc.h> /* is_iser_an_admin */
 #include <klib/namelist.h> /* KNamelistRelease */
+#include <klib/out.h> /* OUTMSG */
+#include <klib/printf.h> /* string_printf */
+#include <klib/rc.h>
+#include <klib/report.h> /* ReportInit */
 #include <klib/time.h> /* KTime */
 #include <klib/text.h> /* string_printf */
-#include <klib/printf.h> /* string_printf */
-#include <klib/log.h> /* LOGERR */
-#include <klib/out.h> /* OUTMSG */
-#include <klib/rc.h>
-#include <klib/klib-priv.h>
+
 #include <atomic.h> /* atomic_test_and_set_ptr */
 
 #include <stdarg.h> /* va_start */
@@ -485,6 +487,9 @@ static rc_t ReportRun(int indent, rc_t rc_in) {
     }
 
     report(indent + 1, "Result", 1, "rc", 'R', rc_in);
+
+    report(indent + 1, "User", 1,
+        "admin", 's', is_iser_an_admin() ? "true" : "false");
 
     reportClose(indent, tag);
 

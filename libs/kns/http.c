@@ -51,10 +51,13 @@ typedef struct KHttpFile KHttpFile;
 #include <klib/rc.h>
 #include <klib/printf.h>
 #include <klib/vector.h>
+#include <kproc/timeout.h>
 
+#include <os-native.h>
 #include <strtol.h>
 #include <va_copy.h>
 
+#include "mgr-priv.h"
 #include "stream-priv.h"
 
 #include <sysalloc.h>
@@ -64,7 +67,6 @@ typedef struct KHttpFile KHttpFile;
 #include <assert.h>
 
 #include "http-priv.h"
-
 
 static 
 void  KDataBufferClear ( KDataBuffer *buf )
@@ -81,88 +83,10 @@ bool KDataBufferContainsString ( const KDataBuffer *buf, const String *str )
 }
 
 /*--------------------------------------------------------------------------
- * KDataBufferVPrintf
- *  Populate a KDataBuffer
- *  If buffer is empty - resize it to 4k
- *  Else determine the correct multiple of 4k and add/append data
- */
-
-#if 0
-/* TBD - add to the printf file permanently */
-static
-rc_t KDataBufferVPrintf ( KDataBuffer * buf, const char * fmt, va_list args )
-{
-    rc_t rc;
-    size_t bsize;
-    char *buffer;
-    size_t content;
-    size_t num_writ;
-
-    /* the C library ruins a va_list upon use
-       in case we ever need to use it a second time,
-       make a copy first */
-    va_list args_copy;
-    va_copy ( args_copy, args );
-
-    /* begin to calculate content and bsize */
-    content = ( size_t ) buf -> elem_count;
-
-    /* check for an empty buffer */
-    if ( content == 0 )
-    {
-        rc = KDataBufferResize ( buf, bsize = 4096 );
-        if ( rc != 0 )
-            return rc;
-    }
-    else
-    {
-        /* generate even multiple of 4K */
-        bsize = ( content + 4095 ) & ~ ( size_t ) 4095;
-
-        /* discount NUL byte */
-        content -= 1;
-    }
-            
-    /* convert the 2-part url into a flat string */
-    buffer = buf -> base;
-    rc = string_vprintf ( &buffer [ content ], bsize - content, & num_writ, fmt, args );
-    /* Make sure there is enough room to store data including NUL */
-    if ( rc != 0 || ( content + num_writ ) == bsize )
-    {
-        bsize = ( content + num_writ + 4095 + 1 ) & ~ ( size_t ) 4095;
-        rc = KDataBufferResize ( buf, bsize );
-        if ( rc == 0 )
-        {
-            /* try again with the newly sized buffer */
-            rc = string_vprintf ( &buffer [ content ], bsize - content, & num_writ, fmt, args_copy );
-        }
-    }
-    va_end ( args_copy );
-    
-    /* size down to bsize + NULL */
-    if ( rc == 0 )
-        KDataBufferResize ( buf, content + num_writ + 1 );
-
-    return rc;
-}
-
-/* forward to KDataBufferVPrintf */
-static
-rc_t KDataBufferPrintf ( KDataBuffer * buf, const char * url, ... )
-{
-    rc_t rc;
-
-    va_list args;
-    va_start ( args, url );
-    rc = KDataBufferVPrintf ( buf, url, args );
-    va_end ( args );
-
-    return rc;
-}
-#endif
-/*--------------------------------------------------------------------------
  * URLBlock
  *  RFC 3986
+ *
+ * TBD - replace with VPath
  */
 
 /* Init
@@ -361,7 +285,7 @@ rc_t ParseUrl ( URLBlock * b, const char * url, size_t url_size )
             if ( b -> port == 0 || ( const char* ) term != end )
             {
                 rc = RC ( rcNS, rcUrl, rcParsing, rcNoObj, rcIncorrect );
-                PLOGERR ( klogErr ,( klogErr, rc, "Port is '$(port)'", "port=%d", b -> port ) );
+                PLOGERR ( klogErr ,( klogErr, rc, "Port is '$(port)'", "port=%u", b -> port ) );
                 return rc;
             }
 
@@ -415,10 +339,11 @@ struct KHttp
 
     /* buffer for accumulating response data from "sock" */
     KDataBuffer block_buffer;
-    size_t block_valid;         /* number of valid response bytes in buffer */
-    size_t block_read;          /* number of bytes read out by line reader or stream */
+    size_t block_valid;         /* number of valid response bytes in buffer            */
+    size_t block_read;          /* number of bytes read out by line reader or stream   */
+    size_t body_start;          /* offset to first byte in body                        */
 
-    KDataBuffer line_buffer; /* data accumulates for reading headers and chunk size */
+    KDataBuffer line_buffer;    /* data accumulates for reading headers and chunk size */
     size_t line_valid;
 
     KDataBuffer hostname_buffer;
@@ -428,6 +353,9 @@ struct KHttp
     ver_t vers;
 
     KRefcount refcount;
+
+    int32_t read_timeout;
+    int32_t write_timeout;
 
     KEndPoint ep;
     bool ep_valid;
@@ -494,7 +422,8 @@ rc_t KHttpOpen ( KHttp * self, const String * hostname, uint32_t port )
         self -> ep_valid = true;
     }
 
-    rc = KNSManagerMakeConnection ( self -> mgr, & self -> sock, NULL, & self -> ep );
+    /* TBD - retries? default for now */
+    rc = KNSManagerMakeTimedConnection ( self -> mgr, & self -> sock, self -> read_timeout, self -> write_timeout, NULL, & self -> ep );
     if ( rc == 0 )
     {
         self -> port = port;
@@ -515,16 +444,17 @@ rc_t KHttpInit ( KHttp * http, const KDataBuffer *hostname_buffer, KStream * con
         port = 80;
 
     /* we accept a NULL connection ( from ) */
-    if ( conn != NULL )
-        rc = KStreamAddRef ( conn );
+    if ( conn == NULL )
+        rc = KHttpOpen ( http, _host, port );
     else
     {
-        rc = KHttpOpen ( http, _host, port );
+        rc = KStreamAddRef ( conn );
+        if ( rc == 0 )
+            http -> sock = conn;
     }
 
     if ( rc == 0 )
     {
-        http -> sock = conn;
         http -> port = port;
         http -> vers = _vers & 0xFFFF0000; /* safety measure - limit to major.minor */
 
@@ -551,7 +481,7 @@ rc_t KHttpInit ( KHttp * http, const KDataBuffer *hostname_buffer, KStream * con
  *
  *  "http" [ OUT ] - return parameter for HTTP object
  *
- *  "conn" [ IN ] - previously opened stream for communications.
+ *  "opt_conn" [ IN ] - previously opened stream for communications.
  *
  *  "vers" [ IN ] - http version
  *   the only legal types are 1.0 ( 0x01000000 ) and 1.1 ( 0x01010000 )
@@ -563,7 +493,9 @@ rc_t KHttpInit ( KHttp * http, const KDataBuffer *hostname_buffer, KStream * con
  */
 static
 rc_t KNSManagerMakeHttpInt ( const KNSManager *self, KHttp **_http,
-    const KDataBuffer *hostname_buffer,  KStream *conn, ver_t vers, const String *host, uint32_t port )
+    const KDataBuffer *hostname_buffer,  KStream *opt_conn,
+    ver_t vers, int32_t readMillis, int32_t writeMillis,
+    const String *host, uint32_t port )
 {
     rc_t rc;
 
@@ -578,7 +510,8 @@ rc_t KNSManagerMakeHttpInt ( const KNSManager *self, KHttp **_http,
             char save, *text;
 
             http -> mgr = self;
-
+            http -> read_timeout = readMillis;
+            http -> write_timeout = writeMillis;
 
             /* Dont use MakeBytes because we dont need to allocate memory
                and we only need to know that the elem size is 8 bits */
@@ -600,7 +533,7 @@ rc_t KNSManagerMakeHttpInt ( const KNSManager *self, KHttp **_http,
             text [ host -> size ] = save;
 
             /* init the KHttp object */
-            rc = KHttpInit ( http, hostname_buffer, conn, vers, host, port );
+            rc = KHttpInit ( http, hostname_buffer, opt_conn, vers, host, port );
             if ( rc == 0 )
             {
                 /* assign to OUT http param */
@@ -617,27 +550,28 @@ rc_t KNSManagerMakeHttpInt ( const KNSManager *self, KHttp **_http,
     return rc;
 }
 
-LIB_EXPORT rc_t CC KNSManagerMakeHttp ( const KNSManager *self,
-    KHttp **_http, KStream *conn, ver_t vers, const String *host, uint32_t port )
+LIB_EXPORT rc_t CC KNSManagerMakeTimedHttp ( const KNSManager *self,
+    KHttp **_http, KStream *opt_conn, ver_t vers, int32_t readMillis, int32_t writeMillis,
+    const String *host, uint32_t port )
 {
     rc_t rc;
     
     /* check return parameters */
     if ( _http == NULL )
-        rc = RC ( rcNS, rcNoTarg, rcValidating, rcParam, rcNull );
+        rc = RC ( rcNS, rcMgr, rcConstructing, rcParam, rcNull );
     else
     {
         /* check input parameters */
         if ( self == NULL )
-            rc = RC ( rcNS, rcNoTarg, rcValidating, rcParam, rcNull );
+            rc = RC ( rcNS, rcMgr, rcConstructing, rcSelf, rcNull );
         /* make sure we have one of the two versions supported - 1.0, 1.1 */
         else if ( vers < 0x01000000 || vers > 0x01010000 )
-            rc = RC ( rcNS, rcNoTarg, rcValidating, rcParam, rcIncorrect );
+            rc = RC ( rcNS, rcMgr, rcConstructing, rcParam, rcBadVersion );
         else if ( host == NULL )
-            rc = RC ( rcNS, rcNoTarg, rcValidating, rcParam, rcNull );
+            rc = RC ( rcNS, rcMgr, rcConstructing, rcPath, rcNull );
         /* make sure there is data in the host name */
         else if ( host -> size == 0 )
-            rc = RC ( rcNS, rcNoTarg, rcValidating, rcParam, rcInsufficient );
+            rc = RC ( rcNS, rcMgr, rcConstructing, rcPath, rcEmpty );
         else
         {
             KDataBuffer hostname_buffer;
@@ -655,8 +589,19 @@ LIB_EXPORT rc_t CC KNSManagerMakeHttp ( const KNSManager *self,
                 /* create copy of host that points into new buffer */
                 StringInit ( &_host, hostname_buffer . base, host -> size, host -> len );
 
+                /* limit timeouts */
+                if ( readMillis < 0 )
+                    readMillis = -1;
+                else if ( readMillis > MAX_HTTP_READ_LIMIT )
+                    readMillis = MAX_HTTP_READ_LIMIT;
+                if ( writeMillis < 0 )
+                    writeMillis = -1;
+                else if ( writeMillis > MAX_HTTP_WRITE_LIMIT )
+                    writeMillis = MAX_HTTP_WRITE_LIMIT;
+
                 /* initialize http object - will create a new reference to hostname buffer */
-                rc = KNSManagerMakeHttpInt ( self, _http, & hostname_buffer, conn, vers, &_host, port );
+                rc = KNSManagerMakeHttpInt ( self, _http, & hostname_buffer,
+                    opt_conn, vers, readMillis, writeMillis, &_host, port );
 
                 /* release our reference to buffer */
                 KDataBufferWhack ( & hostname_buffer );
@@ -670,6 +615,23 @@ LIB_EXPORT rc_t CC KNSManagerMakeHttp ( const KNSManager *self,
     }
     
     return rc;
+}
+
+LIB_EXPORT rc_t CC KNSManagerMakeHttp ( const KNSManager *self,
+    KHttp **http, KStream *opt_conn, ver_t vers, const String *host, uint32_t port )
+{
+    if ( self == NULL )
+    {
+        if ( http == NULL )
+            return RC ( rcNS, rcMgr, rcValidating, rcParam, rcNull );
+
+        * http = NULL;
+
+        return RC ( rcNS, rcMgr, rcValidating, rcSelf, rcNull );
+    }
+
+    return KNSManagerMakeTimedHttp ( self, http, opt_conn, vers,
+        self -> http_read_timeout, self -> http_write_timeout, host, port );
 }
 
 
@@ -717,7 +679,7 @@ LIB_EXPORT rc_t CC KHttpRelease ( const KHttp *self )
  *  Read in the http response and return 1 char at a time
  */
 static
-rc_t KHttpGetCharFromResponse ( KHttp *self, char *ch )
+rc_t KHttpGetCharFromResponse ( KHttp *self, char *ch, struct timeout_t *tm )
 {
     rc_t rc;
     char * buffer = self -> block_buffer . base;
@@ -748,7 +710,7 @@ rc_t KHttpGetCharFromResponse ( KHttp *self, char *ch )
         /* NB - do NOT use KStreamReadAll or it will block with http 1.1 
            because http/1.1 uses keep alive and the read will block until the server 
            drops the connection */
-        rc = KStreamRead ( self -> sock, buffer, bsize, & self -> block_valid );
+        rc = KStreamTimedRead ( self -> sock, buffer, bsize, & self -> block_valid, tm );
         if ( rc != 0 )
             return rc;
 
@@ -768,7 +730,7 @@ rc_t KHttpGetCharFromResponse ( KHttp *self, char *ch )
 
 /* Read and return entire lines ( until \r\n ) */
 static
-rc_t KHttpGetLine ( KHttp *self )
+rc_t KHttpGetLine ( KHttp *self, struct timeout_t *tm )
 {
     rc_t rc;
 
@@ -782,7 +744,7 @@ rc_t KHttpGetLine ( KHttp *self )
         char ch;
 
         /* get char */
-        rc = KHttpGetCharFromResponse ( self, &ch );
+        rc = KHttpGetCharFromResponse ( self, &ch, tm );
         if ( rc != 0 )
             break;
 
@@ -823,8 +785,19 @@ rc_t KHttpGetLine ( KHttp *self )
         if ( ch == 0 )
         {
 #if _DEBUGGING
-            if ( KNSManagerIsVerbose ( self->mgr ) )
-                KOutMsg( "RX:%s\n", buffer );
+            if ( KNSManagerIsVerbose ( self -> mgr ) ) {
+                size_t i = 0;
+                KOutMsg ( "RX:" );
+                for (i = 0; i <= self->line_valid; ++i) {
+                    if (isprint(buffer[i])) {
+                        KOutMsg("%c", buffer[i]);
+                    }
+                    else {
+                        KOutMsg("\\%02X", buffer[i]);
+                    }
+                }
+                KOutMsg ( "\n" );
+            }
 #endif
             break;
         }
@@ -964,10 +937,10 @@ rc_t KHttpAddHeader ( BSTree *hdrs, const char *name, const char *val, ... )
 }
 
 /* Capture each header line to add to BSTree */
-rc_t KHttpGetHeaderLine ( KHttp *self, BSTree *hdrs, bool *blank, bool *close_connection )
+rc_t KHttpGetHeaderLine ( KHttp *self, timeout_t *tm, BSTree *hdrs, bool *blank, bool *close_connection )
 {
     /* Starting from the second line of the response */
-    rc_t rc = KHttpGetLine ( self );
+    rc_t rc = KHttpGetLine ( self, tm );
     if ( rc == 0 )
     {
         /* blank = empty line_buffer = separation between headers and body of response */
@@ -1066,10 +1039,18 @@ rc_t KHttpFindHeader ( const BSTree *hdrs, const char *_name, char *buffer, size
     return rc;
 }
 
-rc_t KHttpGetStatusLine ( KHttp *self, String *msg, uint32_t *status, ver_t *version )
+rc_t KHttpGetStatusLine ( KHttp *self, timeout_t *tm, String *msg, uint32_t *status, ver_t *version )
 {
     /* First time reading the response */
-    rc_t rc = KHttpGetLine ( self );
+    rc_t rc = KHttpGetLine ( self, tm );
+
+    if (rc == 0 && self->line_valid == 0) {
+        DBGMSG(DBG_KNS, DBG_FLAG(DBG_KNS_ERR), (
+"@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@2 %s empty HttpStatusLine @@@@@@@@@@@@@@@@"
+            "\n", __FILE__));
+        rc = RC(rcNS, rcNoTarg, rcReading, rcNoObj, rcIncomplete);
+    }
+
     if ( rc == 0 )
     {
         char * sep;
@@ -1105,7 +1086,7 @@ rc_t KHttpGetStatusLine ( KHttp *self, String *msg, uint32_t *status, ver_t *ver
                         rc = RC ( rcNS, rcNoTarg, rcParsing, rcNoObj, rcUnsupported );
                     else
                     {
-                        /* which one? */
+                        /* which version was returned? */
                         * version = string_cmp ( "1.0", 3, buffer, sep - buffer, -1 ) == 0 ? 0x01000000 : 0x01010000;
                         
                         /* move up to status code */
@@ -1172,8 +1153,8 @@ rc_t CC KHttpStreamWhack ( KHttpStream *self )
 
 /* Read from stream - not chunked or within a chunk */
 static
-rc_t CC KHttpStreamRead ( const KHttpStream *cself,
-    void *buffer, size_t bsize, size_t *num_read )
+rc_t CC KHttpStreamTimedRead ( const KHttpStream *cself,
+    void *buffer, size_t bsize, size_t *num_read, struct timeout_t *tm )
 {
     rc_t rc;
     KHttpStream *self = ( KHttpStream * ) cself;
@@ -1198,7 +1179,7 @@ rc_t CC KHttpStreamRead ( const KHttpStream *cself,
     if ( KHttpBlockBufferIsEmpty ( http ) )
     {
         /* ReadAll blocks for 1.1. Server will drop the connection */
-        rc =  KStreamRead ( http -> sock, buffer, num_to_read, num_read );
+        rc =  KStreamTimedRead ( http -> sock, buffer, num_to_read, num_read, tm );
         if ( rc != 0 )
         {
             /* TBD - handle dropped connection - may want to reestablish */
@@ -1248,10 +1229,17 @@ rc_t CC KHttpStreamRead ( const KHttpStream *cself,
     return rc;
 }
 
+static
+rc_t CC KHttpStreamRead ( const KHttpStream *self,
+    void *buffer, size_t bsize, size_t *num_read )
+{
+    return KHttpStreamTimedRead ( self, buffer, bsize, num_read, NULL );
+}
+
 /* Uses a state machine*/
 static
-rc_t CC KHttpStreamReadChunked ( const KHttpStream *cself,
-    void *buffer, size_t bsize, size_t *num_read )
+rc_t CC KHttpStreamTimedReadChunked ( const KHttpStream *cself,
+    void *buffer, size_t bsize, size_t *num_read, timeout_t *tm )
 {
     rc_t rc;
     char * sep;
@@ -1263,7 +1251,7 @@ rc_t CC KHttpStreamReadChunked ( const KHttpStream *cself,
     switch ( self -> state )
     {
     case end_chunk:
-        rc = KHttpGetLine ( http );
+        rc = KHttpGetLine ( http, tm );
         /* this should be the CRLF following chunk */
         if ( rc != 0 || http -> line_valid != 0 )
         {
@@ -1280,7 +1268,7 @@ rc_t CC KHttpStreamReadChunked ( const KHttpStream *cself,
     case new_chunk:
 
         /* Get chunk size */
-        rc = KHttpGetLine ( http );
+        rc = KHttpGetLine ( http, tm );
         if ( rc != 0 )
         {
             self -> state = error_state;
@@ -1346,28 +1334,46 @@ rc_t CC KHttpStreamReadChunked ( const KHttpStream *cself,
     return rc;
 }
 
+static
+rc_t CC KHttpStreamReadChunked ( const KHttpStream *self,
+    void *buffer, size_t bsize, size_t *num_read )
+{
+    return KHttpStreamTimedReadChunked ( self, buffer, bsize, num_read, NULL );
+}
+
 /* cannot write - for now */
+static
+rc_t CC KHttpStreamTimedWrite ( KHttpStream *self,
+    const void *buffer, size_t size, size_t *num_writ, struct timeout_t *tm )
+{
+    return RC ( rcNS, rcNoTarg, rcWriting, rcFunction, rcUnsupported );
+}
+
 static
 rc_t CC KHttpStreamWrite ( KHttpStream *self,
     const void *buffer, size_t size, size_t *num_writ )
 {
-    return RC ( rcNS, rcNoTarg, rcWriting, rcNoObj, rcError );
+    return RC ( rcNS, rcNoTarg, rcWriting, rcFunction, rcUnsupported );
 }
 
 static KStream_vt_v1 vtKHttpStream = 
 {
-    1, 0,
+    1, 1,
     KHttpStreamWhack,
     KHttpStreamRead,
-    KHttpStreamWrite
+    KHttpStreamWrite,
+    KHttpStreamTimedRead,
+    KHttpStreamTimedWrite
 };
 
 static KStream_vt_v1 vtKHttpStreamChunked =
 {
-    1, 0,
+    1, 1,
     KHttpStreamWhack,
     KHttpStreamReadChunked,
-    KHttpStreamWrite
+    KHttpStreamWrite,
+    KHttpStreamTimedReadChunked,
+    KHttpStreamTimedWrite
 };
 
 /* Make a KHttpStream object */
@@ -1476,14 +1482,15 @@ rc_t KHttpSendReceiveMsg ( KHttp *self, KHttpResult **rslt,
     const char *buffer, size_t len, const KDataBuffer *body, const char *url )
 {
     rc_t rc = 0;
-
     size_t sent;
+    timeout_t tm;
 
 
     /* TBD - may want to assert that there is an empty line in "buffer" */
+        DBGMSG(DBG_KNS, DBG_FLAG(DBG_KNS_HTTP), ("TX:%.*s", len, buffer));
 #if _DEBUGGING
-    if ( KNSManagerIsVerbose ( self->mgr ) )
-        KOutMsg( "TX:%.*s", len, buffer );
+    if ( KNSManagerIsVerbose ( self -> mgr ) )
+        KOutMsg ( "TX:%.*s", len, buffer );
 #endif
 
     /* reopen connection if NULL */
@@ -1492,7 +1499,10 @@ rc_t KHttpSendReceiveMsg ( KHttp *self, KHttpResult **rslt,
 
     /* ALWAYS want to use write all when sending */
     if ( rc == 0 )
-        rc = KStreamWriteAll ( self -> sock, buffer, len, & sent ); 
+    {
+        TimeoutInit ( & tm, self -> write_timeout );
+        rc = KStreamTimedWriteAll ( self -> sock, buffer, len, & sent, & tm ); 
+    }
     
     /* check the data was completely sent */
     if ( rc == 0 && sent != len )
@@ -1501,7 +1511,7 @@ rc_t KHttpSendReceiveMsg ( KHttp *self, KHttpResult **rslt,
     {
         /* "body" contains bytes plus trailing NUL */
         size_t to_send = ( size_t ) body -> elem_count - 1;
-        rc = KStreamWriteAll ( self -> sock, body -> base, to_send, & sent );
+        rc = KStreamTimedWriteAll ( self -> sock, body -> base, to_send, & sent, & tm );
         if ( rc == 0 && sent != to_send )
             rc = RC ( rcNS, rcNoTarg, rcWriting, rcTransfer, rcIncomplete );
     }
@@ -1511,9 +1521,12 @@ rc_t KHttpSendReceiveMsg ( KHttp *self, KHttpResult **rslt,
         ver_t version;
         uint32_t status;
 
+        /* reinitialize the timeout for reading */
+        TimeoutInit ( & tm, self -> read_timeout );
+
         /* we have now received a response 
            start reading the header lines */
-        rc = KHttpGetStatusLine ( self, & msg, & status, & version );
+        rc = KHttpGetStatusLine ( self, & tm, & msg, & status, & version );
         if ( rc == 0 )
         {         
             /* create a result object with enough space for msg string + nul */
@@ -1552,7 +1565,7 @@ rc_t KHttpSendReceiveMsg ( KHttp *self, KHttpResult **rslt,
                     /* receive and parse all header lines 
                        blank = end of headers */
                     for ( blank = false; ! blank && rc == 0; )
-                        rc = KHttpGetHeaderLine ( self, & result -> hdrs, & blank, & result -> close_connection );
+                        rc = KHttpGetHeaderLine ( self, & tm, & result -> hdrs, & blank, & result -> close_connection );
 
                     if ( rc == 0 )
                     {
@@ -2033,11 +2046,12 @@ LIB_EXPORT rc_t CC KHttpResultGetInputStream ( KHttpResult *self, KStream ** s )
             if ( KHttpResultSize ( self, & content_length ) )
                 return KHttpStreamMake ( self -> http, s, "KHttpStream", content_length, false );
 
-            /* detect pre-HTTP/1.1 dynamic content */
-            if ( self -> version < 0x01010000 )
+            /* detect connection: close or pre-HTTP/1.1 dynamic content */
+            if ( self -> close_connection || self -> version < 0x01010000 )
                 return KHttpStreamMake ( self -> http, s, "KHttpStream", 0, true );
 
 #if _DEBUGGING
+            KOutMsg ( "HTTP/%.2V %03u %S\n", self -> version, self -> status, & self -> msg );
             BSTreeForEach ( & self -> hdrs, false, PrintHeaders, NULL );
 #endif            
 
@@ -2276,7 +2290,8 @@ LIB_EXPORT rc_t CC KNSManagerMakeRequest ( const KNSManager *self,
                 {
                     KHttp * http;
                     
-                    rc = KNSManagerMakeHttpInt ( self, & http, & buf, conn, vers, & block . host, block . port );
+                    rc = KNSManagerMakeHttpInt ( self, & http, & buf, conn, vers,
+                        self -> http_read_timeout, self -> http_write_timeout, & block . host, block . port );
                     if ( rc == 0 )
                     {
                         rc = KHttpMakeRequestInt ( http, req, & block, & buf );
@@ -2388,7 +2403,7 @@ LIB_EXPORT rc_t CC KHttpRequestByteRange ( KHttpRequest *self, uint64_t pos, siz
         String name, value;
         
         CONST_STRING ( & name, "Range" );
-        rc = string_printf ( range, sizeof range, & num_writ, "bytes=%u-%u"
+        rc = string_printf ( range, sizeof range, & num_writ, "bytes=%lu-%lu"
                              , pos
                              , pos + bytes - 1);
         if ( rc == 0 )
@@ -2847,7 +2862,7 @@ struct KHttpFile
 };
 
 static
-rc_t KHttpFileDestroy ( KHttpFile *self )
+rc_t CC KHttpFileDestroy ( KHttpFile *self )
 {
     KHttpRelease ( self -> http );
     KDataBufferWhack ( & self -> url_buffer );
@@ -2857,36 +2872,38 @@ rc_t KHttpFileDestroy ( KHttpFile *self )
 }
 
 static
-struct KSysFile* KHttpFileGetSysFile ( const KHttpFile *self, uint64_t *offset )
+struct KSysFile* CC KHttpFileGetSysFile ( const KHttpFile *self, uint64_t *offset )
 {
     *offset = 0;
     return NULL;
 }
 
 static
-rc_t KHttpFileRandomAccess ( const KHttpFile *self )
+rc_t CC KHttpFileRandomAccess ( const KHttpFile *self )
 {
+    /* TBD - not all HTTP servers will support this
+       detect if the server does not, and alter the vTable */
     return 0;
 }
 
 /* KHttpFile must have a file size to be created
    impossible for this funciton to fail */
 static
-rc_t KHttpFileSize ( const KHttpFile *self, uint64_t *size )
+rc_t CC KHttpFileSize ( const KHttpFile *self, uint64_t *size )
 {
     *size = self -> file_size;
     return 0;
 }
 
 static
-rc_t KHttpFileSetSize ( KHttpFile *self, uint64_t size )
+rc_t CC KHttpFileSetSize ( KHttpFile *self, uint64_t size )
 {
     return RC ( rcNS, rcFile, rcUpdating, rcFile, rcReadonly );
 }
 
 static
-rc_t KHttpFileRead ( const KHttpFile *cself, uint64_t pos,
-     void *buffer, size_t bsize, size_t *num_read )
+rc_t CC KHttpFileTimedRead ( const KHttpFile *cself, uint64_t pos,
+    void *buffer, size_t bsize, size_t *num_read, struct timeout_t *tm )
 {
     rc_t rc;
     KHttpFile *self = ( KHttpFile * ) cself;
@@ -2898,17 +2915,26 @@ rc_t KHttpFileRead ( const KHttpFile *cself, uint64_t pos,
         *num_read = 0;
         return 0;
     }
+#if 0
+    /* position is within http header buffer */
+    else if ( KHttpBlockBufferContainsPos ( http, pos ) )
+    {
+
+    }
+#endif
     /* starting position was within file but the range fell beyond EOF */
     else 
     {
         KHttpRequest *req;
 
+        /* limit request to file size */
         if ( pos + bsize > self -> file_size )
             bsize = self -> file_size - pos;
         
         rc = KHttpMakeRequest ( http, &req, self -> url_buffer . base );
         if ( rc == 0 )
         {
+            /* request min ( bsize, file_size ) bytes */
             rc = KHttpRequestByteRange ( req, pos, bsize );
             if ( rc == 0 )
             {
@@ -2930,6 +2956,7 @@ rc_t KHttpFileRead ( const KHttpFile *cself, uint64_t pos,
                             uint64_t start_pos;
                             size_t result_size;
 
+                            /* extract actual amount being returned by server */
                             rc = KHttpResultRange ( rslt, &start_pos, &result_size );
                             if ( rc == 0 && 
                                  start_pos == pos &&
@@ -2940,10 +2967,15 @@ rc_t KHttpFileRead ( const KHttpFile *cself, uint64_t pos,
                                 rc = KHttpResultGetInputStream ( rslt, &response );
                                 if ( rc == 0 )
                                 {
-                                    rc = KStreamReadAll ( response, buffer, bsize, num_read );
-                                    if ( rc != 0 || num_read == 0 )
-                                        return rc;
-                                    
+                                    rc = KStreamTimedReadExactly ( response, buffer, result_size, tm );
+                                    if ( rc != 0 )
+                                    {
+                                        KHttpClose ( http );
+                                        return ResetRCContext ( rc, rcNS, rcFile, rcReading );
+                                    }
+
+                                    * num_read = result_size;
+
                                     KStreamRelease ( response );
                                 }
                             }
@@ -2965,15 +2997,41 @@ rc_t KHttpFileRead ( const KHttpFile *cself, uint64_t pos,
 }
 
 static
-rc_t KHttpFileWrite ( KHttpFile *self, uint64_t pos, 
-                      const void *buffer, size_t size, size_t *num_writ )
+rc_t CC KHttpFileRead ( const KHttpFile *self, uint64_t pos,
+     void *buffer, size_t bsize, size_t *num_read )
+{
+    return KHttpFileTimedRead ( self, pos, buffer, bsize, num_read, NULL );
+}
+
+static
+rc_t CC KHttpFileWrite ( KHttpFile *self, uint64_t pos, 
+    const void *buffer, size_t size, size_t *num_writ )
 {
     return RC ( rcNS, rcFile, rcUpdating, rcInterface, rcUnsupported );
 }
 
+static
+rc_t CC KHttpFileTimedWrite ( KHttpFile *self, uint64_t pos, 
+    const void *buffer, size_t size, size_t *num_writ, struct timeout_t *tm )
+{
+    return RC ( rcNS, rcFile, rcUpdating, rcInterface, rcUnsupported );
+}
+
+static
+uint32_t CC KHttpFileGetType ( const KHttpFile *self )
+{
+    assert ( self != NULL );
+
+    /* the HTTP file behaves like a read-only file
+       returning kfdSocket would be imply absence of
+       random access: the HTTP protocol adds that. */
+
+    return kfdFile;
+}
+
 static KFile_vt_v1 vtKHttpFile = 
 {
-    1, 0,
+    1, 2,
 
     KHttpFileDestroy,
     KHttpFileGetSysFile,
@@ -2981,10 +3039,14 @@ static KFile_vt_v1 vtKHttpFile =
     KHttpFileSize,
     KHttpFileSetSize,
     KHttpFileRead,
-    KHttpFileWrite
+    KHttpFileWrite,
+    KHttpFileGetType,
+    KHttpFileTimedRead,
+    KHttpFileTimedWrite
 };
 
-LIB_EXPORT rc_t CC KNSManagerVMakeHttpFile ( const KNSManager *self,
+/* LIB_EXPORT */
+rc_t SecretKNSManagerVMakeHttpFile ( const KNSManager *self,
     const KFile **file, KStream *conn, ver_t vers, const char *url, va_list args )
 {
     rc_t rc;
@@ -3022,7 +3084,8 @@ LIB_EXPORT rc_t CC KNSManagerVMakeHttpFile ( const KNSManager *self,
                         {
                             KHttp *http;
                           
-                            rc = KNSManagerMakeHttpInt ( self, &http, buf, conn, vers, &block . host, block . port );
+                            rc = KNSManagerMakeHttpInt ( self, & http, buf, conn, vers,
+                                self -> http_read_timeout, self -> http_write_timeout, &block . host, block . port );
                             if ( rc == 0 )
                             {
                                 KHttpRequest *req;
@@ -3072,16 +3135,24 @@ LIB_EXPORT rc_t CC KNSManagerVMakeHttpFile ( const KNSManager *self,
     return rc;
 }
 
-LIB_EXPORT rc_t CC KNSManagerMakeHttpFile ( const KNSManager *self,
-    const KFile **file, KStream *conn, ver_t vers, const char *url, ... )
+LIB_EXPORT rc_t CC KNSManagerMakeHttpFile(const KNSManager *self,
+    const KFile **file, struct KStream *conn, ver_t vers, const char *url, ...)
 {
-    rc_t rc;
-
+    rc_t rc = 0;
     va_list args;
-    va_start ( args, url );
-    rc = KNSManagerVMakeHttpFile ( self, file, conn, vers, url, args );
-    va_end ( args );
-
+    va_start(args, url);
+    rc = KNSManagerVMakeHttpFile(self, file, conn, vers, url, args);
+    va_end(args);
     return rc;
 }
 
+rc_t SecretKNSManagerMakeHttpFile(const KNSManager *self,
+    const KFile **file, struct KStream *conn, ver_t vers, const char *url, ...)
+{
+    rc_t rc = 0;
+    va_list args;
+    va_start(args, url);
+    rc = SecretKNSManagerVMakeHttpFile(self, file, conn, vers, url, args);
+    va_end(args);
+    return rc;
+}

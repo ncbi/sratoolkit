@@ -42,7 +42,7 @@ struct SraReleaseVersion;
 
 
 /*--------------------------------------------------------------------------
- * KNSManager
+ * KNSManager Extension
  */
 
 /* NewReleaseVersion

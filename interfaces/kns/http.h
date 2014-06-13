@@ -52,6 +52,21 @@ struct KNSManager;
 
 
 /*--------------------------------------------------------------------------
+ * KNSManager
+ */
+
+/* SetHTTPTimeouts
+ *  sets default read/write timeouts to supply to HTTP connections
+ *
+ *  "readMillis" [ IN ] and "writeMillis" - when negative, infinite timeout
+ *   when 0, return immediately, positive gives maximum wait time in mS
+ *   for reads and writes respectively.
+ */
+KNS_EXTERN rc_t CC KNSManagerSetHTTPTimeouts ( struct KNSManager *self,
+    int32_t readMillis, int32_t writeMillis );
+
+
+/*--------------------------------------------------------------------------
  * KHttp
  *  hyper text transfer protocol
  */
@@ -63,10 +78,14 @@ typedef struct KHttp KHttp;
  *
  *  "http" [ OUT ] - return parameter for HTTP object
  *
- *  "conn" [ IN, NULL OKAY ] - previously opened stream for communications.
+ *  "opt_conn" [ IN, NULL OKAY ] - previously opened stream for communications.
  *
  *  "vers" [ IN ] - http version
  *   the only legal types are 1.0 ( 0x01000000 ) and 1.1 ( 0x01010000 )
+ *
+ *  "readMillis" [ IN ] and "writeMillis" - when negative, infinite timeout
+ *   when 0, return immediately, positive gives maximum wait time in mS
+ *   for reads and writes respectively.
  *
  *  "host" [ IN ] - parameter to give the host dns name for the connection
  *
@@ -75,6 +94,10 @@ typedef struct KHttp KHttp;
  */
 KNS_EXTERN rc_t CC KNSManagerMakeHttp ( struct KNSManager const *self,
     KHttp **http, struct KStream *conn, ver_t vers,
+    struct String const *host, uint32_t port );
+
+KNS_EXTERN rc_t CC KNSManagerMakeTimedHttp ( struct KNSManager const *self, KHttp **http,
+    struct KStream *opt_conn, ver_t vers, int32_t readMillis, int32_t writeMillis,
     struct String const *host, uint32_t port );
 
 
@@ -87,8 +110,8 @@ KNS_EXTERN rc_t CC KHttpRelease ( const KHttp *self );
 
 
 
-/*--------------------------------------------------------------------------
- * KHttpFile
+/*------------------------------------------------------------------------------
+ * KFile
  *  a KFile over HTTP
  */
 
@@ -100,7 +123,7 @@ KNS_EXTERN rc_t CC KNSManagerVMakeHttpFile ( struct KNSManager const *self,
     struct KFile const **file, struct KStream *conn, ver_t vers, const char *url, va_list args );
 
 
-/*--------------------------------------------------------------------------
+/*------------------------------------------------------------------------------
  * KHttpRequest
  *  hyper text transfer protocol
  */
@@ -196,7 +219,7 @@ KNS_EXTERN rc_t CC KHttpRequestHEAD ( KHttpRequest *self, KHttpResult **rslt );
  */
 KNS_EXTERN rc_t CC KHttpRequestGET ( KHttpRequest *self, KHttpResult **rslt ); 
 
-    /* POST
+/* POST
  *  send POST message
  *  query parameters are sent in URL
  *  post parameters are sent in body

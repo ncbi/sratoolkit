@@ -534,10 +534,10 @@ bool CC KMDataNodeInflate ( PBSTNode *n, void *data )
     b -> vsize = n -> data . size - size - 1;
     BSTreeInit ( & b -> attr );
     BSTreeInit ( & b -> child );
-    KRefcountInit ( & b -> refcount, 0, "KMDataNode", "inflate", b -> name );
-    b -> read_only = 0;
     memcpy ( b -> name, name, size );
     b -> name [ size ] = 0;
+    KRefcountInit ( & b -> refcount, 0, "KMDataNode", "inflate", b -> name );
+    b -> read_only = 0;
 
     pb -> rc = ( bits & 1 ) != 0 ? KMDataNodeInflateAttr ( b, pb -> byteswap ) : 0;
     if ( pb -> rc == 0 )
@@ -709,9 +709,9 @@ rc_t KMDataNodeMake ( KMDataNode *self, KMDataNode **np, char *name )
         n -> vsize = 0;
         BSTreeInit ( & n -> attr );
         BSTreeInit ( & n -> child );
+        strcpy ( n -> name, name );
         KRefcountInit ( & n -> refcount, 0, "KMDataNode", "make", n -> name );
         n -> read_only = 0;
-        strcpy ( n -> name, name );
 
         /* insert */
         rc = BSTreeInsertUnique ( & self -> child,

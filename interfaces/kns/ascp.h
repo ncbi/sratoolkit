@@ -39,52 +39,57 @@
 extern "C" {
 #endif
 
-enum {
+enum
+{
     eAscpStateRunning,
     eAscpStateExitSuccess,
     eAscpStateExitWriteFailure,
     eAscpStateExitFailure
 };
 
-typedef rc_t TQuitting(void);
-typedef bool TProgress(uint64_t id,
-    uint64_t state, uint64_t size, uint64_t percentage);
+typedef rc_t TQuitting ( void );
+typedef bool TProgress ( uint64_t id,
+    uint64_t state, uint64_t size, uint64_t percentage );
 
-typedef struct {
+typedef struct AscpOptions AscpOptions;
+struct AscpOptions
+{
+    uint64_t src_size;
+
+    uint64_t heartbeat;       /* in milliseconds */
+
+    uint64_t id; /* to pass to the callback */
+
     const char *host;
     const char *user;
     const char *target_rate;
        /* -l MAX-RATE Set the target transfer rate in Kbps */
 
-    bool cache_key; /* Add the server's host key to PuTTY's cache */
-
 /* progress logging */
     const char *name;
-    uint64_t src_size;
 
-    bool status; /* whether to call STSMSG */
-
-    uint64_t heartbeat;       /* in milliseconds */
-
-    uint64_t id; /* to pass to the callback */
     TProgress *callback;
 
     TQuitting *quitting;
 
+    bool status; /* whether to call STSMSG */
+
+    bool cache_key; /* Add the server's host key to PuTTY's cache */
+
     bool disabled; /* output parameter for aspera_options */
-} AscpOptions;
+};
 
 /**  status - whether to print STSMSG(1-2) - information messages
     ascp_bin and private_file should be freed by the caller */
-KNS_EXTERN rc_t CC ascp_locate(const char **ascp_bin, const char **private_file,
-    bool use_config, bool status);
+KNS_EXTERN rc_t CC ascp_locate ( const char **ascp_bin, const char **private_file,
+    bool use_config, bool status );
 
 /** Get a file by running aspera ascp binary */
-KNS_EXTERN rc_t CC aspera_get(const char *ascp_bin, const char *private_file,
-    const char *src, const char *dest, AscpOptions *opt);
+KNS_EXTERN rc_t CC aspera_get ( const char *ascp_bin, const char *private_file,
+    const char *src, const char *dest, AscpOptions *opt );
 
 /** Fill AscpOptions members initialized by ascp library */
-KNS_EXTERN rc_t CC aspera_options(AscpOptions *opt);
+KNS_EXTERN rc_t CC aspera_options ( AscpOptions *opt );
 
 
 #ifdef __cplusplus

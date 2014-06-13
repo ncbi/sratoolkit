@@ -81,6 +81,13 @@ struct KStream_vt_v1
     rc_t ( CC * write ) ( KSTREAM_IMPL *self,
         const void *buffer, size_t size, size_t *num_writ );
     /* end minor version == 0 */
+
+    /* start minor version == 1 */
+    rc_t ( CC * timed_read ) ( const KSTREAM_IMPL *self,
+        void *buffer, size_t bsize, size_t *num_read, struct timeout_t *tm );
+    rc_t ( CC * timed_write ) ( KSTREAM_IMPL *self,
+        const void *buffer, size_t size, size_t *num_writ, struct timeout_t *tm );
+    /* end minor version == 1 */
 };
 
 union KStream_vt

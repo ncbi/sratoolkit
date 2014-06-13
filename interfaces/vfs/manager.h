@@ -51,6 +51,7 @@ struct KFile;
 struct VPath;
 struct VResolver;
 struct KDirectory;
+struct KNSManager;
 struct VPath;
 
 /* temporary */
@@ -151,6 +152,8 @@ VFS_EXTERN rc_t CC VFSManagerMake ( VFSManager ** pmanager );
 VFS_EXTERN rc_t CC VFSManagerGetCWD (const VFSManager * self, struct KDirectory ** cwd);
 
 VFS_EXTERN rc_t CC VFSManagerGetResolver ( const VFSManager * self, struct VResolver ** resolver );
+
+VFS_EXTERN rc_t CC VFSManagerGetKNSMgr ( const VFSManager * self, struct KNSManager ** kns );
 
 
 VFS_EXTERN rc_t CC VFSManagerGetKryptoPassword (const VFSManager * self, char * new_password, size_t max_size, size_t * size);

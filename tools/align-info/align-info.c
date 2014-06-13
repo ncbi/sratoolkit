@@ -68,6 +68,8 @@ typedef struct Params {
     bool paramBamHeader;
     bool paramQuality;
     bool paramRef;
+
+    bool paramHeaders;
 } Params;
 
 #define ALIAS_ALL    "a"
@@ -78,7 +80,7 @@ static const char* USAGE_ALL[] = { "print all information", NULL };
 #define OPTION_BAM   "bam"
 static const char* USAGE_BAM[] = { "print bam header (if present)", NULL };
 
-#define ALIAS_QUA    "q"
+#define ALIAS_QUA    "Q"
 #define OPTION_QUA   "qual"
 static const char* USAGE_QUA[]
                        = { "print quality statistics (if present)", NULL };
@@ -87,12 +89,17 @@ static const char* USAGE_QUA[]
 #define OPTION_REF   "ref"
 static const char* USAGE_REF[] = { "print refseq information [default]", NULL };
 
+#define ALIAS_HEA   "H"
+#define OPTION_HEA  "headers"
+static const char* USAGE_HEA[] = { "print headers for output blocks", NULL };
+
 OptDef Options[] =
 {
       { OPTION_ALL, ALIAS_ALL, NULL, USAGE_ALL, 1, false, false }
     , { OPTION_BAM, ALIAS_BAM, NULL, USAGE_BAM, 1, false, false }
     , { OPTION_QUA, ALIAS_QUA, NULL, USAGE_QUA, 1, false, false }
     , { OPTION_REF, ALIAS_REF, NULL, USAGE_REF, 1, false, false }
+    , { OPTION_HEA, ALIAS_HEA, NULL, USAGE_HEA, 1, false, false }
 };
 
 rc_t CC UsageSummary (const char * progname) {
@@ -130,6 +137,9 @@ rc_t CC Usage(const Args* args) {
     HelpOptionLine (ALIAS_REF, OPTION_REF, NULL, USAGE_REF);
     HelpOptionLine (ALIAS_BAM, OPTION_BAM, NULL, USAGE_BAM);
     HelpOptionLine (ALIAS_QUA, OPTION_QUA, NULL, USAGE_QUA);
+    HelpOptionLine (ALIAS_HEA, OPTION_HEA, NULL, USAGE_HEA);
+
+    KOutMsg ("\n");
 
     HelpOptionsStandard ();
 
@@ -275,9 +285,19 @@ static rc_t qual_stats(const Params* prm, const VDatabase* db) {
             }
             if (rc == 0 && count > 0)
             {   ksort(quals, count, sizeof *quals, sort_callback, NULL); }
+
             if (rc == 0) {
+                if (prm->paramHeaders) {
+                    OUTMSG(("Quality statistics - rows per value\n"));
+                    OUTMSG(("Quality values:"));
+                    for (i = 0; i <= 40; ++i) {
+                        OUTMSG(("\t%d", i));
+                    }
+                    OUTMSG(("\n"));
+                }
                 OUTMSG(("%s", prm->dbPath));
             }
+
             for (i = 0, nbr = 0; i < count && rc == 0; ++i, ++nbr) {
                 uint64_t u = 0;
                 char name[64];
@@ -364,6 +384,9 @@ static rc_t align_info(const Params* prm) {
                 const VDBDependencies* dep = NULL;
                 uint32_t count = 0;
                 int i = 0;
+                if (prm->paramHeaders) {
+                    OUTMSG(("Alignments:\n"));
+                }
                 rc = VDatabaseListDependencies(db, &dep, false);
                 DISP_RC2(rc, prm->dbPath,
                     "while calling VDatabaseListDependencies");
@@ -427,6 +450,9 @@ static rc_t align_info(const Params* prm) {
                     OUTMSG(("\n"));
                 }
                 DESTRUCT(VDBDependencies, dep);
+                if (prm->paramHeaders) {
+                    OUTMSG(("\n"));
+                }
             }
 
             if (prm->paramBamHeader) {
@@ -524,6 +550,15 @@ rc_t CC KMain(int argc, char* argv[]) {
 
         if (!prm.paramBamHeader && !prm.paramQuality && !prm.paramRef)
         {   prm.paramRef = true; }
+
+        rc = ArgsOptionCount (args, OPTION_HEA, &pcount);
+        if (rc) {
+            LOGERR(klogErr, rc, "Failure to get '" OPTION_HEA "' argument");
+            break;
+        }
+        if (pcount) {
+            prm.paramHeaders = true;
+        }
     } while (false);
 
     if (rc == 0)

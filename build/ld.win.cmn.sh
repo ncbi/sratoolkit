@@ -94,6 +94,14 @@ HAVE_XML=0
 CHECKSUM=$(expr $SCMFLAGS % 2)
 STATICSYSLIBS=$(expr $SCMFLAGS / 2)
 
+# set target architecture
+if [ "$ARCH" == "i386" ]
+then
+    LDFLAGS="$LDFLAGS /MACHINE:x86"
+else
+    LDFLAGS="$LDFLAGS /MACHINE:x64"
+fi
+
 if [ "$VERBOSE" != "" ] 
 then
 echo "LD            =$LD"

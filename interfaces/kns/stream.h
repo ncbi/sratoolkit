@@ -41,6 +41,12 @@ extern "C" {
 
 
 /*--------------------------------------------------------------------------
+ * forwards
+ */
+struct timeout_t;
+
+
+/*--------------------------------------------------------------------------
  * KStream
  *  the stream is defined to have no concept of size,
  *  and to not support any form of random access
@@ -57,6 +63,7 @@ KNS_EXTERN rc_t CC KStreamRelease ( const KStream *self );
 
 
 /* Read
+ * TimedRead
  *  read data from stream
  *
  *  "buffer" [ OUT ] and "bsize" [ IN ] - return buffer for read
@@ -64,11 +71,21 @@ KNS_EXTERN rc_t CC KStreamRelease ( const KStream *self );
  *  "num_read" [ OUT ] - return parameter giving number of bytes
  *  actually read. when returned value is zero and return code is
  *  also zero, interpreted as end of stream.
+ *
+ *  "tm" [ IN/OUT, NULL OKAY ] - an optional indicator of
+ *  blocking behavior. not all implementations will support
+ *  timed reads. a NULL timeout will block indefinitely,
+ *  a value of "tm->mS == 0" will have non-blocking behavior
+ *  if supported by implementation, and "tm->mS > 0" will indicate
+ *  a maximum wait timeout.
  */
 KNS_EXTERN rc_t CC KStreamRead ( const KStream *self,
     void *buffer, size_t bsize, size_t *num_read );
+KNS_EXTERN rc_t CC KStreamTimedRead ( const KStream *self,
+    void *buffer, size_t bsize, size_t *num_read, struct timeout_t *tm );
 
 /* ReadAll
+ * TimedReadAll
  *  read from stream until "bsize" bytes have been retrieved
  *  or until end-of-input
  *
@@ -77,23 +94,62 @@ KNS_EXTERN rc_t CC KStreamRead ( const KStream *self,
  *  "num_read" [ OUT ] - return parameter giving number of bytes
  *  actually read. when returned value is zero and return code is
  *  also zero, interpreted as end of stream.
+ *
+ *  "tm" [ IN/OUT, NULL OKAY ] - an optional indicator of
+ *  blocking behavior. not all implementations will support
+ *  timed reads. a NULL timeout will block indefinitely,
+ *  a value of "tm->mS == 0" will have non-blocking behavior
+ *  if supported by implementation, and "tm->mS > 0" will indicate
+ *  a maximum wait timeout.
  */
 KNS_EXTERN rc_t CC KStreamReadAll ( const KStream *self,
     void *buffer, size_t bsize, size_t *num_read );
+KNS_EXTERN rc_t CC KStreamTimedReadAll ( const KStream *self,
+    void *buffer, size_t bsize, size_t *num_read, struct timeout_t *tm );
+
+/* ReadExactly
+ * TimedReadExactly
+ *  read from stream until "bytes" have been retrieved
+ *  or return incomplete transfer
+ *
+ *  "buffer" [ OUT ] and "bytes" [ IN ] - return buffer for read
+ *
+ *  "tm" [ IN/OUT, NULL OKAY ] - an optional indicator of
+ *  blocking behavior. not all implementations will support
+ *  timed reads. a NULL timeout will block indefinitely,
+ *  a value of "tm->mS == 0" will have non-blocking behavior
+ *  if supported by implementation, and "tm->mS > 0" will indicate
+ *  a maximum wait timeout.
+ */
+KNS_EXTERN rc_t CC KStreamReadExactly ( const KStream *self,
+    void *buffer, size_t bytes );
+KNS_EXTERN rc_t CC KStreamTimedReadExactly ( const KStream *self,
+    void *buffer, size_t bytes, struct timeout_t *tm );
 
 
 /* Write
+ * TimedWrite
  *  send data to stream
  *
  *  "buffer" [ IN ] and "size" [ IN ] - data to be written
  *
  *  "num_writ" [ OUT, NULL OKAY ] - optional return parameter
  *  giving number of bytes actually written
+ *
+ *  "tm" [ IN/OUT, NULL OKAY ] - an optional indicator of
+ *  blocking behavior. not all implementations will support
+ *  timed writes. a NULL timeout will block indefinitely,
+ *  a value of "tm->mS == 0" will have non-blocking behavior
+ *  if supported by implementation, and "tm->mS > 0" will indicate
+ *  a maximum wait timeout.
  */
 KNS_EXTERN rc_t CC KStreamWrite ( KStream *self,
     const void *buffer, size_t size, size_t *num_writ );
+KNS_EXTERN rc_t CC KStreamTimedWrite ( KStream *self,
+    const void *buffer, size_t size, size_t *num_writ, struct timeout_t *tm );
 
 /* WriteAll
+ * TimedWriteAll
  *  write to stream until "size" bytes have been transferred
  *  or until no further progress can be made
  *
@@ -101,9 +157,37 @@ KNS_EXTERN rc_t CC KStreamWrite ( KStream *self,
  *
  *  "num_writ" [ OUT, NULL OKAY ] - optional return parameter
  *  giving number of bytes actually written
+ *
+ *  "tm" [ IN/OUT, NULL OKAY ] - an optional indicator of
+ *  blocking behavior. not all implementations will support
+ *  timed writes. a NULL timeout will block indefinitely,
+ *  a value of "tm->mS == 0" will have non-blocking behavior
+ *  if supported by implementation, and "tm->mS > 0" will indicate
+ *  a maximum wait timeout.
  */
 KNS_EXTERN rc_t CC KStreamWriteAll ( KStream *self,
     const void *buffer, size_t size, size_t *num_writ );
+KNS_EXTERN rc_t CC KStreamTimedWriteAll ( KStream *self,
+    const void *buffer, size_t size, size_t *num_writ, struct timeout_t *tm );
+
+/* WriteExactly
+ * TimedWriteExactly
+ *  write to stream until "bytes" have been transferred
+ *  or return incomplete transfer error
+ *
+ *  "buffer" [ IN ] and "bytes" [ IN ] - data to be written
+ *
+ *  "tm" [ IN/OUT, NULL OKAY ] - an optional indicator of
+ *  blocking behavior. not all implementations will support
+ *  timed writes. a NULL timeout will block indefinitely,
+ *  a value of "tm->mS == 0" will have non-blocking behavior
+ *  if supported by implementation, and "tm->mS > 0" will indicate
+ *  a maximum wait timeout.
+ */
+KNS_EXTERN rc_t CC KStreamWriteExactly ( KStream *self,
+    const void *buffer, size_t bytes );
+KNS_EXTERN rc_t CC KStreamTimedWriteExactly ( KStream *self,
+    const void *buffer, size_t bytes, struct timeout_t *tm );
 
 
 /* MakeStdIn

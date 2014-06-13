@@ -25,7 +25,7 @@
 # RFLAGS have to go before any other flags since they can affect their handling
 # compilers
 CC = @ $(TOP)/build/win-cc.sh $(BUILD_OS) "cl /c /D_WIN32_WINNT=0x0502" \
-	 $(CHECKSUM) --objx $(OBJX) $(RFLAGS) $(CFLAGS) -MD 
+	 $(CHECKSUM) --objx $(OBJX) $(RFLAGS) $(CFLAGS) -MD -D_CRT_SECURE_NO_WARNINGS
 	 
 CP = @ $(TOP)/build/win-cc.sh $(BUILD_OS) "cl /c" \
 	 $(CHECKSUM) --objx $(OBJX) $(RFLAGS) $(CPFLAGS) -MD -EHsc

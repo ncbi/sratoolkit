@@ -46,7 +46,8 @@
      fqCOLORSEQ = 263,
      fqTOKEN = 264,
      fqASCQUAL = 265,
-     fqUNRECOGNIZED = 266
+     fqCOORDS = 266,
+     fqUNRECOGNIZED = 267
    };
 #endif
 

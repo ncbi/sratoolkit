@@ -28,6 +28,7 @@
 #include <compiler.h>
 #include <os-native.h>
 #include <sysalloc.h>
+#include <assert.h>
 #include "search-priv.h"
 #include "debug.h"
 
@@ -136,6 +137,7 @@ rc_t AgrepMyersMake( MyersSearch **self, AgrepFlags mode, const char *pattern )
    This finds the first match forward in the string less than or equal
    the threshold.  If nonzero, this will be a prefix of any exact match.
 */
+
 uint32_t MyersFindFirst( MyersSearch *self, int32_t threshold, 
                    const char* text, size_t n,
                    AgrepMatch *match )
@@ -333,15 +335,26 @@ LIB_EXPORT int32_t CC MyersFindBest ( MyersSearch *self, const char* text,
    This finds the first match forward in the string less than or equal
    the threshold.  If nonzero, this will be a prefix of any exact match.
 */
-void MyersFindAll ( const AgrepCallArgs *args )
+
+/*
+    MyersFindAllOld is the old implementation of MyersFindAll.
+    It uses inline copy-pasted Myers core algorithm steps therefore
+    it might be faster than the new MyersFindAll (if compiler doesn't optimize it enough)
+    Also for some reason it uses unoptimized dp algorithm to find starting point of the match.
+
+    Leaving it in CVS for a while just in case (with fixed bug in "const void *cbinfo = args->cbinfo;"
+    and some minor improvements like marking data being used for read only as explicitly const)
+*/
+#ifdef COMMENT_OUT_MYERS_FIND_ALL_OLD_AND_HOPE_NOBODY_IS_USING_THIS_NAME_FOR_DEFINE
+void MyersFindAllOld ( const AgrepCallArgs *args )
 {
-    AgrepFlags mode = args->self->mode;
-    MyersSearch *self = args->self->myers;
-    int32_t threshold = args->threshold;
+    AgrepFlags const mode = args->self->mode;
+    MyersSearch const* self = args->self->myers;
+    int32_t const threshold = args->threshold;
     const unsigned char *utext = (const unsigned char *)args->buf;
-    int32_t n = args->buflen;
+    int32_t const n = args->buflen;
     AgrepMatchCallback cb = dp_end_callback;
-    const void *cbinfo = args;
+    const void *cbinfo = args->cbinfo;
 
     AgrepMatch match;
     AgrepContinueFlag cont;
@@ -349,7 +362,7 @@ void MyersFindAll ( const AgrepCallArgs *args )
     UBITTYPE Pv;
     UBITTYPE Mv;
 
-    int32_t m = self->m;
+    int32_t const m = self->m;
     int32_t Score;
     int32_t BestScore;
 
@@ -365,7 +378,8 @@ void MyersFindAll ( const AgrepCallArgs *args )
     Pv = (UBITTYPE)-1;
     Mv = (UBITTYPE)0;
     
-    for(j = 0; j < n; j++) {
+    for (j = 0; j < n; j++)
+    {
         Eq = self->PEq[utext[j]];
         Xv = Eq | Mv;
         Xh = (((Eq & Pv) + Pv) ^ Pv) | Eq;
@@ -450,3 +464,123 @@ void MyersFindAll ( const AgrepCallArgs *args )
         (*cb)(cbinfo, &match, &cont);
     }
 }
+#endif
+
+
+/* The core of the Myers algorithm - calculation of j-th score
+    Now using for new MyersFindAll only but can be used by all other Myers-find
+    functons if there is no issues with performance because of function call with
+    so many parameters and locals
+*/
+static void MyersCoreStep(unsigned char const* utext, int32_t const j, int32_t const m
+    ,UBITTYPE const* PEq, UBITTYPE* Mv, UBITTYPE* Pv, int32_t *Score
+)
+{
+    UBITTYPE Eq, Xv, Xh, Ph, Mh;
+
+    Eq = PEq[utext[j]];
+    Xv = Eq | *Mv;
+    Xh = (((Eq & *Pv) + *Pv) ^ *Pv) | Eq;
+    Ph = *Mv | ~ (Xh | *Pv);
+    Mh = *Pv & Xh;
+    if (Ph & ((UBITTYPE)1 << (m - 1)))
+        ++(*Score);
+    else if (Mh & ((UBITTYPE)1 << (m - 1)))
+        --(*Score);
+
+    Ph <<= 1;
+    Mh <<= 1;
+    *Pv = Mh | ~(Xv | Ph);
+    *Mv = Ph & Xv;
+}
+
+/* Return start position of the match given its end position and score */
+static int32_t MyersGetMatchStartingPosition(AgrepCallArgs const* args
+    ,int32_t const indexEnd, int32_t const TargetScore
+)
+{
+    MyersSearch const* self = args->self->myers;
+    unsigned char const* utext = (unsigned char const*)args->buf;
+    int32_t const m = self->m;
+
+    UBITTYPE Pv;
+    UBITTYPE Mv;
+
+    int32_t Score, ScorePrev;
+
+    int32_t j;
+
+    Score = m;
+    ScorePrev = m;
+    Pv = (UBITTYPE)-1;
+    Mv = (UBITTYPE)0;
+
+    /*
+        Here we're guaranteed that score will be decreasing down to:
+        1) TargetScore in the case when indexEnd points to the
+            string with deletions/modifications from the pattern
+        2) 0 in the case when indexEnd points to the string with
+            insertions to the end of the pattern
+        So we need to search backwards until Score is non-increasing
+    */
+    for (j = indexEnd; j >= 0; --j, ScorePrev = Score)
+    {
+        MyersCoreStep(utext, j, m, self->PEq_R, &Mv, &Pv, &Score);
+        SEARCH_DBG("Rvs: %3d. '%c' score %d", j, utext[j], Score);
+        if (Score > ScorePrev && ScorePrev <= TargetScore)
+        {
+            ++j;
+            break;
+        }
+        if (j == 0 && Score <= TargetScore)
+            break;
+    }
+    assert(j >= 0);
+    return j;
+}
+
+void MyersFindAll(AgrepCallArgs const *args )
+{
+    MyersSearch const* self = args->self->myers;
+    int32_t const threshold = args->threshold;
+    const unsigned char *utext = (const unsigned char *)args->buf;
+    int32_t const n = args->buflen;
+    const void *cbinfo = args->cbinfo;
+
+    AgrepMatch match;
+    AgrepContinueFlag cont;
+
+    UBITTYPE Pv;
+    UBITTYPE Mv;
+
+    int32_t const m = self->m;
+    int32_t Score;
+    int32_t BestScore;
+
+    int32_t j, indexStart;
+
+    BestScore = m;
+    Score = m;
+    Pv = (UBITTYPE)-1;
+    Mv = (UBITTYPE)0;
+    
+    for (j = 0; j < n; ++j)
+    {
+        MyersCoreStep(utext, j, m, self->PEq, &Mv, &Pv, &Score);
+        if (Score <= threshold)
+        {
+            indexStart = MyersGetMatchStartingPosition(args, j, Score);
+
+            /* found starting point indexStart for current match ending at j with Score */
+            match.score = Score;
+            match.position = indexStart;
+            match.length = j - indexStart + 1;
+            cont = AGREP_CONTINUE;
+            (*args->cb)(cbinfo, &match, &cont);
+            if (cont != AGREP_CONTINUE)
+                return;
+        }
+    }
+}
+
+

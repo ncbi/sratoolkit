@@ -4,7 +4,7 @@
 # N.B. Run "perl configuration-assistant.perl" if you see a message like:
 # configuration-assistant.perl: /usr/bin/perl: bad interpreter: No such file or directory
 ################################################################################
-my $VERSION = '2.3.4-2';
+my $VERSION = '2.3.5-2';
 ################################################################################
 
 use strict;

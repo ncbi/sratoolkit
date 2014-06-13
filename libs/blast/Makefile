@@ -22,60 +22,42 @@
 #
 # ===========================================================================
 
+default: all
 
-default: std
+TOP ?= $(abspath ../..)
 
-TOP ?= $(abspath ../../..)
-MODULE = libs/ext/curl
-
-include $(TOP)/build/Makefile.env
+MODULE = libs/blast
 
 INT_LIBS = \
-
-EXT_LIBS = \
-	libcurl
 
 ALL_LIBS = \
 	$(INT_LIBS) \
 	$(EXT_LIBS)
 
+include $(TOP)/build/Makefile.env
+
+ifeq (linux,$(OS))
+ifeq (64,$(BITS))
+	INT_LIBS += libvdb-blast
+endif    
+endif    
+
 #-------------------------------------------------------------------------------
 # outer targets
 #
-ifneq (rwin,$(BUILD_OS))
+all std: makedirs
+	@ $(MAKE_CMD) $(TARGDIR)/std
 
-all std clean $(ALL_LIBS):
-	@true
-
-.PHONY: all std clean $(ALL_LIBS)
-
-else
-
-std: makedirs 
-	@ $(MAKE_CMD) $(TARGDIR)/$@
-
-all: makedirs 
-	@ $(MAKE_CMD) $(TARGDIR)/$@
-
-$(INT_LIBS): makedirs 
+$(INT_LIBS): makedirs
 	@ $(MAKE_CMD) $(ILIBDIR)/$@
-
-$(EXT_LIBS): makedirs 
-	@ $(MAKE_CMD) $(LIBDIR)/$@
 
 .PHONY: all std $(ALL_LIBS)
 
 #-------------------------------------------------------------------------------
-# all
-#
-$(TARGDIR)/all: $(BINDIR)/libcurl.$(DLLX)
-
-.PHONY: $(TARGDIR)/all
-
-#-------------------------------------------------------------------------------
 # std
 #
-$(TARGDIR)/std: $(BINDIR)/libcurl.$(DLLX)
+$(TARGDIR)/std: \
+	$(addprefix $(ILIBDIR)/,$(INT_LIBS))
 
 .PHONY: $(TARGDIR)/std
 
@@ -83,21 +65,21 @@ $(TARGDIR)/std: $(BINDIR)/libcurl.$(DLLX)
 # clean
 #
 clean: stdclean
-	rm -f $(BINDIR)/libcurl.$(DLLX)
-    
+
 .PHONY: clean
 
 #-------------------------------------------------------------------------------
-# libcurl
+# blast
 #
-LIBCURL_VERS := \
-	7.29.0
+$(ILIBDIR)/libvdb-blast: $(addprefix $(ILIBDIR)/libvdb-blast.,$(ILIBEXT))
 
-ifeq (dbg,$(BUILD))
-    DBG=-dbg
-endif
-$(BINDIR)/libcurl.$(DLLX): /panfs/pan1/sra-test/TOOLKIT/libcurl/$(LIBCURL_VERS)/win$(BITS)$(DBG)/libcurl.$(DLLX)
-	cp $^ $@
+BLAST_SRC = \
+	blast \
 
-endif
-    
+BLAST_OBJ = \
+	$(addsuffix .$(LOBX),$(BLAST_SRC))
+
+BLAST_LIB = \
+
+$(ILIBDIR)/libvdb-blast.$(LIBX): $(BLAST_OBJ)
+	$(LD) --slib -o $@ $^ $(BLAST_LIB)

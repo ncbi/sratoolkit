@@ -37,80 +37,11 @@ extern "C" {
 #define __inline__ __inline
 #endif
 
-typedef __int8 int8_t;
-typedef __int16 int16_t;
-typedef __int32 int32_t;
-typedef __int64 int64_t;
-
-typedef unsigned __int8 uint8_t;
-typedef unsigned __int16 uint16_t;
-typedef unsigned __int32 uint32_t;
-typedef unsigned __int64 uint64_t;
-
-#ifndef INT8_MAX
-#define INT8_MAX _I8_MAX
-#endif
-
-#ifndef INT8_MIN
-#define INT8_MIN _I8_MIN
-#endif
-
-#ifndef UINT8_MAX
-#define UINT8_MAX _UI8_MAX
-#endif
-
-#ifndef INT16_MAX
-#define INT16_MAX _I16_MAX
-#endif
-
-#ifndef INT16_MIN
-#define INT16_MIN _I16_MIN
-#endif
-
-#ifndef UINT16_MAX
-#define UINT16_MAX _UI16_MAX
-#endif
-
-#ifndef INT32_MAX
-#define INT32_MAX _I32_MAX
-#endif
-
-#ifndef INT32_MIN
-#define INT32_MIN _I32_MIN
-#endif
-
-#ifndef UINT32_MAX
-#define UINT32_MAX _UI32_MAX
-#endif
-
-#ifndef INT64_MAX
-#define INT64_MAX _I64_MAX
-#endif
-
-#ifndef INT64_MIN
-#define INT64_MIN _I64_MIN
-#endif
-
-#ifndef UINT64_MAX
-#define UINT64_MAX _UI64_MAX
-#endif
-
-#ifndef SIZE_T_MAX
-#define SIZE_T_MAX ((size_t)(-(1ULL)))
-#endif
-
-#if !defined(__cplusplus)  ||  defined(__STDC_CONSTANT_MACROS)
-#ifndef UINT64_C
-#define UINT64_C(x) (x ## ULL)
-#endif
-#ifndef INT64_C
-#define INT64_C(x) (x ## LL)
-#endif
-#endif
-
 #ifndef __func__
 #define __func__ __FUNCTION__
 #endif
+
+#include <../include/stdint.h>
 
 #ifdef __cplusplus
 }

@@ -151,7 +151,7 @@ void trie_enter(struct trie *self, int32_t whichpattern, char *s, int32_t minlen
             newone = (struct trie *)malloc(sizeof(struct trie));
             newone->s = NULL;
 #ifdef DEBUG
-            newone->debugs = substring(s, i+1);
+            newone->debugs = create_substring(s, i+1);
 #endif
             newone->depth = i+1;
             newone->hasmatch = 1;
@@ -189,7 +189,7 @@ void trie_enter_suffixes(struct trie *self, char *s, int32_t minlen)
                 newone = (struct trie *)malloc(sizeof(struct trie));
                 newone->s = NULL;
 #ifdef DEBUG
-                newone->debugs = substring(s+suf, i+1);
+                newone->debugs = create_substring(s+suf, i+1);
 #endif
                 newone->depth = i+1;
                 newone->hasmatch = 0;

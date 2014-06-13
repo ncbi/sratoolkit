@@ -102,10 +102,13 @@ extern "C" {
  */
 
 #define MODULE_NAMES() \
-    _module(APP)  _module(BLAST) _module(KDB) _module(REF)   _module(LEGREF) \
-    _module(KFS)  _module(XML)   _module(VDB) _module(SRA)    \
-    _module(XARC) _module(ALIGN) _module(KFG) _module(KRYPTO) \
-    _module(SEARCH) _module(LOADLIB) _module(VFS) _module(AES) _module(ARGS)
+    _module(AES)    _module(ALIGN)   _module(APP)  _module(ARGS) \
+    _module(BLAST)  _module(KDB)    \
+    _module(KFG)    _module(KFS)     _module(KNS)  _module(KRYPTO) \
+    _module(LEGREF) _module(LOADLIB)              \
+    _module(REF)    _module(SEARCH)  _module(SRA) \
+    _module(VDB)    _module(VFS)     _module(XARC) _module(XML)  \
+    
 
 #define APP_CONDITIONS() \
     _condition(APP,0)  _condition(APP,1)  _condition(APP,2)  _condition(APP,3)  \
@@ -143,6 +146,9 @@ extern "C" {
     _condition(KFS,ARCENTRY) _condition(KFS,ARC) _condition(KFS,TOCENTRY) _condition(KFS,TOC)  \
     _condition(KFS,TARENTRY) _condition(KFS,TAR) _condition(KFS,SRASORT)  _condition(KFS,GZIP) \
     _condition(KFS,DIR)  _condition(KFS,COUNTER) _condition(KFS,BZIP)     _condition(KFS,SYS)
+
+#define KNS_CONDITIONS() \
+    _condition(KNS,ERR) _condition(KNS,HTTP) _condition(KNS,MGR)
 
 #define VFS_CONDITIONS() \
     _condition(VFS,MGR)     _condition(VFS,PATH)

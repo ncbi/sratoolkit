@@ -79,6 +79,7 @@ struct FastqArgs_struct
     bool dumpBase;
     bool dumpCs;
     bool readIds;
+    bool SuppressQualForCSKey;      /* added Jan 15th 2014 ( a new fastq-variation! ) */
     int offset;
     bool qual_filter;
     bool qual_filter1;
@@ -1309,7 +1310,7 @@ static rc_t FastqBioFilterFactory_Init( const SRASplitterFactory* cself )
         rc = FastqReaderMake( &self->reader, self->table, self->accession,
                               /* preserve orig spot format to save on conversions */
                               FastqArgs.is_platform_cs_native, false, FastqArgs.fasta > 0, false, 
-                              false, !FastqArgs.applyClip, 0,
+                              false, !FastqArgs.applyClip, FastqArgs.SuppressQualForCSKey, 0,
                               FastqArgs.offset, '\0', 0, 0) ;
     }
     return rc;
@@ -1478,7 +1479,7 @@ static rc_t FastqRNumberFilterFactory_Init( const SRASplitterFactory* cself )
         rc = FastqReaderMake( &self->reader, self->table, self->accession,
                               /* preserve orig spot format to save on conversions */
                               FastqArgs.is_platform_cs_native, false, FastqArgs.fasta > 0, false, 
-                              false, !FastqArgs.applyClip, 0,
+                              false, !FastqArgs.applyClip, FastqArgs.SuppressQualForCSKey, 0,
                               FastqArgs.offset, '\0', 0, 0 );
     }
     return rc;
@@ -1808,7 +1809,7 @@ static rc_t FastqQFilterFactory_Init( const SRASplitterFactory* cself )
                 rc = FastqReaderMake( &self->reader, self->table, self->accession,
                              /* preserve orig spot format to save on conversions */
                              FastqArgs.is_platform_cs_native, false, FastqArgs.fasta > 0, false, 
-                             false, !FastqArgs.applyClip, 0,
+                             false, !FastqArgs.applyClip, FastqArgs.SuppressQualForCSKey, 0,
                              FastqArgs.offset, '\0', 0, 0 );
             }
         }
@@ -2003,7 +2004,7 @@ static rc_t FastqReadLenFilterFactory_Init( const SRASplitterFactory* cself )
         rc = FastqReaderMake( &self->reader, self->table, self->accession,
                              /* preserve orig spot format to save on conversions */
                               FastqArgs.is_platform_cs_native, false, FastqArgs.fasta > 0, false, 
-                              false, !FastqArgs.applyClip, 0,
+                              false, !FastqArgs.applyClip, FastqArgs.SuppressQualForCSKey, 0,
                               FastqArgs.offset, '\0', 0, 0 );
     }
     return rc;
@@ -2232,7 +2233,7 @@ static rc_t FastqReadSplitterFactory_Init( const SRASplitterFactory* cself )
         rc = FastqReaderMake( &self->reader, self->table, self->accession,
                               /* preserve orig spot format to save on conversions */
                               FastqArgs.is_platform_cs_native, false, FastqArgs.fasta > 0, false, 
-                              false, !FastqArgs.applyClip, 0,
+                              false, !FastqArgs.applyClip, FastqArgs.SuppressQualForCSKey, 0,
                               FastqArgs.offset, '\0', 0, 0 );
     }
     return rc;
@@ -2445,7 +2446,7 @@ static rc_t Fastq3ReadSplitterFactory_Init( const SRASplitterFactory* cself )
         rc = FastqReaderMake( &self->reader, self->table, self->accession,
                               /* preserve orig spot format to save on conversions */
                               FastqArgs.is_platform_cs_native, false, FastqArgs.fasta > 0, false, 
-                              false, !FastqArgs.applyClip, 0,
+                              false, !FastqArgs.applyClip, FastqArgs.SuppressQualForCSKey, 0,
                               FastqArgs.offset, '\0', 0, 0 );
     }
     return rc;
@@ -2846,7 +2847,7 @@ static rc_t FastqFormatterFactory_Init( const SRASplitterFactory* cself )
     {
         rc = FastqReaderMake( &self->reader, self->table, self->accession,
                      FastqArgs.dumpCs, FastqArgs.dumpOrigFmt, FastqArgs.fasta > 0, FastqArgs.dumpCs,
-                     FastqArgs.readIds, !FastqArgs.applyClip, 0,
+                     FastqArgs.readIds, !FastqArgs.applyClip, FastqArgs.SuppressQualForCSKey, 0,
                      FastqArgs.offset, FastqArgs.desiredCsKey[ 0 ], 0, 0 );
         if ( rc == 0 )
         {
@@ -2971,6 +2972,7 @@ ver_t CC KAppVersion( void )
 #define H_aligned_region 18
 #define H_matepair_distance 19
 #define H_qual_filter_1 20
+#define H_SuppressQualForCSKey 21
 
 rc_t FastqDumper_Usage( const SRADumperFmt* fmt, const SRADumperFmt_Arg* core_args, int first )
 {
@@ -3062,7 +3064,7 @@ rc_t FastqDumper_Usage( const SRADumperFmt* fmt, const SRADumperFmt_Arg* core_ar
     OARG( &fmt->arg_desc[ 2 ], NULL );
     OARG( core[ 6 ], NULL );
     OARG( &fmt->arg_desc[ 3 ], NULL );
-    OARG( &fmt->arg_desc[ 20 ], NULL );
+    OARG( &fmt->arg_desc[ H_qual_filter_1 ], NULL );
 
     OUTMSG(( "\nFilters based on alignments        Filters are active when alignment\n" ));
     OUTMSG(( "                                     data are present\n" ));
@@ -3099,6 +3101,7 @@ rc_t FastqDumper_Usage( const SRADumperFmt* fmt, const SRADumperFmt_Arg* core_ar
     OUTMSG(( "\nQuality\n" ));
     OARG( &fmt->arg_desc[ 9 ], NULL );
     OARG( &fmt->arg_desc[ 10 ], NULL );
+    OARG( &fmt->arg_desc[ H_SuppressQualForCSKey ], NULL ); /* added Jan 15th 2014 ( a new fastq-variation! ) */
 
     OUTMSG(( "\nDefline\n" ));
     OARG( &fmt->arg_desc[ 11 ], NULL );
@@ -3161,6 +3164,10 @@ bool FastqDumper_AddArg( const SRADumperFmt* fmt, GetArg* f, int* i, int argc, c
     {
         FastqArgs.applyClip = true;
     }
+    else if ( f( fmt, "SU", "suppress-qual-for-cskey", i, argc, argv, NULL ) )
+    {
+        FastqArgs.SuppressQualForCSKey = true;
+    }
     else if ( f( fmt, "F", "origfmt", i, argc, argv, NULL ) )
     {
         FastqArgs.dumpOrigFmt = true;
@@ -3209,8 +3216,10 @@ bool FastqDumper_AddArg( const SRADumperFmt* fmt, GetArg* f, int* i, int argc, c
     }
     else if ( f( fmt, "SF", "split-files", i, argc, argv, NULL ) )
     {
+        SRADumperFmt * nc_fmt = ( SRADumperFmt * )fmt;
         FastqArgs.split_spot = true;
         FastqArgs.split_files = true;
+        nc_fmt->split_files = true;
     }
     else if ( f( fmt, NULL, "split-3", i, argc, argv, NULL ) )
     {
@@ -3744,6 +3753,8 @@ rc_t SRADumper_Init( SRADumperFmt* fmt )
 
             {NULL, "qual-filter-1", NULL, {"Filter used in current 1000 Genomes data", NULL}}, /* H_qual_filter_1 = 20 */
 
+            {NULL, "suppress-qual-for-cskey", NULL, {"supress quality-value for cskey", NULL}}, /* H_SuppressQualForCSKey = 21 */
+
             {NULL, NULL, NULL, {NULL}}
         };
 
@@ -3758,6 +3769,7 @@ rc_t SRADumper_Init( SRADumperFmt* fmt )
     FastqArgs.skipTechnical = false;
     FastqArgs.minReadLen = 1;
     FastqArgs.applyClip = false;
+    FastqArgs.SuppressQualForCSKey = false;     /* added Jan 15th 2014 ( a new fastq-variation! ) */
     FastqArgs.dumpOrigFmt = false;
     FastqArgs.dumpBase = false;
     FastqArgs.dumpCs = false;
@@ -3789,6 +3801,7 @@ rc_t SRADumper_Init( SRADumperFmt* fmt )
     fmt->get_factory = FastqDumper_Factories;
     fmt->gzip = true;
     fmt->bzip2 = true;
+    fmt->split_files = false;
 
     return 0;
 }

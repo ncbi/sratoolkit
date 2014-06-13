@@ -47,6 +47,9 @@
 #include "blob-priv.h"
 #endif
 
+#ifndef _h_klib_debug_
+#include <klib/debug.h> /* DBG_VDB */
+#endif
 
 #ifdef __cplusplus
 extern "C" {

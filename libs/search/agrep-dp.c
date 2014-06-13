@@ -746,7 +746,7 @@ LIB_EXPORT uint32_t CC has_right_approx_match( char *pattern, uint32_t errors,
     int32_t *tmp;
     int32_t i, j;
     int32_t allowable;
-    char *subpattern;
+    char *subpattern, chBackup;
     char *subpattern_r;
     int32_t dist;
 
@@ -760,16 +760,22 @@ LIB_EXPORT uint32_t CC has_right_approx_match( char *pattern, uint32_t errors,
         bound = buflen;
     }
 
-    for (i=bound; i>=8; i--) {
+    subpattern = malloc(plen + 1);
+    subpattern_r = malloc(plen + 1);
+    strncpy(subpattern, pattern, plen);
+
+    for (i=bound; i>=8; i--, subpattern[i] = chBackup) {
 
         /* See if the first i chars of the pattern match the last i
            chars of the text with (errors) errors.
            We match in reverse, so the initial penalty of skipping
            the "first part" of the pattern means skipping the end
         */
-        /* Some leaks here! */
-        subpattern = substring(pattern, i);
-        subpattern_r = malloc(i + 1);
+        /* making prefix of length i out of pattern
+        (subpattern contains full copy of pattern)*/
+        chBackup = subpattern[i];
+        subpattern[i] = '\0';
+
         reverse_string(subpattern, i, subpattern_r);
         init_col(subpattern_r, i, nxt);
 
@@ -797,6 +803,8 @@ LIB_EXPORT uint32_t CC has_right_approx_match( char *pattern, uint32_t errors,
         }
     }
     DONE:
+    free(subpattern);
+    free(subpattern_r);
     free(prev);
     free(nxt);
     if (found) {

@@ -119,6 +119,6 @@ typedef struct rna_splice_candidates
 
 rc_t discover_rna_splicing_candidates( uint32_t cigar_len, const char * cigar, uint32_t min_len, rna_splice_candidates * candidates );
 
-rc_t change_rna_splicing_cigar( uint32_t cigar_len, char * cigar, rna_splice_candidates * candidates );
+rc_t change_rna_splicing_cigar( uint32_t cigar_len, char * cigar, rna_splice_candidates * candidates, uint32_t * NM_adjustment );
 
 #endif

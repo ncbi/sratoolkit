@@ -141,7 +141,7 @@ void trie_enter(struct trie *self, int32_t whichpattern, const char *s, int32_t 
             newone = (struct trie *)malloc(sizeof(struct trie));
             newone->fail = NULL;
             newone->outs = NULL;
-            newone->debugs = substring(s, i+1);
+            newone->debugs = create_substring(s, i+1);
             newone->depth = i+1;
             newone->hasmatch = 1;
             memset( newone->next, 0, sizeof( *newone->next ) );

@@ -285,8 +285,8 @@ rc_t CC KMain (int argc, char * argv[])
     char *files[256];
     int8_t defaultReadNumbers[256];
     char *name_buffer = NULL;
-    unsigned next_name = 0;
-    unsigned nbsz = 0;
+    size_t next_name = 0;
+    size_t nbsz = 0;
     char const *value;
     char *dummy;
     const XMLLogger* xml_logger = NULL;
@@ -484,7 +484,7 @@ rc_t CC KMain (int argc, char * argv[])
             break;
         }
         else {
-            unsigned need = G.inpath ? (strlen(G.inpath) + 1) * pcount : 0;
+            size_t need = G.inpath ? (strlen(G.inpath) + 1) * pcount : 0;
             unsigned i;
             
             for (i = 0; i < pcount; ++i) {

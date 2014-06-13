@@ -752,6 +752,7 @@ rc_t SRASplitter_AddSpot( const SRASplitter * cself, spotid_t spot, readmask_t *
                         }
                     }
                     /* leave reads only allowed by previous object in chain */
+#ifndef EUGNES_LOOP_FIX
                     for ( j = 0, k = 0; k < nreads_max; k++ )
                     {
                         local_readmask[ k ] &= readmask[ k ];
@@ -761,6 +762,7 @@ rc_t SRASplitter_AddSpot( const SRASplitter * cself, spotid_t spot, readmask_t *
                         }
                     }
                     if ( j > 0 )
+#endif
                     {
                         rc = SRASplitter_FindNextSplitter( self, keys[ i ].key );
                         if ( rc == 0 )
@@ -790,6 +792,7 @@ rc_t SRASplitter_AddSpot( const SRASplitter * cself, spotid_t spot, readmask_t *
             {
                 int32_t j, k;
                 /* leave reads only allowed by previous object in chain */
+#ifndef EUGNES_LOOP_FIX
                 for( j = 0, k = 0; k < nreads_max; k++ )
                 {
                     readmask[ k ] &= new_readmask[ k ];
@@ -799,6 +802,7 @@ rc_t SRASplitter_AddSpot( const SRASplitter * cself, spotid_t spot, readmask_t *
                     }
                 }
                 if ( j > 0 )
+#endif
                 {
                     rc = SRASplitter_FindNextSplitter( self, key );
                     if ( rc == 0 )

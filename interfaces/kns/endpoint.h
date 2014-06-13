@@ -47,11 +47,12 @@ struct KNSManager;
  *  describe a socket endpoint
  */
  
-enum {
+typedef uint32_t KEndPointType;
+enum
+{
     epIPV4,
     epIPC
 };
-typedef uint32_t KEndPointType;
 
 #define IPC_NAME_MAX 256
 
@@ -65,8 +66,10 @@ struct KEndPoint
 			uint32_t addr;
 			uint16_t port;
 		} ipv4;
-		char ipc_name[IPC_NAME_MAX];
+
+		char ipc_name [ IPC_NAME_MAX ];
 	} u;
+
     KEndPointType type;
 };
 
@@ -105,7 +108,8 @@ KNS_EXTERN rc_t CC KNSManagerInitDNSEndpoint ( struct KNSManager const *self,
  *
  *  "ep" [ OUT ] - address of endpoint block to be intialized
  *
- *  "name" [ IN ] - IPC channel name (a POSIX path to a Unix socket, or a name of a Windows pipe)
+ *  "name" [ IN ] - IPC channel name
+ *   ( a POSIX path to a Unix socket, or a name of a Windows pipe )
  */
 KNS_EXTERN rc_t CC KNSManagerInitIPCEndpoint ( struct KNSManager const *self,
     KEndPoint *ep, struct String const * name );

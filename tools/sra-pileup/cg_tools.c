@@ -954,10 +954,11 @@ rc_t discover_rna_splicing_candidates( uint32_t cigar_len, const char * cigar, u
 }
 
 
-rc_t change_rna_splicing_cigar( uint32_t cigar_len, char * cigar, rna_splice_candidates * candidates )
+rc_t change_rna_splicing_cigar( uint32_t cigar_len, char * cigar, rna_splice_candidates * candidates, uint32_t * NM_adjustment )
 {
     rc_t rc = 0;
     uint32_t cigops_len = cigar_len / 2;
+    uint32_t sum_of_n_lengths = 0;
     CigOps * cigops = malloc( ( sizeof * cigops ) * cigops_len );
     if ( cigops == NULL )
         rc = RC( rcExe, rcNoTarg, rcConstructing, rcMemory, rcExhausted );
@@ -969,7 +970,10 @@ rc_t change_rna_splicing_cigar( uint32_t cigar_len, char * cigar, rna_splice_can
         {
             rna_splice_candidate * rsc = &candidates->candidates[ idx ];
             if ( rsc->matched != 0 && cigops[ rsc->op_idx ].op == 'D' )
+            {
                 cigops[ rsc->op_idx ].op = 'N';
+                sum_of_n_lengths += cigops[ rsc->op_idx ].oplen;
+            }
         }
 
         for ( idx = 0, dst = 0; idx < ( n_cigops - 1 ) && rc == 0; ++idx )
@@ -980,5 +984,7 @@ rc_t change_rna_splicing_cigar( uint32_t cigar_len, char * cigar, rna_splice_can
         }
         free( cigops );
     }
+    if ( NM_adjustment != NULL )
+        *NM_adjustment = sum_of_n_lengths;
     return rc;
 }

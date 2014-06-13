@@ -86,7 +86,7 @@ NENCVALID_OBJ = \
 NENCVALID_LIB = \
 	-lkapp \
 	-lvfs \
-	-lkurl \
+	-lkns \
 	-lkrypto \
 	-lkfg \
 	-lkfs \

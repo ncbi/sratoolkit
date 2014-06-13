@@ -28,8 +28,7 @@ TOP ?= $(shell ../../build/abspath.sh ../..)
 MODULE = libs/kns
 
 INT_LIBS = \
-	libkns \
-	libkurl
+	libkns
 
 ALL_LIBS = \
 	$(INT_LIBS)
@@ -77,8 +76,8 @@ clean: stdclean
 $(ILIBDIR)/libkns: $(addprefix $(ILIBDIR)/libkns.,$(ILIBEXT))
 
 KNS_NO_HTTP_SRC = \
-	kns_manager \
 	kns_manager-ext \
+	manager \
 	stream \
 	stream-from-files \
 	stream-from-streams \
@@ -86,11 +85,17 @@ KNS_NO_HTTP_SRC = \
 	sysendpoint \
 	syssock \
 	sysstream \
-	sysmgr
+    sysmgr
+
+ifneq (win,$(OS))
+KNS_NO_HTTP_SRC += \
+	syspoll
+endif
 
 KNS_SRC = \
 	$(KNS_NO_HTTP_SRC) \
-	http
+	http \
+	undyinghttp
 
 KNS_OBJ = \
 	$(addsuffix .$(LOBX),$(KNS_SRC))
@@ -104,25 +109,24 @@ $(ILIBDIR)/libkns.$(LIBX): $(KNS_OBJ)
 
 
 #-------------------------------------------------------------------------------
-# kurl
+# white-box test
 #
-$(ILIBDIR)/libkurl: $(addprefix $(ILIBDIR)/libkurl.,$(ILIBEXT))
 
-KURL_SRC = \
-	KCurlFile \
-	KCurlRequest \
-	url-fetcher \
-	url-fetcher-curl \
-	entrez-fetcher
+TEST_SRC = \
+	http-test
 
-KURL_OBJ = \
-	$(addsuffix .$(LOBX),$(KURL_SRC))
+TEST_OBJ = \
+	$(addsuffix .$(OBJX),$(TEST_SRC))
 
-KURL_LIB = \
-	-skns \
-	-dkfs \
-	-dklib \
-	-dz
+TEST_LIB = \
+	-skapp \
+    -skns \
+	-svfs \
+	-skrypto \
+	-skfg \
+	-skfs \
+	-skproc \
+	-sklib 
 
-$(ILIBDIR)/libkurl.$(LIBX): $(KURL_OBJ)
-	$(LD) --slib -o $@ $^ $(KURL_LIB)
+$(TEST_BINDIR)/test-http: $(TEST_OBJ)
+	$(LD) --exe -o $@ $^ $(TEST_LIB)

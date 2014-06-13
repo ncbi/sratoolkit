@@ -44,9 +44,19 @@ extern "C" {
 /*--------------------------------------------------------------------------
  * KLock
  *  a POSIX-style mutual exclusion lock
- *  with some facilities for timed operations
  */
 struct KLock
+{
+    pthread_mutex_t mutex;
+    atomic32_t refcount;
+};
+
+/*--------------------------------------------------------------------------
+ * KTimedLock
+ *  a POSIX-style mutual exclusion lock
+ *  with some facilities for timed operations
+ */
+struct KTimedLock
 {
     pthread_mutex_t mutex;
     pthread_mutex_t cond_lock;

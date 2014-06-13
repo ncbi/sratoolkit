@@ -95,6 +95,7 @@ KLIB_SRC = \
 	ptpersist.nopt \
 	crc32 \
 	md5 \
+	misc \
 	SHA-32bit \
 	SHA-64bit \
 	qsort \

@@ -98,12 +98,6 @@ ALIGN_EXTERN rc_t CC ReferenceMgr_Compress(const ReferenceMgr* cself, uint32_t o
                                            const void* allele_cigar, uint32_t allele_cigar_len,
                                            TableWriterAlgnData* data);
 
-/* After calling ReferenceMgr_Compress, ReferenceMgr_CompressHelper
- * can be used to compress other byte-sized arrays
- */
-ALIGN_EXTERN size_t CC ReferenceMgr_CompressHelper(uint8_t cmp_rslt[],
-                                                   TableWriterAlgnData const *const data,
-                                                   uint8_t const input[]);
 
 /* Read refseq chunk of 'len' bases into provided 'buffer' (must be enough big for len);
    ref_len - on return has number of bases written to the buffer
@@ -120,6 +114,13 @@ ALIGN_EXTERN rc_t CC ReferenceSeq_Compress(const ReferenceSeq* cself, uint32_t o
                                            INSDC_coord_zero allele_offset, const char* allele, INSDC_coord_len allele_len,INSDC_coord_zero offset_in_allele,
                                            const void* allele_cigar, uint32_t allele_cigar_len,
                                            TableWriterAlgnData* data);
+                                           
+ALIGN_EXTERN rc_t CC ReferenceSeq_TranslateOffset_int(ReferenceSeq const *const cself,
+                                                      INSDC_coord_zero const offset,
+                                                      int64_t *const ref_id,
+                                                      INSDC_coord_zero *const ref_start,
+                                                      uint64_t *const global_ref_start);
+                                           
 
 enum ReferenceSeqCoverageTableType {
     ewrefcov_primary_table = 0,

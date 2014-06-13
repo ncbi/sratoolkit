@@ -60,6 +60,7 @@ extern "C" {
 #define OPT_CG_MAPP     "CG-mappings"
 #define OPT_REGION      "aligned-region"
 #define OPT_RECAL_HDR   "header"
+#define OPT_HDR_FILE    "header-file"
 #define OPT_NO_HDR      "no-header"
 #define OPT_USE_SEQID   "seqid"
 #define OPT_HIDE_IDENT  "hide-identical"
@@ -113,7 +114,8 @@ enum header_mode
 {
     hm_none = 0,    /* do not dump the headers at all */
     hm_recalc,      /* recalculate the headers */
-    hm_dump         /* dump the header found in metadata */
+    hm_dump,        /* dump the header found in metadata */
+    hm_file         /* take the complete header part from a file */
 };
 
 enum output_format
@@ -168,6 +170,9 @@ typedef struct samdump_opts
 
     /* optional outputfile */
     const char * outputfile;
+
+    /* optional header-file */
+    const char * header_file;
 
     /* cigar-test >>> not advertized! */
     const char * cigar_test;

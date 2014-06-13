@@ -35,7 +35,6 @@
 #include <stdlib.h>
 #include <errno.h>
 
-
 /*--------------------------------------------------------------------------
  * KLock
  *  a POSIX-style mutual exclusion lock
@@ -62,7 +61,6 @@ rc_t KLockWhack ( KLock *self )
     free ( self );
     return 0;
 }
-
 
 /* Make
  *  make a simple mutex
@@ -150,7 +148,123 @@ LIB_EXPORT rc_t CC KLockAcquire ( KLock *self )
     return 0;
 }
 
-LIB_EXPORT rc_t CC KLockTimedAcquire ( KLock *self, timeout_t *tm )
+/* Unlock
+ *  releases lock
+ */
+LIB_EXPORT rc_t CC KLockUnlock ( KLock *self )
+{
+    int status;
+
+    if ( self == NULL )
+        return RC ( rcPS, rcLock, rcUnlocking, rcSelf, rcNull );
+
+    status = pthread_mutex_unlock ( & self -> mutex );
+    switch ( status )
+    {
+    case 0:
+        break;
+    case EPERM:
+        return RC ( rcPS, rcLock, rcUnlocking, rcThread, rcIncorrect );
+    case EINVAL:
+        return RC ( rcPS, rcLock, rcUnlocking, rcLock, rcInvalid );
+    default:
+        return RC ( rcPS, rcLock, rcUnlocking, rcNoObj, rcUnknown );
+    }
+
+    return 0;
+}
+
+/*--------------------------------------------------------------------------
+ * KTimedLock
+ *  a POSIX-style mutual exclusion lock with support for timed Acquire
+ */
+
+ /* Whack
+ */
+static
+rc_t KTimedLockWhack ( KTimedLock *self )
+{
+    int status = pthread_mutex_destroy ( & self -> mutex );
+    switch ( status )
+    {
+    case 0:
+        break;
+    case EBUSY:
+        return RC ( rcPS, rcLock, rcDestroying, rcLock, rcBusy );
+    case EINVAL:
+        return RC ( rcPS, rcLock, rcDestroying, rcLock, rcInvalid );
+    default:
+        return RC ( rcPS, rcLock, rcDestroying, rcNoObj, rcUnknown );
+    }
+
+    free ( self );
+    return 0;
+}
+
+/* Make
+ *  make a simple mutex
+ */
+LIB_EXPORT rc_t CC KTimedLockMake ( KTimedLock **lockp )
+{
+    rc_t rc;
+    if ( lockp == NULL )
+        rc = RC ( rcPS, rcLock, rcConstructing, rcParam, rcNull );
+    else
+    {
+        KTimedLock *lock = malloc ( sizeof * lock );
+        if ( lock == NULL )
+            rc = RC ( rcPS, rcLock, rcConstructing, rcMemory, rcExhausted );
+        else
+        {
+            int status = pthread_mutex_init ( & lock -> mutex, NULL );
+            if ( status == 0 )
+            {
+                atomic32_set ( & lock -> refcount, 1 );
+                * lockp = lock;
+                return 0;
+            }
+
+            /* pthread_mutex_init is documented as always returning 0 */
+            rc = RC ( rcPS, rcLock, rcConstructing, rcNoObj, rcUnknown );
+
+            free ( lock );
+        }
+
+        * lockp = NULL;
+    }
+    return rc;
+}
+
+
+/* AddRef
+ * Release
+ */
+LIB_EXPORT rc_t CC KTimedLockAddRef ( const KTimedLock *cself )
+{
+    if ( cself != NULL )
+        atomic32_inc ( & ( ( KLock* ) cself ) -> refcount );
+    return 0;
+}
+
+LIB_EXPORT rc_t CC KTimedLockRelease ( const KTimedLock *cself )
+{
+    KTimedLock *self = ( KTimedLock* ) cself;
+    if ( cself != NULL )
+    {
+        if ( atomic32_dec_and_test ( & self -> refcount ) )
+        {
+            atomic32_set ( & self -> refcount, 1 );
+            return KTimedLockWhack ( self );
+        }
+    }
+    return 0;
+}
+
+
+/* Acquire
+ *  acquires lock with a timeout
+ */
+LIB_EXPORT rc_t CC KTimedLockAcquire ( KTimedLock *self, timeout_t *tm )
 {
     int status;
 
@@ -194,7 +308,7 @@ LIB_EXPORT rc_t CC KLockTimedAcquire ( KLock *self, timeout_t *tm )
 /* Unlock
  *  releases lock
  */
-LIB_EXPORT rc_t CC KLockUnlock ( KLock *self )
+LIB_EXPORT rc_t CC KTimedLockUnlock ( KTimedLock *self )
 {
     int status;
 
@@ -216,6 +330,7 @@ LIB_EXPORT rc_t CC KLockUnlock ( KLock *self )
 
     return 0;
 }
+
 
 
 /*--------------------------------------------------------------------------

@@ -29,11 +29,16 @@
 
 #if ! defined EXPORT_LATCH && defined _LIBRARY
 #define KRYPTO_EXTERN LIB_EXPORT
-#define KRYPTO_EXTERN_DATA LIB_EXPORT_DATA
+#define KRYPTO_EXTERN_DATA extern LIB_EXPORT
 #define EXPORT_LATCH 1
 #else
 #define KRYPTO_EXTERN LIB_IMPORT
+#ifdef __cplusplus
+#define KRYPTO_EXTERN_DATA extern /* LIB_IMPORT_DATA */
+#else
 #define KRYPTO_EXTERN_DATA LIB_IMPORT_DATA
+#endif
+
 #endif
 
 #ifndef _h_klib_extern_

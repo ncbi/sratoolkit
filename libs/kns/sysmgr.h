@@ -23,41 +23,16 @@
 * ===========================================================================
 *
 */
-#ifndef _h_url_fetcher_
-#define _h_url_fetcher_
 
-#ifndef _h_kns_extern_
-#include <kns/extern.h>
-#endif
-
-#ifndef _h_klib_defs_
-#include <klib/defs.h>
-#endif
+#ifndef _h_sysmgr_
+#define _h_sysmgr_
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-/*--------------------------------------------------------------------------
- * KUrlFetcher
- *  a generic way of fetching data from a url
- */
-typedef struct KUrlFetcher KUrlFetcher;
-
-/* AddRef
- * Release
- *  ignores NULL references
- */
-KNS_EXTERN rc_t CC KUrlFetcherAddRef ( const KUrlFetcher *self );
-KNS_EXTERN rc_t CC KUrlFetcherRelease ( const KUrlFetcher *self );
-
-KNS_EXTERN rc_t CC KUrlFetcherRead( KUrlFetcher *self, const char *uri,
-                      void *dst, size_t to_read, size_t *num_read );
-
-/* this typedef has to stay here for the virtual interface to work...*/
-typedef struct KUrlFetcherCurl KUrlFetcherCurl;
-
-KNS_EXTERN rc_t CC KUrlFetcherCurlMake( KUrlFetcher **fetcher, const bool verbose );
+rc_t KNSManagerInit();
+void KNSManagerCleanup();
 
 #ifdef __cplusplus
 }

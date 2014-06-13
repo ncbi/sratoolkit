@@ -122,9 +122,9 @@ rc_t na4_set_bits(const AgrepFlags mode, uint64_t* arr, const unsigned char c, c
 rc_t CC dp_end_callback( const void *cbinfo, const AgrepMatch *match, AgrepContinueFlag *flag );
 
 static __inline__
-char *substring ( const char *src, uint32_t sz )
+char *create_substring ( const char *src, uint32_t sz )
 {
-    char *ret = malloc ( sz + 1 );
+    char *ret = (char*)malloc( sz + 1 );
     strncpy ( ret, src, sz );
     ret [ sz ] = 0;
     return ret;

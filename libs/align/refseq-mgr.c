@@ -576,6 +576,10 @@ LIB_EXPORT rc_t RefSeqMgr_Exists(const RefSeqMgr* cself, const char* accession, 
             rc = VDBManagerOpenTableRead(cself->vmgr, &tbl, NULL, "ncbi-acc:%.*s?vdb-ctx=refseq", accession_sz, accession);
         else
             rc = VDBManagerOpenTableRead(cself->vmgr, &tbl, NULL, "%.*s", accession_sz, accession);
+        if (tbl == NULL) {
+            ALIGN_DBG("failed to open %.*s", accession_sz, accession);
+            ALIGN_DBGERR(rc);
+        }
         VTableRelease(tbl);
 #endif
     }

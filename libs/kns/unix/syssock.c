@@ -35,18 +35,27 @@
 #include <kns/socket.h>
 #include <kns/impl.h>
 #include <kns/endpoint.h>
-#include <klib/rc.h>
-#include <klib/log.h>
-#include <klib/text.h>
-#include <klib/printf.h>
-#include <klib/out.h>
 
+#include <klib/debug.h> /* DBGMSG */
+#include <klib/log.h>
+#include <klib/out.h>
+#include <klib/printf.h>
+#include <klib/rc.h>
+#include <klib/text.h>
+
+#include <kproc/timeout.h>
+
+#include "mgr-priv.h"
 #include "stream-priv.h"
+#include "poll-priv.h"
 
 #include <sysalloc.h>
+
 #include <stdlib.h>
 #include <assert.h>
 #include <string.h>
+
+#include <os-native.h>
 
 #include <arpa/inet.h>
 #include <sys/types.h>
@@ -58,6 +67,11 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <pwd.h>
+
+#ifndef POLLRDHUP
+#define POLLRDHUP 0
+#endif
+
 
 /*--------------------------------------------------------------------------
  * KSocket
@@ -75,24 +89,26 @@
 struct KSocket
 {
     KStream dad;
+    const char * path;
+    uint32_t type;
+    int32_t read_timeout;
+    int32_t write_timeout;
     int fd;
-    char* path;
 };
 
 LIB_EXPORT rc_t CC KSocketAddRef( struct KSocket *self )
 {
-    return KStreamAddRef(&self->dad);
+    return KStreamAddRef ( & self -> dad );
 }
 
-LIB_EXPORT rc_t CC KSocketRelease( struct KSocket *self )
+LIB_EXPORT rc_t CC KSocketRelease ( struct KSocket *self )
 {
-    return KStreamRelease(&self->dad);
+    return KStreamRelease ( & self -> dad );
 }
 
-LIB_EXPORT
+static
 rc_t CC KSocketWhack ( KSocket *self )
 {
-
     assert ( self != NULL );
 
     shutdown ( self -> fd, SHUT_WR );
@@ -104,14 +120,15 @@ rc_t CC KSocketWhack ( KSocket *self )
         if ( result <= 0 )
             break;
     }
-    shutdown ( self ->fd, SHUT_RD );
+
+    shutdown ( self -> fd, SHUT_RD );
 
     close ( self -> fd );
 
-    if (self->path)
+    if ( self -> path != NULL )
     {
-        unlink(self->path);
-        free(self->path);
+        unlink ( self -> path );
+        free ( ( void* ) self -> path );
     }
         
     free ( self );
@@ -120,7 +137,7 @@ rc_t CC KSocketWhack ( KSocket *self )
 }
 
 static
-rc_t HandleErrno ( const char *func_name, int lineno )
+rc_t HandleErrno ( const char *func_name, unsigned int lineno )
 {
     int lerrno;
     rc_t rc = 0;
@@ -245,404 +262,614 @@ rc_t HandleErrno ( const char *func_name, int lineno )
 }
 
 static
-int socket_wait ( int fd, int events, int timeout )
+rc_t CC KSocketTimedRead ( const KSocket *self,
+    void *buffer, size_t bsize, size_t *num_read, timeout_t *tm )
 {
-    int i;
-    struct pollfd fds [ 1 ];
-        
-    /* poll for data with no delay */
-    for ( i = 0; i < 2; ++ i )
-    {
-        fds [ 0 ] . fd = fd;
-        fds [ 0 ] . events = events;
-        fds [ 0 ] . revents = 0;
-        
-        if ( poll ( fds, sizeof fds / sizeof fds [ 0 ], 0 ) != 0 )
-            return fds [ 0 ] . revents;
-    }
-        
-    /* poll for data */
-    if ( timeout != 0 )
-    {
-        fds [ 0 ] . fd = fd;
-        fds [ 0 ] . events = events;
-        fds [ 0 ] . revents = 0;
-        
-        if ( poll ( fds, sizeof fds / sizeof fds [ 0 ], timeout ) != 0 )
-        {
-            /* experiment - try another poll with no timeout */
-            fds [ 0 ] . fd = fd;
-            fds [ 0 ] . events = events;
-            fds [ 0 ] . revents = 0;
-            poll ( fds, sizeof fds / sizeof fds [ 0 ], 0 );
-
-            return fds [ 0 ] . revents;
-        }
-    }
+    int revents;
     
-    return 0;
+    assert ( self != NULL );
+    assert ( num_read != NULL );
+
+    pLogLibMsg(klogInfo, "$(b): KSocketTimedRead($(s), $(t))...", "b=%p,s=%d,t=%d", self, bsize, tm == NULL ? -1 : tm -> mS);
+    
+    /* wait for socket to become readable */
+    revents = socket_wait ( self -> fd
+                            , POLLIN
+                            | POLLRDNORM
+                            | POLLRDBAND
+                            | POLLPRI
+                            | POLLRDHUP
+                            , tm );
+
+    /* check for error */
+    if ( revents < 0 || ( revents & ( POLLERR | POLLNVAL ) ) != 0 )
+    {
+        if ( errno != 0 )
+        {
+            rc_t rc = HandleErrno ( __func__, __LINE__ );
+            pLogLibMsg(klogInfo, "$(b): KSocketTimedRead socket_wait "
+                "returned errno $(e)", "b=%p,e=%d", self, errno);
+            return rc;
+        }
+
+        if ((revents & POLLERR) != 0) {
+            int optval = 0;
+            socklen_t optlen = sizeof optval;
+            if ((getsockopt(self->fd, SOL_SOCKET, SO_ERROR, &optval, &optlen)
+                    == 0)
+                && optval > 0)
+            {
+                errno = optval;
+                DBGMSG(DBG_KNS, DBG_FLAG(DBG_KNS_ERR), (
+"@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@1 %s getsockopt = %s @@@@@@@@@@@@@@@@"
+                    "\n", __FILE__, strerror(optval)));
+                rc_t rc = HandleErrno(__func__, __LINE__);
+                pLogLibMsg(klogInfo, "$(b): KSocketTimedRead "
+                    "socket_wait/getsockopt returned errno $(e)",
+                    "b=%p,e=%d", self, errno);
+                return rc;
+            }
+        }
+
+        pLogLibMsg(klogInfo, "$(b): KSocketTimedRead socket_wait "
+            "returned POLLERR | POLLNVAL", "b=%p", self);
+        return RC ( rcNS, rcStream, rcReading, rcNoObj, rcUnknown );
+    }
+
+    /* check for read availability */
+    if ( ( revents & ( POLLRDNORM | POLLRDBAND ) ) != 0 )
+    {
+        ssize_t count = recv ( self -> fd, buffer, bsize, 0 );
+        if ( count >= 0 )
+        {
+            * num_read = count;
+            return 0;
+        }
+        rc_t rc = HandleErrno ( __func__, __LINE__ );
+        pLogLibMsg(klogInfo, "$(b): KSocketTimedRead recv returned count $(c)", "b=%p,c=%d", self, count);
+        return rc;
+    }
+
+    /* check for broken connection */
+    if ( ( revents & ( POLLHUP | POLLRDHUP ) ) != 0 )
+    {
+        pLogLibMsg(klogInfo, "$(b): KSocketTimedRead broken connection", "b=%p", self);
+        * num_read = 0;
+        return 0;
+    }
+
+    /* anything else in revents is an error */
+    if ( ( revents & ~ POLLIN ) != 0 && errno != 0 )
+    {
+        rc_t rc = HandleErrno ( __func__, __LINE__ );
+        pLogLibMsg(klogInfo, "$(b): KSocketTimedRead error=$(e)", "b=%p,e=%e", self, errno);
+        return rc;
+    }
+
+    /* finally, call this a timeout */
+    pLogLibMsg(klogInfo, "$(b): KSocketTimedRead timeout", "b=%p", self);
+    return RC ( rcNS, rcStream, rcReading, rcTimeout, rcExhausted );
 }
 
 static
 rc_t CC KSocketRead ( const KSocket *self,
     void *buffer, size_t bsize, size_t *num_read )
 {
-    rc_t rc = 0;
-    int timeout = 1000;
-    
-    size_t total = 0;
-    char *b = buffer;
-    
+    timeout_t tm;
     assert ( self != NULL );
 
-    while ( 1 )
+    if ( self -> read_timeout < 0 )
+        return KSocketTimedRead ( self, buffer, bsize, num_read, NULL );
+
+    TimeoutInit ( & tm, self -> read_timeout );
+    return KSocketTimedRead ( self, buffer, bsize, num_read, & tm );
+}
+
+static
+rc_t CC KSocketTimedWrite ( KSocket *self,
+    const void *buffer, size_t bsize, size_t *num_writ, timeout_t *tm )
+{
+    int revents;
+    ssize_t count;
+
+    assert ( self != NULL );
+    assert ( num_writ != NULL );
+
+    pLogLibMsg(klogInfo, "$(b): KSocketTimedWrite($(s), $(t))...", "b=%p,s=%d,t=%d", self, bsize, tm == NULL ? -1 : tm -> mS);
+
+    /* wait for socket to become writable */
+    revents = socket_wait ( self -> fd
+                            , POLLOUT
+                            | POLLWRNORM
+                            | POLLWRBAND
+                            , tm );
+
+    /* check for error */
+    if ( revents < 0 || ( revents & ( POLLERR | POLLNVAL ) ) != 0 )
     {
-        ssize_t count = 0;
-        
-        /* wait for socket to become readable */
-        int revents = socket_wait ( self -> fd, POLLIN | POLLPRI | POLLRDNORM | POLLRDBAND, timeout );
-        if ( revents != 0 )
-            count = recv ( self -> fd, & b [ total ], bsize - total, 0 );
-        if ( count <= 0 )
+        if ( errno != 0 )
         {
-            if ( total != 0 || count == 0 )
-            {
-                assert ( num_read != NULL );
-                * num_read = total;
-                return 0;
-            }
-            
-            if ( errno != EAGAIN )
-            {
-                rc = HandleErrno ( __func__, __LINE__ );
-                if ( rc != 0 )
-                    break;
-            }
+            rc_t rc = HandleErrno ( __func__, __LINE__ );
+            pLogLibMsg(klogInfo, "$(b): KSocketTimedWrite socket_wait returned errno $(e)", "b=%p,e=%d", self, errno);
+            return rc;
         }
-        else
-        {
-            total += count;
-            timeout = 0;
-        }
+        pLogLibMsg(klogInfo, "$(b): KSocketTimedWrite socket_wait returned POLLERR | POLLNVAL", "b=%p", self);
+        return RC ( rcNS, rcStream, rcWriting, rcNoObj, rcUnknown );
     }
-            
-    return rc;
+
+    /* check for broken connection */
+    if ( ( revents & POLLHUP ) != 0 )
+    {
+        pLogLibMsg(klogInfo, "$(b): POLLHUP received", "b=%p", self);            
+        * num_writ = 0;
+        return 0;
+    }
+
+    /* check for ability to send */
+    if ( ( revents & ( POLLWRNORM | POLLWRBAND ) ) != 0 )
+    {
+        rc_t rc = 0;
+        count = send ( self -> fd, buffer, bsize, 0 );
+        if ( count >= 0 )
+        {
+            pLogLibMsg(klogInfo, "$(b): $(s) bytes written", "b=%p,s=%d", self, count);            
+            * num_writ = count;
+            return 0;
+        }
+
+        rc = HandleErrno ( __func__, __LINE__ );
+        pLogLibMsg(klogInfo, "$(b): KSocketTimedWrite recv returned count $(c)", "b=%p,c=%d", self, count);
+        return rc;
+    }
+
+    /* anything else in revents is an error */
+    if ( ( revents & ~ POLLOUT ) != 0 && errno != 0 )
+    {
+        rc_t rc = HandleErrno ( __func__, __LINE__ );
+        pLogLibMsg(klogInfo, "$(b): KSocketTimedWrite error=$(e)", "b=%p,e=%e", self, errno);
+        return rc;
+    }
+
+    /* finally, call this a timeout */
+    pLogLibMsg(klogInfo, "$(b): KSocketTimedWrite timeout", "b=%p", self);            
+    return RC ( rcNS, rcStream, rcWriting, rcTimeout, rcExhausted );
 }
 
 static
 rc_t CC KSocketWrite ( KSocket *self,
     const void *buffer, size_t bsize, size_t *num_writ )
 {
-    rc_t rc = 0;
+    timeout_t tm;
     assert ( self != NULL );
 
-    while ( rc == 0 )
-    {
-        ssize_t count;
-        
-        /* wait for socket to become writable */
-        socket_wait ( self -> fd, POLLOUT | POLLWRNORM | POLLWRBAND, 1000 );
+    if ( self -> write_timeout < 0 )
+        return KSocketTimedWrite ( self, buffer, bsize, num_writ, NULL );
 
-        count = send ( self -> fd, buffer, bsize, 0 );
-        if ( count >= 0 )
-        {
-            assert ( num_writ != NULL );
-            * num_writ = count;
-            return 0;
-        }
-        
-        rc = HandleErrno ( __func__, __LINE__ );
-    }
-
-    return rc;
+    TimeoutInit ( & tm, self -> write_timeout );
+    return KSocketTimedWrite ( self, buffer, bsize, num_writ, & tm );
 }
 
 static KStream_vt_v1 vtKSocket =
 {
-    1, 0,
+    1, 1,
     KSocketWhack,
     KSocketRead,
-    KSocketWrite
+    KSocketWrite,
+    KSocketTimedRead,
+    KSocketTimedWrite
 };
 
 static
-rc_t MakeSocketPath(const char* name, char* buf, size_t buf_size)
+rc_t KSocketMakePath ( const char * name, char * buf, size_t buf_size )
 {
     size_t num_writ;
-    /*struct passwd* pwd;
-    pwd = getpwuid(geteuid());
-    if (pwd == NULL)
-        return HandleErrno();
-    return string_printf(buf, buf_size, &num_writ, "%s/.ncbi/%s", pwd->pw_dir, name);*/
-    return string_printf(buf, buf_size, &num_writ, "%s/.ncbi/%s", getenv("HOME"), name);
+#if 0
+    struct passwd* pwd;
+    pwd = getpwuid ( geteuid () );
+    if ( pwd == NULL )
+        return HandleErrno ( __func__, __LINE__ );
+
+    return string_printf ( buf, buf_size, & num_writ, "%s/.ncbi/%s", pwd -> pw_dir, name );
+#else
+    const char *HOME = getenv ( "HOME" );
+    if ( HOME == NULL )
+        return RC ( rcNS, rcProcess, rcAccessing, rcPath, rcNotFound );
+
+    return string_printf ( buf, buf_size, & num_writ, "%s/.ncbi/%s", HOME, name );
+#endif
 }
 
-LIB_EXPORT
-rc_t CC KNSManagerMakeConnection ( struct KNSManager const * self,KStream **out, const KEndPoint *from, const KEndPoint *to )
+static
+rc_t KSocketConnectIPv4 ( KSocket *self, int32_t retryTimeout, const KEndPoint *from, const KEndPoint *to )
 {
-    rc_t rc;
-    int fd;
+    rc_t rc = 0;
+    uint32_t retry_count = 0;
+    struct sockaddr_in ss_from, ss_to;
 
-    if ( self == NULL )
-        return RC ( rcNS, rcStream, rcConstructing, rcSelf, rcNull );
-        
-    if ( out == NULL )
-        return RC ( rcNS, rcStream, rcConstructing, rcParam, rcNull );
-
-    * out = NULL;
-
-    if ( to == NULL )
-        return RC ( rcNS, rcNoTarg, rcValidating, rcParam, rcNull);
-
-    if ( (from != NULL && from->type != epIPV4) || to->type != epIPV4 )
-        return RC ( rcNS, rcNoTarg, rcValidating, rcParam, rcInvalid);
-        
-    /* create the OS socket */
-    fd = socket ( AF_INET, SOCK_STREAM, 0 );
-    if ( fd != -1 )
+    memset ( & ss_from, 0, sizeof ss_from );
+    if ( from != NULL )
     {
-        int flag;
-        struct sockaddr_in ss;
-        memset ( &ss, 0, sizeof ss );
-        ss . sin_family = AF_INET;
-        if ( from != NULL )
-        {
-            ss . sin_port = htons ( from -> u . ipv4 . port );
-            ss . sin_addr . s_addr = htonl ( from -> u . ipv4 . addr );
-        }
-        
-        /* disable nagle algorithm */
-        flag = 1;
-        setsockopt ( fd, IPPROTO_TCP, TCP_NODELAY, ( char* ) & flag, sizeof flag );
-        
-        
-        if ( from == NULL || bind ( fd, ( struct sockaddr *) & ss, sizeof ss ) == 0) 
-        {
-            memset ( & ss, 0, sizeof ss );
-            ss . sin_family = AF_INET;
-            ss . sin_port = htons ( to -> u . ipv4 . port );
-            ss . sin_addr . s_addr = htonl ( to -> u . ipv4 . addr );                   
-            if ( connect ( fd, (struct sockaddr *)&ss, sizeof ss ) == 0 )
-            {
-                /* create the KSocket */
-                KSocket *ksock = calloc ( sizeof *ksock, 1 );
-                if ( ksock == NULL )
-                    rc = RC ( rcNS, rcNoTarg, rcAllocating, rcNoObj, rcNull ); 
-                else
-                {
-                    /* initialize the KSocket */
-                    rc = KStreamInit ( & ksock -> dad, ( const KStream_vt* ) & vtKSocket,
-                                       "KSocket", "tcp", true, true );
-                    if ( rc == 0 )
-                    {
-                        /* set non-blocking mode */
-                        flag = fcntl ( fd, F_GETFL );
-                        fcntl ( fd, F_SETFL, flag | O_NONBLOCK );
-        
-                        ksock -> fd = fd;
-                        *out = & ksock -> dad;
-                        return 0;
-                    }
-                    /* free the KSocket */
-                    free ( ksock );
-                }
-            }
-            else /* connect() failed */
-                rc = HandleErrno( __func__, __LINE__ );
-        }
-        else /* bind() failed */
-            rc = HandleErrno( __func__, __LINE__ );
-        close(fd);
+        ss_from . sin_family = AF_INET;
+        ss_from . sin_addr . s_addr = htonl ( from -> u . ipv4 . addr );
+        ss_from . sin_port = htons ( from -> u . ipv4 . port );
     }
-    else /* socket() failed */
-        rc = HandleErrno( __func__, __LINE__ );
+
+    memset ( & ss_to, 0, sizeof ss_to );
+    ss_to . sin_family = AF_INET;
+    ss_to . sin_addr . s_addr = htonl ( to -> u . ipv4 . addr );
+    ss_to . sin_port = htons ( to -> u . ipv4 . port );
+
+    do 
+    {
+        /* create the OS socket */
+        self -> fd = socket ( AF_INET, SOCK_STREAM, 0 );
+        if ( self -> fd < 0 )
+            rc = HandleErrno ( __func__, __LINE__ );
+        else
+        {
+            /* disable nagle algorithm */
+            int flag = 1;
+            setsockopt ( self -> fd, IPPROTO_TCP, TCP_NODELAY, ( char* ) & flag, sizeof flag );
+
+            /* bind */
+            if ( from != NULL && bind ( self -> fd, ( struct sockaddr* ) & ss_from, sizeof ss_from ) != 0 )
+                rc = HandleErrno ( __func__, __LINE__ );
+                
+            if ( rc == 0 )
+            {
+                /* connect */
+                if ( connect ( self -> fd, ( struct sockaddr* ) & ss_to, sizeof ss_to ) == 0 )
+                {
+                    /* set non-blocking mode */
+                    flag = fcntl ( self -> fd, F_GETFL );
+                    fcntl ( self -> fd, F_SETFL, flag | O_NONBLOCK );
+                    return 0;
+                }
+                rc = HandleErrno ( __func__, __LINE__ );
+            }
+
+            /* dump socket */
+            close ( self -> fd );
+            self -> fd = -1;
+        }
+        
+        /* rc != 0 */
+        if (retryTimeout < 0 || retry_count < retryTimeout)
+        {   /* retry */
+            sleep ( 1 );
+            ++retry_count;
+            rc = 0;
+        }
+    }
+    while (rc == 0);
+    
+    pLogLibMsg(klogInfo, "$(b): KSocketConnectIPv4 timed out", "b=%p", self);            
+
     return rc;
 }
 
-LIB_EXPORT
-rc_t CC KNSManagerMakeIPCConnection ( struct KNSManager const *self, KStream **out, const KEndPoint *to, uint32_t max_retries )
+static
+rc_t KSocketConnectIPC ( KSocket *self, int32_t retryTimeout, const KEndPoint *to )
+{
+    rc_t rc = 0;
+    uint32_t retry_count = 0;
+    struct sockaddr_un ss_to;
+
+    memset ( & ss_to, 0, sizeof ss_to );
+    ss_to . sun_family = AF_UNIX;
+    rc = KSocketMakePath ( to -> u . ipc_name, ss_to . sun_path, sizeof ss_to . sun_path );
+
+    do 
+    {
+        /* create the OS socket */
+        self -> fd = socket ( AF_UNIX, SOCK_STREAM, 0 );
+        if ( self -> fd < 0 )
+            rc = HandleErrno ( __func__, __LINE__ );
+        else
+        {
+            /* connect */
+            if ( connect ( self -> fd, ( struct sockaddr* ) & ss_to, sizeof ss_to ) == 0 )
+            {
+                return 0;
+            }
+            rc = HandleErrno ( __func__, __LINE__ );
+
+            /* dump socket */
+            close ( self -> fd );
+            self -> fd = -1;
+        }
+        
+        /* rc != 0 */
+        if (retryTimeout < 0 || retry_count < retryTimeout)
+        {   /* retry */
+            sleep ( 1 );
+            ++retry_count;
+            rc = 0;
+        }
+    }
+    while (rc == 0);
+
+    pLogLibMsg(klogInfo, "$(b): KSocketConnectIPC timed out", "b=%p", self);            
+
+    return rc;
+ }
+
+KNS_EXTERN rc_t CC KNSManagerMakeRetryTimedConnection ( struct KNSManager const * self,
+    struct KStream **out, int32_t retryTimeout, int32_t readMillis, int32_t writeMillis,
+    struct KEndPoint const *from, struct KEndPoint const *to )
 {
     rc_t rc;
-    uint32_t retry_count = 0;
-    struct sockaddr_un ss;
 
-    if ( self == NULL )
-        return RC ( rcNS, rcStream, rcConstructing, rcSelf, rcNull );
-    
     if ( out == NULL )
-        return RC ( rcNS, rcStream, rcConstructing, rcParam, rcNull );
-
-    * out = NULL;
-
-    if ( to == NULL )
-        return RC ( rcNS, rcNoTarg, rcValidating, rcParam, rcNull);
-
-    if ( to->type != epIPC )
-        return RC ( rcNS, rcNoTarg, rcValidating, rcParam, rcInvalid);
-
-    memset ( & ss, 0, sizeof ss );
-    ss.sun_family = AF_UNIX;
-    rc = MakeSocketPath(to->u.ipc_name, ss.sun_path, sizeof(ss.sun_path));
-    /* create the OS socket */
-    while (rc == 0)
+        rc = RC ( rcNS, rcStream, rcConstructing, rcParam, rcNull );
+    else
     {
-        int fd = socket ( AF_UNIX, SOCK_STREAM, 0 );
-        if ( fd != -1 )
+        if ( self == NULL )
+            rc = RC ( rcNS, rcStream, rcConstructing, rcSelf, rcNull );
+        else if ( to == NULL )
+            rc = RC ( rcNS, rcStream, rcConstructing, rcParam, rcNull );
+        else if ( from != NULL && from -> type != to -> type )
+            rc = RC ( rcNS, rcStream, rcConstructing, rcParam, rcIncorrect );
+        else
         {
-            if ( connect ( fd, (struct sockaddr *)&ss, sizeof(ss) ) == 0 )
-            {   /* create the KSocket */
-                KSocket *ksock = calloc ( sizeof *ksock, 1 );
-                if ( ksock == NULL )
-                    rc = RC ( rcNS, rcNoTarg, rcAllocating, rcNoObj, rcNull ); 
-                else
-                {   /* initialize the KSocket */
-                    rc = KStreamInit ( & ksock -> dad, ( const KStream_vt* ) & vtKSocket,
-                                       "KSocket", "tcp", true, true );
-                    if ( rc == 0 )
-                    {
-                        ksock -> fd = fd;
-                        *out = & ksock -> dad;
-                        return 0;
-                    }
-                    free(ksock);
-                }
-            }
+            KSocket *conn = calloc ( 1, sizeof * conn );
+            if ( conn == NULL )
+                rc = RC ( rcNS, rcStream, rcConstructing, rcMemory, rcExhausted );
             else
             {
-                rc = HandleErrno( __func__, __LINE__ );
-                close(fd);
-                
-                if ( retry_count < max_retries && 
-                    (GetRCState(rc) == rcCanceled || GetRCState(rc) == rcNotFound) )
-                {   
-                    sleep(1);
-                    ++retry_count;
-                    rc = 0;
-                    continue;
+                conn -> fd = -1;
+                conn -> read_timeout = readMillis;
+                conn -> write_timeout = writeMillis;
+
+                rc = KStreamInit ( & conn -> dad, ( const KStream_vt* ) & vtKSocket,
+                                   "KSocket", "", true, true );
+                if ( rc == 0 )
+                {
+                    switch ( to -> type )
+                    {
+                    case epIPV4:
+                        rc = KSocketConnectIPv4 ( conn, retryTimeout, from, to );
+                        break;
+                    case epIPC:
+                        rc = KSocketConnectIPC ( conn, retryTimeout, to );
+                        break;
+                    default:
+                        rc = RC ( rcNS, rcStream, rcConstructing, rcParam, rcIncorrect );
+                    }
+
+                    if ( rc == 0 )
+                    {
+                        * out = & conn -> dad;
+                        return 0;
+                    }
                 }
+
+                free ( conn );
             }
         }
-        else /* socket() failed */
-            rc = HandleErrno( __func__, __LINE__ );
-        break;
+
+        * out = NULL;
     }
+
     return rc;
 }
 
-LIB_EXPORT
-rc_t CC KNSManagerMakeListener( struct KNSManager const *self, struct KSocket** out, struct KEndPoint const * ep )
-{   
-    int fd;
+static
+rc_t KNSManagerMakeIPv4Listener ( KSocket *listener, const KEndPoint * ep )
+{
     rc_t rc;
 
-    if ( self == NULL )
-        return RC ( rcNS, rcStream, rcConstructing, rcSelf, rcNull );
+    listener -> fd = socket ( AF_INET, SOCK_STREAM, 0 );
+    if ( listener -> fd < 0 )
+        rc = HandleErrno ( __func__, __LINE__ );
+    else
+    {
+        struct sockaddr_in ss;
 
-    if ( out == NULL )
-        return RC ( rcNS, rcStream, rcConstructing, rcParam, rcNull );
+        int on = 1;
+        setsockopt ( listener -> fd, SOL_SOCKET, SO_REUSEADDR, ( char* ) & on, sizeof on );
 
-    * out = NULL;
+        memset ( & ss, 0, sizeof ss );
+        ss . sin_family = AF_INET;
+        ss . sin_addr . s_addr = htonl ( ep -> u . ipv4 . addr );
+        ss . sin_port = htons ( ep -> u . ipv4 . port );
 
-    if ( ep == NULL )
-        return RC ( rcNS, rcNoTarg, rcValidating, rcParam, rcNull);
+        if ( bind ( listener -> fd, ( struct sockaddr* ) & ss, sizeof ss ) == 0 )
+            return 0;
+        rc = HandleErrno ( __func__, __LINE__ );
 
-    if ( ep->type != epIPC )
-        return RC ( rcNS, rcNoTarg, rcValidating, rcParam, rcInvalid);
-        
-     /* create the OS socket */
-    fd = socket ( AF_UNIX, SOCK_STREAM, 0 );
-    if ( fd >= 0 )
+        close ( listener -> fd );
+        listener -> fd = -1;
+    }
+
+    return rc;
+}
+
+static
+rc_t KNSManagerMakeIPCListener ( KSocket *listener, const KEndPoint * ep )
+{
+    rc_t rc;
+
+    listener -> fd = socket ( AF_UNIX, SOCK_STREAM, 0 );
+    if ( listener -> fd < 0 )
+        rc = HandleErrno ( __func__, __LINE__ );
+    else
     {
         struct sockaddr_un ss;
         memset ( & ss, 0, sizeof ss );
         ss.sun_family = AF_UNIX;
-        rc = MakeSocketPath(ep->u.ipc_name, ss.sun_path, sizeof(ss.sun_path));
-        if (rc == 0)
+        rc = KSocketMakePath ( ep -> u. ipc_name, ss . sun_path, sizeof ss . sun_path );
+        if ( rc == 0 )
         {
-            unlink(ss.sun_path);
-            if ( bind( fd,(struct sockaddr *)&ss, sizeof(ss) ) == 0 )
-            {   /* create the KSocket */
-                KSocket *ksock = calloc ( sizeof *ksock, 1 );
-                if ( ksock == NULL )
-                    rc = RC ( rcNS, rcNoTarg, rcAllocating, rcMemory, rcExhausted ); 
-                else 
+            char * path = string_dup ( ss . sun_path, string_measure ( ss . sun_path, NULL ) );
+            if ( path == NULL )
+                rc = RC ( rcNS, rcSocket, rcConstructing, rcMemory, rcExhausted );
+            else
+            {
+                unlink ( ss . sun_path );
+                if ( bind ( listener -> fd, ( struct sockaddr* ) & ss, sizeof ss ) != 0 )
+                    rc = HandleErrno ( __func__, __LINE__ );
+                else
                 {
-                    char* path = string_dup(ss.sun_path, string_measure(ss.sun_path, NULL));
-                    if (path == NULL)
-                        rc = RC ( rcNS, rcNoTarg, rcAllocating, rcMemory, rcExhausted ); 
-                    else
-                    {   /* initialize the KSocket */
-                        rc = KStreamInit ( & ksock -> dad, ( const KStream_vt* ) & vtKSocket,
-                                           "KSocket", "tcp", true, true );
-                        if ( rc == 0 )
-                        {
-                            ksock -> fd = fd;
-                            ksock -> path = path;
-                            *out = ksock;
-                            return 0;
-                        }
-                        free(path);
-                    }
-                    free(ksock);
-                    return rc;
+                    listener -> path = path;
+                    return 0;
                 }
+
+                free ( path );
             }
-            else /* bind() failed */
-                rc = HandleErrno( __func__, __LINE__ );
         }
-        close(fd);
+
+        close ( listener -> fd );
+        listener -> fd = -1;
     }
-    else /* socket() failed */
-        rc = HandleErrno( __func__, __LINE__ );
-        
+
     return rc;
 }
 
-LIB_EXPORT 
-rc_t CC KSocketListen ( struct KSocket *listener, struct KStream **out )
-{
+LIB_EXPORT rc_t CC KNSManagerMakeListener ( const KNSManager *self,
+    KSocket ** out, const KEndPoint * ep )
+{   
     rc_t rc;
-    
-    if ( listener == NULL )
-        return RC ( rcNS, rcNoTarg, rcValidating, rcSelf, rcNull);
 
     if ( out == NULL )
-        return RC ( rcNS, rcStream, rcConstructing, rcParam, rcNull );
-
-    * out = NULL;
-
-    if ( listen(listener->fd, 5) == 0)
+        rc = RC ( rcNS, rcSocket, rcConstructing, rcParam, rcNull );
+    else
     {
-        struct sockaddr_un remote;
-        socklen_t t = sizeof(remote);
-        int fd = accept(listener->fd, (struct sockaddr *)&remote, &t);
-        
-        if ( fd != -1) 
+        if ( self == NULL )
+            rc = RC ( rcNS, rcSocket, rcConstructing, rcSelf, rcNull );
+        else if ( ep == NULL )
+            rc = RC ( rcNS, rcSocket, rcConstructing, rcParam, rcNull );
+        else
         {
-            KSocket *ksock = calloc ( sizeof *ksock, 1 );
-            if ( ksock == NULL )
-                rc = RC ( rcNS, rcNoTarg, rcAllocating, rcNoObj, rcNull ); 
+            KSocket *listener = calloc ( 1, sizeof * listener );
+            if ( listener == NULL )
+                rc = RC ( rcNS, rcSocket, rcConstructing, rcMemory, rcExhausted );
             else
             {
-                rc = KStreamInit ( & ksock -> dad, ( const KStream_vt* ) & vtKSocket,
-                                   "KSocket", "tcp", true, true );
+                listener -> fd = -1;
+
+                /* pass these along to accepted sockets */
+                listener -> read_timeout = self -> conn_read_timeout;
+                listener -> write_timeout = self -> conn_write_timeout;
+
+                rc = KStreamInit ( & listener -> dad, ( const KStream_vt* ) & vtKSocket,
+                                   "KSocket", "", true, true );
                 if ( rc == 0 )
                 {
-                    ksock -> fd = fd;
-                    *out = &ksock->dad;
-                    return 0;
+                    switch ( ep -> type )
+                    {
+                    case epIPV4:
+                        rc = KNSManagerMakeIPv4Listener ( listener, ep );
+                        break;
+                    case epIPC:
+                        rc = KNSManagerMakeIPCListener ( listener, ep );
+                        break;
+                    default:
+                        rc = RC ( rcNS, rcSocket, rcConstructing, rcParam, rcIncorrect );
+                    }
+
+                    if ( rc == 0 )
+                    {
+                        /* the classic 5 connection queue... ? */
+                        if ( listen ( listener -> fd, 5 ) == 0 )
+                        {
+                            * out = listener;
+                            return 0;
+                        }
+
+                        rc = HandleErrno ( __func__, __LINE__ );
+
+                        if ( listener -> path != NULL )
+                            free ( ( void* ) listener -> path );
+                    }
                 }
-                free(ksock);
+
+                free ( listener );
             }
-            close(fd);
         }
-        else /* accept() failed */
-            rc = HandleErrno( __func__, __LINE__ );
+
+        * out = NULL;
     }
-    else /* listen() failed */
-        rc = HandleErrno( __func__, __LINE__ );
+
     return rc;
-}   
-    
-    
-    
+}
+
+static
+rc_t KSocketAcceptIPv4 ( KSocket *self, KSocket *conn )
+{
+    struct sockaddr_in remote;
+    socklen_t len = sizeof remote;
+    conn -> fd = accept ( self -> fd, ( struct sockaddr* ) & remote, & len );
+    if ( conn -> fd < 0 )
+        return HandleErrno ( __func__, __LINE__ );
+    if ( len > sizeof remote )
+        return RC ( rcNS, rcConnection, rcWaiting, rcBuffer, rcInsufficient );
+    return 0;
+}
+
+static
+rc_t KSocketAcceptIPC ( KSocket *self, KSocket *conn )
+{
+    struct sockaddr_un remote;
+    socklen_t len = sizeof remote;
+    conn -> fd = accept ( self -> fd, ( struct sockaddr* ) & remote, & len );
+    if ( conn -> fd < 0 )
+        return HandleErrno ( __func__, __LINE__ );
+    if ( len > sizeof remote )
+        return RC ( rcNS, rcConnection, rcWaiting, rcBuffer, rcInsufficient );
+    return 0;
+}
+
+LIB_EXPORT rc_t CC KSocketAccept ( KSocket *self, struct KStream **out )
+{
+    rc_t rc;
+
+    if ( out == NULL )
+        rc = RC ( rcNS, rcConnection, rcWaiting, rcParam, rcNull );
+    else
+    {
+        if ( self == NULL )
+            rc = RC ( rcNS, rcConnection, rcWaiting, rcSelf, rcNull);
+        else
+        {
+            KSocket * conn = calloc ( 1, sizeof * conn );
+            if ( conn == NULL )
+                rc = RC ( rcNS, rcConnection, rcWaiting, rcMemory, rcExhausted );
+            else
+            {
+                conn -> fd = -1;
+                conn -> read_timeout = self -> read_timeout;
+                conn -> write_timeout = self -> write_timeout;
+
+                rc = KStreamInit ( & conn -> dad, ( const KStream_vt* ) & vtKSocket,
+                                   "KSocket", "", true, true );
+                if ( rc == 0 )
+                {
+                    switch ( self -> type )
+                    {
+                    case epIPV4:
+                        rc = KSocketAcceptIPv4 ( self, conn );
+                        break;
+                    case epIPC:
+                        rc = KSocketAcceptIPC ( self, conn );
+                        break;
+                    default:
+                        rc = RC ( rcNS, rcSocket, rcConstructing, rcSelf, rcCorrupt );
+                    }
+
+                    if ( rc == 0 )
+                    {
+                        * out = & conn -> dad;
+                        return 0;
+                    }
+
+                    free ( conn );
+                }
+            }
+        }
+
+        * out = NULL;
+    }
+
+    return rc;
+}

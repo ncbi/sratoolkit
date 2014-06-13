@@ -44,7 +44,8 @@ typedef enum FastqReaderOptions_enum {
     ePrintLabel  = 0x10,
     ePrintReadId = 0x20,
     eClipQual    = 0x40,
-    eUseQual     = 0x80
+    eUseQual     = 0x80,
+    eSuppressQualForCSKey   = 0x100     /* added Jan 15th 2014 ( a new fastq-variation! ) */
 } FastqReaderOptions;
 
 /* column order is important here: see Init function below!!! */
@@ -81,7 +82,7 @@ struct FastqReader {
 static
 rc_t FastqReaderInit(const FastqReader* self,
                      bool colorSpace, bool origFormat, bool fasta, bool printLabel, bool printReadId,
-                     bool noClip, uint32_t minReadLen, int offset, char csKey)
+                     bool noClip, bool SuppressQualForCSKey, uint32_t minReadLen, int offset, char csKey)
 {
     rc_t rc = 0;
     int options = colorSpace ? eColorSpace : eBaseSpace;
@@ -93,6 +94,8 @@ rc_t FastqReaderInit(const FastqReader* self,
     options |= printReadId ? ePrintReadId : 0;
     options |= noClip ? 0 : eClipQual;
     options |= fasta ? 0 : eUseQual;
+    options |= SuppressQualForCSKey ? eSuppressQualForCSKey : 0; /* added Jan 15th 2014 ( a new fastq-variation! ) */
+
     me->minReadLen = minReadLen;
     me->offset = offset > 0 ? offset : 33;
     me->csKey = csKey;
@@ -118,14 +121,14 @@ rc_t FastqReaderInit(const FastqReader* self,
 
 LIB_EXPORT rc_t CC FastqReaderMake(const FastqReader** self, const SRATable* table, const char* accession,
                                    bool colorSpace, bool origFormat, bool fasta, bool printLabel, bool printReadId,
-                                   bool noClip, uint32_t minReadLen, char offset, char csKey,
+                                   bool noClip, bool SuppressQualForCSKey, uint32_t minReadLen, char offset, char csKey,
                                    spotid_t minSpotId, spotid_t maxSpotId)
 {
     rc_t rc = SRAReaderMake((const SRAReader**)self, sizeof **self, table, accession, minSpotId, maxSpotId);
 
     if( rc == 0 ) {
         rc = FastqReaderInit(*self, colorSpace, origFormat, fasta,
-                             printLabel, printReadId, noClip, minReadLen, offset, csKey);
+                             printLabel, printReadId, noClip, SuppressQualForCSKey, minReadLen, offset, csKey);
     }
     if( rc != 0 ) {
         FastqReaderWhack(*self);
@@ -421,6 +424,7 @@ LIB_EXPORT rc_t CC FastqReaderQuality(const FastqReader* self, uint32_t readId, 
     rc_t rc = 0;
     INSDC_coord_zero read_start = 0;
     INSDC_coord_len read_len = 0;
+    bool print_quality_for_cskey = false; /* added Jan 15th 2014 ( a new fastq-variation! )*/
 
     CHECK_SELF(FastqReader);
     CHECK_SPOT(self->dad);
@@ -436,10 +440,13 @@ LIB_EXPORT rc_t CC FastqReaderQuality(const FastqReader* self, uint32_t readId, 
         return rc;
     }
 
+    /* added Jan 15th 2014 ( a new fastq-variation! )*/
+    print_quality_for_cskey = ( ( me->dad.options & eColorSpace )&&( ( me->dad.options & eSuppressQualForCSKey ) == 0 ) );
+
     if( read_len < self->minReadLen ) {
         read_len = 0;
     }
-    if( me->dad.options & eColorSpace ) {
+    if( print_quality_for_cskey ) { /* changed Jan 15th 2014 ( a new fastq-variation! ) */
         read_len++;
     }
     if( written != NULL ) {
@@ -452,7 +459,8 @@ LIB_EXPORT rc_t CC FastqReaderQuality(const FastqReader* self, uint32_t readId, 
         char* d = data;
         INSDC_coord_len i, j;
 
-        if( me->dad.options & eColorSpace ) {
+        if ( print_quality_for_cskey ) /* changed Jan 15th 2014 ( a new fastq-variation! ) */
+        {
             *d++ = me->offset;
             --read_len;
         }

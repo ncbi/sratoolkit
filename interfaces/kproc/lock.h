@@ -47,15 +47,26 @@ struct timeout_t;
 
 /*--------------------------------------------------------------------------
  * KLock
+ * KTimedLock
  *  a POSIX-style mutual exclusion lock
+ *
+ *  Mac/BSD doesn't supply proper support for timed pthread_mutex,
+ *  so we have to provide additional structure to support it.
+ *  in doing so, the timed version has become incompatible with
+ *  the KCondition interface.
+ *
+ *  For reasons given above, we are dividing KLock into two classes
+ *  to separate out support for timed acquire.
  */
 typedef struct KLock KLock;
+typedef struct KTimedLock KTimedLock;
 
 
 /* Make
  *  make a simple mutex
  */
 KPROC_EXTERN rc_t CC KLockMake ( KLock **lock );
+KPROC_EXTERN rc_t CC KTimedLockMake ( KTimedLock **lock );
 
 
 /* AddRef
@@ -63,18 +74,23 @@ KPROC_EXTERN rc_t CC KLockMake ( KLock **lock );
  */
 KPROC_EXTERN rc_t CC KLockAddRef ( const KLock *self );
 KPROC_EXTERN rc_t CC KLockRelease ( const KLock *self );
+KPROC_EXTERN rc_t CC KTimedLockAddRef ( const KTimedLock *self );
+KPROC_EXTERN rc_t CC KTimedLockRelease ( const KTimedLock *self );
 
 
 /* Acquire
  *  acquires lock
+ *
+ *  a NULL "tm" parameter should mean infinite
  */
 KPROC_EXTERN rc_t CC KLockAcquire ( KLock *self );
-KPROC_EXTERN rc_t CC KLockTimedAcquire ( KLock *self, struct timeout_t *tm );
+KPROC_EXTERN rc_t CC KTimedLockAcquire ( KTimedLock *self, struct timeout_t *tm );
 
 /* Unlock
  *  releases lock
  */
 KPROC_EXTERN rc_t CC KLockUnlock ( KLock *self );
+KPROC_EXTERN rc_t CC KTimedLockUnlock ( KTimedLock *self );
 
 
 /*--------------------------------------------------------------------------
@@ -99,6 +115,8 @@ KPROC_EXTERN rc_t CC KRWLockRelease ( const KRWLock *self );
 
 /* AcquireShared
  *  acquires read ( shared ) lock
+ *
+ *  a NULL "tm" parameter should mean infinite
  */
 KPROC_EXTERN rc_t CC KRWLockAcquireShared ( KRWLock *self );
 KPROC_EXTERN rc_t CC KRWLockTimedAcquireShared ( KRWLock *self, struct timeout_t *tm );
@@ -106,6 +124,8 @@ KPROC_EXTERN rc_t CC KRWLockTimedAcquireShared ( KRWLock *self, struct timeout_t
 
 /* AcquireExcl
  *  acquires write ( exclusive ) lock
+ *
+ *  a NULL "tm" parameter should mean infinite
  */
 KPROC_EXTERN rc_t CC KRWLockAcquireExcl ( KRWLock *self );
 KPROC_EXTERN rc_t CC KRWLockTimedAcquireExcl ( KRWLock *self, struct timeout_t *tm );

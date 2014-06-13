@@ -38,7 +38,6 @@
 #include <stdlib.h>
 #include <errno.h>
 
-
 /*--------------------------------------------------------------------------
  * pthread_mutex
  */
@@ -63,7 +62,10 @@ rc_t pthread_mutex_whack ( pthread_mutex_t *mutex )
 static
 rc_t pthread_mutex_acquire ( pthread_mutex_t *mutex )
 {
+/*    pthread_t t = pthread_self();
+    fprintf(stdout, "pthread_mutex_lock(%p), thread=%x\n", mutex, t);*/
     int status = pthread_mutex_lock ( mutex );
+/*fprintf(stdout, "pthread_mutex_lock, thread=%x, status = %d\n", t, status);*/
     switch ( status )
     {
     case 0:
@@ -79,9 +81,22 @@ rc_t pthread_mutex_acquire ( pthread_mutex_t *mutex )
 }
 
 static
+int pthread_mutex_tryacquire ( pthread_mutex_t *mutex )
+{
+/*    pthread_t t = pthread_self();
+fprintf(stdout, "pthread_mutex_trylock(%p), thread=%x\n", mutex, t);*/
+    int status = pthread_mutex_trylock ( mutex );
+/*fprintf(stdout, "pthread_mutex_trylock, thread=%x, status = %d\n", t, status);*/
+    return status;
+}
+
+static
 rc_t pthread_mutex_release ( pthread_mutex_t *mutex )
 {
+/*    pthread_t t = pthread_self();
+fprintf(stdout, "pthread_mutex_unlock(%p), thread=%x\n", mutex, t);*/
     int status = pthread_mutex_unlock ( mutex );
+/*fprintf(stdout, "pthread_mutex_unlock, thread=%x, status = %d\n", t, status);*/
     switch ( status )
     {
     case 0:
@@ -96,12 +111,34 @@ rc_t pthread_mutex_release ( pthread_mutex_t *mutex )
     return 0;
 }
 
-
 /*--------------------------------------------------------------------------
- * pthread_cond
+ * pthread_condition
  */
 static
-rc_t pthread_cond_whack ( pthread_cond_t *cond )
+rc_t pthread_condition_init ( pthread_cond_t *cond )
+ {
+    int status = pthread_cond_init ( cond, NULL );
+    switch ( status )
+    {
+    case 0:
+        break;
+    case EAGAIN:
+        return RC ( rcPS, rcCondition, rcConstructing, rcCondition, rcExhausted );
+    case ENOMEM:
+        return RC ( rcPS, rcCondition, rcConstructing, rcMemory, rcExhausted );
+    case EBUSY:
+        return RC ( rcPS, rcCondition, rcConstructing, rcCondition, rcBusy );
+    case EINVAL:
+        return RC ( rcPS, rcCondition, rcConstructing, rcCondition, rcInvalid );
+    default:
+        return RC ( rcPS, rcCondition, rcConstructing, rcNoObj, rcUnknown );
+    }
+
+    return 0;
+}
+
+static
+rc_t pthread_condition_whack ( pthread_cond_t *cond )
 {
     int status = pthread_cond_destroy ( cond );
     switch ( status )
@@ -119,9 +156,13 @@ rc_t pthread_cond_whack ( pthread_cond_t *cond )
 }
 
 static
-rc_t pthread_cond_ping ( pthread_cond_t *cond )
+rc_t pthread_condition_wait ( pthread_cond_t *cond, pthread_mutex_t *mutex )
 {
-    int status = pthread_cond_signal ( cond );
+/*    pthread_t t = pthread_self();
+fprintf(stdout, "pthread_cond_wait(%p, %p), thread=%x\n", cond, mutex, t);*/
+    int status = pthread_cond_wait( cond, mutex );
+/*fprintf(stdout, "pthread_cond_wait, thread=%x, status = %d\n", t, status);*/
+    
     switch ( status )
     {
     case 0:
@@ -132,6 +173,54 @@ rc_t pthread_cond_ping ( pthread_cond_t *cond )
     return 0;
 }
 
+static
+rc_t pthread_condition_timedwait ( pthread_cond_t *cond, pthread_mutex_t *mutex, struct timespec *ts )
+{
+    int status = pthread_cond_timedwait ( cond, mutex, ts );
+    switch ( status )
+    {
+    case 0:
+        break;
+    case ETIMEDOUT:
+        return RC ( rcPS, rcCondition, rcWaiting, rcTimeout, rcExhausted );
+    case EINTR:
+        return RC ( rcPS, rcCondition, rcWaiting, rcThread, rcInterrupted );
+    default:
+        return RC ( rcPS, rcCondition, rcWaiting, rcNoObj, rcUnknown );
+    }
+
+    return 0;
+}
+
+static
+rc_t pthread_condition_signal( pthread_cond_t *cond )
+{
+    int status = pthread_cond_signal ( cond );
+    switch ( status )
+    {
+    case 0:
+        break;
+    default:
+        return RC ( rcPS, rcCondition, rcSignaling, rcNoObj, rcUnknown );
+    }
+
+    return 0;
+}
+
+static
+rc_t pthread_condition_broadcast ( pthread_cond_t *cond )
+{
+    int status = pthread_cond_broadcast ( cond );
+    switch ( status )
+    {
+    case 0:
+        break;
+    default:
+        return RC ( rcPS, rcCondition, rcSignaling, rcNoObj, rcUnknown );
+    }
+
+    return 0;
+}
 
 /*--------------------------------------------------------------------------
  * KLock
@@ -143,13 +232,7 @@ rc_t pthread_cond_ping ( pthread_cond_t *cond )
 static
 rc_t KLockDestroy ( KLock *self )
 {
-    rc_t rc = pthread_mutex_whack ( & self -> mutex );
-    if ( rc == 0 )
-    {
-        pthread_mutex_whack ( & self -> cond_lock );
-        pthread_cond_whack ( & self -> cond );
-    }
-    return rc;
+    return pthread_mutex_whack ( & self -> mutex );
 }
 
 /* Whack
@@ -169,27 +252,11 @@ static
 rc_t KLockInit ( KLock *self )
 {
     int status = pthread_mutex_init ( & self -> mutex, NULL );
-    if ( status == 0 )
-    {
-        status = pthread_mutex_init ( & self -> cond_lock, NULL );
-        if ( status == 0 )
-        {
-            status = pthread_cond_init ( & self -> cond, NULL );
-            if ( status == 0 )
-            {
-                self -> waiters = 0;
-                atomic32_set ( & self -> refcount, 1 );
-                return 0;
-            }
-
-            pthread_mutex_destroy ( & self -> cond_lock );
-        }
-
-        pthread_mutex_destroy ( & self -> mutex );
-    }
-
     switch ( status )
     {
+    case 0:
+        atomic32_set ( & self -> refcount, 1 );
+        return 0;
     case EAGAIN:
         return RC ( rcPS, rcLock, rcConstructing, rcResources, rcInsufficient );
     case ENOMEM:
@@ -261,82 +328,14 @@ LIB_EXPORT rc_t CC KLockRelease ( const KLock *cself )
  */
 LIB_EXPORT rc_t CC KLockAcquire ( KLock *self )
 {
-    if ( self == NULL )
-        return RC ( rcPS, rcLock, rcLocking, rcSelf, rcNull );
-
-    return pthread_mutex_acquire ( & self -> mutex );
-}
-
-LIB_EXPORT rc_t CC KLockTimedAcquire ( KLock *self, timeout_t *tm )
-{
     rc_t rc;
-    int status;
 
     if ( self == NULL )
-        return RC ( rcPS, rcLock, rcLocking, rcSelf, rcNull );
-
-    status = pthread_mutex_trylock ( & self -> mutex );
-    switch ( status )
+        rc = RC ( rcPS, rcLock, rcLocking, rcSelf, rcNull );
+    else
     {
-    case 0:
-        return 0;
-    case EBUSY:
-        if ( tm != NULL )
-            break;
-        return RC ( rcPS, rcLock, rcLocking, rcLock, rcBusy );
-    case EINVAL:
-        return RC ( rcPS, rcLock, rcLocking, rcLock, rcInvalid );
-    default:
-        return RC ( rcPS, rcLock, rcLocking, rcNoObj, rcUnknown );
+        rc = pthread_mutex_acquire ( & self -> mutex );
     }
-
-    if ( ! tm -> prepared )
-        TimeoutPrepare ( tm );
-
-    rc = pthread_mutex_acquire ( & self -> cond_lock );
-    if ( rc != 0 )
-        return rc;
-
-    ++ self -> waiters;
-
-    while ( 1 )
-    {
-        status = pthread_cond_timedwait ( & self -> cond, & self -> cond_lock, & tm -> ts );
-        if ( status != 0 )
-        {
-            switch ( status )
-            {
-            case ETIMEDOUT:
-                rc = RC ( rcPS, rcLock, rcLocking, rcTimeout, rcExhausted );
-                break;
-            case EINTR:
-                rc = RC ( rcPS, rcLock, rcLocking, rcThread, rcInterrupted );
-                break;
-            default:
-                rc = RC ( rcPS, rcLock, rcLocking, rcNoObj, rcUnknown );
-            }
-            break;
-        }
-
-        status = pthread_mutex_trylock ( & self -> mutex );
-        if ( status != EBUSY )
-        {
-            switch ( status )
-            {
-            case 0:
-                break;
-            case EINVAL:
-                rc = RC ( rcPS, rcLock, rcLocking, rcLock, rcInvalid );
-                break;
-            default:
-                rc = RC ( rcPS, rcLock, rcLocking, rcNoObj, rcUnknown );
-            }
-            break;
-        }
-    }
-
-    -- self -> waiters;
-    pthread_mutex_release ( & self -> cond_lock );
 
     return rc;
 }
@@ -350,22 +349,221 @@ LIB_EXPORT rc_t CC KLockUnlock ( KLock *self )
 
     if ( self == NULL )
         return RC ( rcPS, rcLock, rcUnlocking, rcSelf, rcNull );
-
+        
     /* release the guy */
     rc = pthread_mutex_release ( & self -> mutex );
-    if ( rc != 0 )
-        return rc;
 
-    /* check for and signal any waiters */
+    return rc;
+}
+
+/*--------------------------------------------------------------------------
+ * KTimedLock
+ *  a POSIX-style mutual exclusion lock with support for timed acquire
+ */
+
+/* Destroy
+ */
+static
+rc_t KTimedLockDestroy ( KTimedLock *self )
+{
+    rc_t rc = pthread_mutex_whack ( & self -> mutex );
+    if ( rc == 0 )
+    {
+        pthread_mutex_whack ( & self -> cond_lock );
+        pthread_condition_whack ( & self -> cond );
+    }
+    return rc;
+}
+
+/* Whack
+ */
+static
+rc_t KTimedLockWhack ( KTimedLock *self )
+{
+    rc_t rc = KTimedLockDestroy ( self );
+    if ( rc == 0 )
+        free ( self );
+    return rc;
+}
+
+/* Init
+ */
+static
+rc_t KTimedLockInit ( KTimedLock *self )
+{
+    int status = pthread_mutex_init ( & self -> mutex, NULL );
+    if ( status == 0 )
+    {
+        status = pthread_mutex_init ( & self -> cond_lock, NULL );
+        if ( status == 0 )
+        {
+            status = pthread_cond_init ( & self -> cond, NULL );
+            if ( status == 0 )
+            {
+                self -> waiters = 0;
+                atomic32_set ( & self -> refcount, 1 );
+                return 0;
+            }
+
+            pthread_mutex_destroy ( & self -> cond_lock );
+        }
+
+        pthread_mutex_destroy ( & self -> mutex );
+    }
+
+    switch ( status )
+    {
+    case EAGAIN:
+        return RC ( rcPS, rcLock, rcConstructing, rcResources, rcInsufficient );
+    case ENOMEM:
+        return RC ( rcPS, rcLock, rcConstructing, rcMemory, rcInsufficient );
+    }
+
+    return RC ( rcPS, rcLock, rcConstructing, rcNoObj, rcUnknown );
+ }
+
+
+/* Make
+ *  make a simple mutex
+ */
+LIB_EXPORT rc_t CC KTimedLockMake ( KTimedLock **lockp )
+{
+    rc_t rc;
+    if ( lockp == NULL )
+        rc = RC ( rcPS, rcLock, rcConstructing, rcParam, rcNull );
+    else
+    {
+        KTimedLock *lock = malloc ( sizeof * lock );
+        if ( lock == NULL )
+            rc = RC ( rcPS, rcLock, rcConstructing, rcMemory, rcExhausted );
+        else
+        {
+            rc = KTimedLockInit ( lock );
+            if ( rc == 0 )
+            {
+                * lockp = lock;
+                return 0;
+            }
+
+            free ( lock );
+        }
+
+        * lockp = NULL;
+    }
+    return rc;
+}
+
+
+/* AddRef
+ * Release
+ */
+LIB_EXPORT rc_t CC KTimedLockAddRef ( const KTimedLock *cself )
+{
+    if ( cself != NULL )
+        atomic32_inc ( & ( ( KTimedLock* ) cself ) -> refcount );
+    return 0;
+}
+
+LIB_EXPORT rc_t CC KTimedLockRelease ( const KTimedLock *cself )
+{
+    KTimedLock *self = ( KTimedLock* ) cself;
+    if ( cself != NULL )
+    {
+        if ( atomic32_dec_and_test ( & self -> refcount ) )
+        {
+            atomic32_set ( & self -> refcount, 1 );
+            return KTimedLockWhack ( self );
+        }
+    }
+    return 0;
+}
+
+
+/* Acquire
+ *  acquires lock
+ */
+LIB_EXPORT rc_t CC KTimedLockAcquire ( KTimedLock *self, timeout_t *tm )
+{
+    rc_t rc;
+
+    if ( self == NULL )
+        return RC ( rcPS, rcLock, rcLocking, rcSelf, rcNull );
+
+    if ( tm == NULL )
+        return pthread_mutex_acquire ( & self -> mutex );
+
+    /* this is ugly, but don't want to prepare inside lock */
+    if ( ! tm -> prepared )
+        TimeoutPrepare ( tm );
+
     rc = pthread_mutex_acquire ( & self -> cond_lock );
     if ( rc == 0 )
     {
+        int status = pthread_mutex_tryacquire ( & self -> mutex );
+        if ( status == EBUSY )
+        {
+            while ( 1 )
+            {
+                ++ self -> waiters;
+                status = pthread_cond_timedwait ( & self -> cond, & self -> cond_lock, & tm -> ts );
+                -- self -> waiters;
+
+                if ( status == EINTR )
+                    continue;
+                if ( status != 0 )
+                    break;
+                status = pthread_mutex_tryacquire ( & self -> mutex );
+                if ( status != EBUSY )
+                    break;
+            }
+        }
+
+        pthread_mutex_release ( & self -> cond_lock );
+
+        switch ( status )
+        {
+        case 0:
+            break;
+        case ETIMEDOUT:
+            rc = RC ( rcPS, rcLock, rcLocking, rcTimeout, rcExhausted );
+            break;
+        case EBUSY:
+            rc = RC ( rcPS, rcLock, rcLocking, rcLock, rcBusy );
+            break;
+        case EINVAL:
+            rc = RC ( rcPS, rcLock, rcLocking, rcLock, rcInvalid );
+            break;
+        default:
+            rc = RC ( rcPS, rcLock, rcLocking, rcNoObj, rcUnknown );
+        }
+    }
+
+    return rc;
+}
+
+/* Unlock
+ *  releases lock
+ */
+LIB_EXPORT rc_t CC KTimedLockUnlock ( KTimedLock *self )
+{
+    rc_t rc;
+
+    if ( self == NULL )
+        return RC ( rcPS, rcLock, rcUnlocking, rcSelf, rcNull );
+
+    rc = pthread_mutex_acquire ( & self -> cond_lock );
+    if ( rc == 0 )
+    {
+        /* release the guy */
+        rc = pthread_mutex_release ( & self -> mutex );
+
         if ( self -> waiters != 0 )
-            pthread_cond_ping ( & self -> cond );
+            pthread_condition_signal ( & self -> cond );
+
         pthread_mutex_release ( & self -> cond_lock );
     }
 
-    return 0;
+    return rc;
 }
 
 
@@ -376,12 +574,17 @@ LIB_EXPORT rc_t CC KLockUnlock ( KLock *self )
 struct KRWLock
 {
     KLock lock;
-    KCondition rcond;
-    KCondition wcond;
+    pthread_cond_t rcond;
+    pthread_cond_t wcond;
     uint32_t rwait;
     uint32_t wwait;
     int32_t count;
     atomic32_t refcount;
+    
+    /* used in KRWLockTimedAcquire */
+    pthread_mutex_t timed_lock;
+    pthread_cond_t  timed_cond;
+    uint32_t        timed_waiters;
 };
 
 
@@ -391,15 +594,18 @@ static
 rc_t KRWLockWhack ( KRWLock *self )
 {
     rc_t rc;
-
     if ( self -> count || self -> rwait || self -> wwait )
         return RC ( rcPS, rcRWLock, rcDestroying, rcRWLock, rcBusy );
 
     rc = KLockDestroy ( & self -> lock );
     if ( rc == 0 )
     {
-        KConditionDestroy ( & self -> rcond );
-        KConditionDestroy ( & self -> wcond );
+        pthread_cond_destroy ( & self -> rcond );
+        pthread_cond_destroy ( & self -> wcond );
+       
+        pthread_cond_destroy ( & self -> timed_cond );
+        pthread_mutex_whack ( & self -> timed_lock );
+        
         free ( self );
     }
 
@@ -426,20 +632,32 @@ LIB_EXPORT rc_t CC KRWLockMake ( KRWLock **lockp )
             rc = KLockInit ( & lock -> lock );
             if ( rc == 0 )
             {
-                rc = KConditionInit ( & lock -> rcond );
+                rc = pthread_condition_init ( & lock -> rcond );
                 if ( rc == 0 )
                 {
-                    rc = KConditionInit ( & lock -> wcond );
+                    rc = pthread_condition_init ( & lock -> wcond );
                     if ( rc == 0 )
                     {
-                        lock -> rwait = lock -> wwait = 0;
-                        lock -> count = 0;
-                        atomic32_set ( & lock -> refcount, 1 );
-                        * lockp = lock;
-                        return 0;
+                        rc = pthread_condition_init ( & lock -> timed_cond );
+                        if ( rc == 0 )
+                        {
+                            int status = pthread_mutex_init ( & lock -> timed_lock, NULL );
+                            if ( status == 0 )
+                            {
+                            
+                                lock -> rwait = lock -> wwait = 0;
+                                lock -> count = 0;
+                                atomic32_set ( & lock -> refcount, 1 );
+                                lock -> timed_waiters = 0;
+                                * lockp = lock;
+                                return 0;
+                            }
+                            pthread_cond_destroy ( & lock -> timed_cond );
+                        }
+                        pthread_cond_destroy ( & lock -> wcond );
                     }
 
-                    KConditionDestroy ( & lock -> rcond );
+                    pthread_cond_destroy ( & lock -> rcond );
                 }
 
                 KLockDestroy ( & lock -> lock );
@@ -453,7 +671,6 @@ LIB_EXPORT rc_t CC KRWLockMake ( KRWLock **lockp )
 
     return rc;
 }
-
 
 /* AddRef
  * Release
@@ -496,16 +713,78 @@ LIB_EXPORT rc_t CC KRWLockAcquireShared ( KRWLock *self )
         ++ self -> rwait;
         while ( self -> count < 0 || self -> wwait != 0 )
         {
-            rc = KConditionWait ( & self -> rcond, & self -> lock );
+            rc = pthread_condition_wait ( & self -> rcond, & self -> lock . mutex );
             if ( rc != 0 )
                 break;
         }
         -- self -> rwait;
 
         if ( rc == 0 )
+        {
             ++ self -> count;
+        }
 
         KLockUnlock ( & self -> lock );
+    }
+
+    return rc;
+}
+
+static
+rc_t KRWLockTimedAcquire( KRWLock *self, timeout_t *tm )
+{
+    rc_t rc;
+
+    if ( self == NULL )
+        return RC ( rcPS, rcLock, rcLocking, rcSelf, rcNull );
+
+    if ( tm == NULL )
+        return pthread_mutex_acquire ( & self -> lock . mutex );
+
+    /* this is ugly, but don't want to prepare inside lock */
+    if ( ! tm -> prepared )
+        TimeoutPrepare ( tm );
+
+    rc = pthread_mutex_acquire ( & self -> timed_lock );
+    if ( rc == 0 )
+    {
+        int status = pthread_mutex_tryacquire ( & self -> lock . mutex );
+        if ( status == EBUSY )
+        {
+            while ( 1 )
+            {
+                ++ self -> timed_waiters;
+                status = pthread_cond_timedwait ( & self -> timed_cond, & self -> timed_lock, & tm -> ts );
+                -- self -> timed_waiters;
+
+                if ( status == EINTR )
+                    continue;
+                if ( status != 0 )
+                    break;
+                status = pthread_mutex_tryacquire ( & self -> lock . mutex );
+                if ( status != EBUSY )
+                    break;
+            }
+        }
+
+        pthread_mutex_release ( & self -> timed_lock );
+
+        switch ( status )
+        {
+        case 0:
+            break;
+        case ETIMEDOUT:
+            rc = RC ( rcPS, rcLock, rcLocking, rcTimeout, rcExhausted );
+            break;
+        case EBUSY:
+            rc = RC ( rcPS, rcLock, rcLocking, rcLock, rcBusy );
+            break;
+        case EINVAL:
+            rc = RC ( rcPS, rcLock, rcLocking, rcLock, rcInvalid );
+            break;
+        default:
+            rc = RC ( rcPS, rcLock, rcLocking, rcNoObj, rcUnknown );
+        }
     }
 
     return rc;
@@ -518,27 +797,32 @@ LIB_EXPORT rc_t CC KRWLockTimedAcquireShared ( KRWLock *self, timeout_t *tm )
     if ( self == NULL )
         return RC ( rcPS, rcRWLock, rcLocking, rcSelf, rcNull );
 
-    rc = KLockTimedAcquire ( & self -> lock, tm );
+    rc = KRWLockTimedAcquire ( self, tm );
     if ( rc == 0 )
     {
         ++ self -> rwait;
         while ( self -> count < 0 || self -> wwait != 0 )
         {
-            rc = KConditionTimedWait ( & self -> rcond, & self -> lock, tm );
+            rc = pthread_condition_timedwait ( & self -> rcond, & self -> lock .  mutex, & tm -> ts );
             if ( rc != 0 )
+            {
+                if ( GetRCState ( rc ) == rcExhausted && GetRCObject ( rc ) == rcTimeout )
+                    rc = ResetRCContext ( rc, rcPS, rcRWLock, rcLocking );
                 break;
+            }
         }
         -- self -> rwait;
 
         if ( rc == 0 )
+        {
             ++ self -> count;
+        }
 
         KLockUnlock ( & self -> lock );
     }
 
     return rc;
 }
-
 
 /* AcquireExcl
  *  acquires write ( exclusive ) lock
@@ -556,14 +840,16 @@ LIB_EXPORT rc_t CC KRWLockAcquireExcl ( KRWLock *self )
         ++ self -> wwait;
         while ( self -> count != 0 )
         {
-            rc = KConditionWait ( & self -> wcond, & self -> lock );
+            rc = pthread_condition_wait ( & self -> wcond, & self -> lock . mutex );
             if ( rc != 0 )
                 break;
         }
         -- self -> wwait;
 
         if ( rc == 0 )
+        {
             self -> count = -1;
+        }
 
         KLockUnlock ( & self -> lock );
     }
@@ -578,27 +864,32 @@ LIB_EXPORT rc_t CC KRWLockTimedAcquireExcl ( KRWLock *self, timeout_t *tm )
     if ( self == NULL )
         return RC ( rcPS, rcRWLock, rcLocking, rcSelf, rcNull );
 
-    rc = KLockTimedAcquire ( & self -> lock, tm );
+    rc = KRWLockTimedAcquire ( self, tm );
     if ( rc == 0 )
     {
         ++ self -> wwait;
         while ( self -> count != 0 )
         {
-            rc = KConditionTimedWait ( & self -> wcond, & self -> lock, tm );
+            rc = pthread_condition_timedwait ( & self -> wcond, & self -> lock . mutex, & tm -> ts );
             if ( rc != 0 )
+            {
+                if ( GetRCState ( rc ) == rcExhausted && GetRCObject ( rc ) == rcTimeout )
+                    rc = ResetRCContext ( rc, rcPS, rcRWLock, rcLocking );
                 break;
+            }
         }
         -- self -> wwait;
 
         if ( rc == 0 )
+        {
             self -> count = -1;
+        }
 
         KLockUnlock ( & self -> lock );
     }
 
     return rc;
 }
-
 
 /* Unlock
  *  releases lock
@@ -624,14 +915,14 @@ LIB_EXPORT rc_t CC KRWLockUnlock ( KRWLock *self )
         {
             /* don't bother unless the lock is free */
             if ( self -> count == 0 )
-                KConditionSignal ( & self -> wcond );
+                pthread_condition_signal ( & self -> wcond );
         }
 
         /* if there are readers waiting */
         else if ( self -> rwait != 0 )
         {
             /* any number of readers can come through now */
-            KConditionBroadcast ( & self -> rcond );
+            pthread_condition_broadcast ( & self -> rcond );
         }
 
         KLockUnlock ( & self -> lock );

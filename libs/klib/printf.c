@@ -2214,7 +2214,7 @@ static
 rc_t flush_buffer ( KBufferedWrtHandler *out )
 {
     const KWrtHandler *flush = out -> handler;
-    if ( out -> handler != NULL )
+    if ( flush != NULL  && flush -> writer != NULL )
     {
         rc_t rc = 0;
         size_t num_writ, flushed;

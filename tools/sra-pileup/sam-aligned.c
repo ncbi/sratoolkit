@@ -1345,7 +1345,7 @@ static rc_t print_alignment_sam_ps( const samdump_opts * const opts, const char 
                                     const PlacementRecord * const rec, const align_table_context * const atx,
                                     uint64_t * const rows_so_far )
 {
-    uint32_t sam_flags = 0, seq_spot_id_len, mate_ref_pos_len = 0, mate_ref_name_len = string_size( ref_name );
+    uint32_t sam_flags = 0, NM_adjustments = 0, seq_spot_id_len, mate_ref_pos_len = 0, mate_ref_name_len = string_size( ref_name );
     INSDC_coord_zero mate_ref_pos = 0;
     INSDC_coord_len tlen = 0;
     int64_t mate_align_id = 0, id = rec->id;
@@ -1539,7 +1539,7 @@ static rc_t print_alignment_sam_ps( const samdump_opts * const opts, const char 
                     if ( temp_cigar != NULL )
                     {
                         memcpy( temp_cigar, cgc_output.p_cigar.ptr, cgc_output.p_cigar.len );
-                        rc = change_rna_splicing_cigar( cgc_output.p_cigar.len, temp_cigar, &candidates ); /* cg_tools.c */
+                        rc = change_rna_splicing_cigar( cgc_output.p_cigar.len, temp_cigar, &candidates, &NM_adjustments ); /* cg_tools.c */
                         if ( rc == 0 )
                             cgc_output.p_cigar.ptr = temp_cigar;
                     }
@@ -1632,7 +1632,7 @@ static rc_t print_alignment_sam_ps( const samdump_opts * const opts, const char 
 
     /* OPT SAM-FIELD: NM     SRA-column: EDIT_DISTANCE */
     if ( rc == 0 )
-        rc = KOutMsg( "\tNM:i:%u", cgc_output.edit_dist );
+        rc = KOutMsg( "\tNM:i:%u", ( cgc_output.edit_dist - NM_adjustments ) );
 
     /* OPT SAM-FIELD: XS:A:+/-  SRA-column: RNA-SPLICING detected via computation */
     if ( rc == 0 && opts->rna_splicing && ( candidates.fwd_matched > 0 || candidates.rev_matched > 0 ) )

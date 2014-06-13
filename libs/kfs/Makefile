@@ -28,7 +28,8 @@ TOP ?= $(shell ../../build/abspath.sh ../..)
 MODULE = libs/kfs
 
 INT_LIBS = \
-	libkfs
+	libkfs \
+	libkfs-nommap
 
 ALL_LIBS = \
 	$(INT_LIBS)
@@ -60,6 +61,14 @@ $(TARGDIR)/std: \
 clean: stdclean
 
 .PHONY: clean
+
+#-------------------------------------------------------------------------------
+# mmap.c
+#  special rule to generate a disabled mmap
+#
+%.nommap.$(LOBX): %.c
+	$(CC) -o $@ -fPIC $(OPT) -DFORCE_MALLOC_MMAP -D_LIBRARY $<
+
 
 #-------------------------------------------------------------------------------
 # kfs
@@ -104,15 +113,26 @@ KFS_CMN = \
 	report \
 	lockfile \
 	syslockfile \
-	cacheteefile
+	cacheteefile \
+	from_to_namelist \
 
 KFS_SRC = \
 	mmap \
 	$(KFS_CMN)
 
+ifeq (win,$(OS))
+	KFS_SRC += directory-path
+endif
+
+KFS_NOMMAP_SRC = \
+	mmap.nommap \
+	$(KFS_CMN)
 
 KFS_OBJ = \
 	$(addsuffix .$(LOBX),$(KFS_SRC))
+
+KFS_NOMMAP_OBJ = \
+	$(addsuffix .$(LOBX),$(KFS_NOMMAP_SRC))
 
 KFS_LIB = \
 	-dkproc \
@@ -122,6 +142,9 @@ KFS_LIB = \
 	-dbz2
 
 $(ILIBDIR)/libkfs.$(LIBX): $(KFS_OBJ)
+	$(LD) --slib -o $@ $^ $(KFS_LIB)
+
+$(ILIBDIR)/libkfs-nommap.$(LIBX): $(KFS_NOMMAP_OBJ)
 	$(LD) --slib -o $@ $^ $(KFS_LIB)
 
 

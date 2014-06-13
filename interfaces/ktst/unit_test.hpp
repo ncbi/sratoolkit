@@ -208,10 +208,12 @@ private:
 DECLARE_EXTERN_C_ENTRYPOINTS \
 typedef F AUTO_TEST_CASE_FIXTURE; \
 int suite_name(int argc, char* argv[]) { \
-    ncbi::NK::TestEnv args(argc, argv); \
-    if (args.catch_system_errors) { \
-        args.set_handlers(); \
-    } \
+    try { \
+        ncbi::NK::TestEnv args(argc, argv); \
+        if (args.catch_system_errors) { \
+            args.set_handlers(); \
+        } \
+    } catch (...) { return 1; } \
     ncbi::NK::counter_t ec = ncbi::NK::Main<AUTO_TEST_CASE_FIXTURE>(argc, argv, #suite_name); \
     return ec == 0 ? 0 : -ec; /* positive rc represents the signal that killed the process */ \
 } 
@@ -222,10 +224,12 @@ int suite_name(int argc, char* argv[]) { \
 DECLARE_EXTERN_C_ENTRYPOINTS \
 typedef F AUTO_TEST_CASE_FIXTURE; \
 int suite_name(int argc, char* argv[]) { \
-    ncbi::NK::TestEnv args(argc, argv, Handler); \
-    if (args.catch_system_errors) { \
-        args.set_handlers(); \
-    } \
+    try { \
+        ncbi::NK::TestEnv args(argc, argv, Handler); \
+        if (args.catch_system_errors) { \
+            args.set_handlers(); \
+        } \
+    } catch (...) { return 1; } \
     ncbi::NK::counter_t ec = ncbi::NK::Main<AUTO_TEST_CASE_FIXTURE>(argc, argv, #suite_name); \
     return ec == 0 ? 0 : -ec; /* positive rc represents the signal that killed the process */ \
 }
@@ -234,10 +238,12 @@ int suite_name(int argc, char* argv[]) { \
 #define FIXTURE_TEST_SUITE_WITH_USAGE( suite_name, F ) \
 typedef F AUTO_TEST_CASE_FIXTURE; \
 int suite_name(int argc, char* argv[]) { \
-    ncbi::NK::TestEnv args(argc, argv); \
-    if (args.catch_system_errors) { \
-        args.set_handlers(); \
-    } \
+    try { \
+        ncbi::NK::TestEnv args(argc, argv); \
+        if (args.catch_system_errors) { \
+            args.set_handlers(); \
+        } \
+    } catch (...) { return 1; } \
     ncbi::NK::counter_t ec = ncbi::NK::Main<AUTO_TEST_CASE_FIXTURE>(argc, argv, #suite_name); \
     return ec == 0 ? 0 : -ec; /* positive rc represents the signal that killed the process */ \
 } 

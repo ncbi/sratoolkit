@@ -167,7 +167,7 @@ typedef struct context_t {
 static char const *Print_ctx_value_t(ctx_value_t const *const self)
 {
     static char buffer[4096];
-    rc_t rc = string_printf(buffer, sizeof(buffer), NULL, "pid: { %lu, %lu }, sid: %lu, fid: %u, alc: { %u, %u }, flg: %x", CTX_VALUE_GET_P_ID(*self, 0), CTX_VALUE_GET_P_ID(*self, 1), CTX_VALUE_GET_S_ID(*self), self->fragmentId, self->alignmentCount[0], self->alignmentCount[1], self->alignmentCount[2]);
+    rc_t rc = string_printf(buffer, sizeof(buffer), NULL, "pid: { %lu, %lu }, sid: %lu, fid: %u, alc: { %u, %u }, flg: %x", CTX_VALUE_GET_P_ID(*self, 0), CTX_VALUE_GET_P_ID(*self, 1), CTX_VALUE_GET_S_ID(*self), self->fragmentId, self->alignmentCount[0], self->alignmentCount[1], *(self->alignmentCount + sizeof(self->alignmentCount)/sizeof(self->alignmentCount[0])));
 
     if (rc)
         return 0;
@@ -1108,6 +1108,7 @@ static rc_t ProcessBAM(char const bamFile[], context_t *ctx, VDatabase *db,
             AlignmentRecordInit(&data, buf.base, readlen | csSeqLen, &seqDNA);
             qual = (uint8_t *)&seqDNA[readlen | csSeqLen];
         }
+        BAMAlignmentGetReadName2(rec, &name, &namelen);/*BAM*/
         BAMAlignmentGetSequence(rec, seqDNA);/*BAM*/
         if (G.useQUAL) {
             uint8_t const *squal;
@@ -1844,7 +1845,6 @@ static rc_t SequenceUpdateAlignInfo(context_t *ctx, Sequence *seq)
         }
         {{
             int64_t primaryId[2];
-            uint64_t const spotId = CTX_VALUE_GET_S_ID(*value);
             
             primaryId[0] = CTX_VALUE_GET_P_ID(*value, 0);
             primaryId[1] = CTX_VALUE_GET_P_ID(*value, 1);
@@ -2052,63 +2052,68 @@ rc_t run(char const progName[],
     }
     else {
         bool has_alignments = false;
-            
-        if (G.onlyVerifyReferences) {
-            rc = ArchiveBAM(mgr, NULL, bamFiles, bamFile, 0, NULL, &has_alignments);
-        }
-        else {
-            VSchema *schema;
         
-            rc = VDBManagerMakeSchema(mgr, &schema);
-            if (rc) {
-                (void)LOGERR (klogErr, rc, "failed to create schema");
+        rc = VDBManagerDisablePagemapThread(mgr);
+        if (rc == 0)
+        {
+                
+            if (G.onlyVerifyReferences) {
+                rc = ArchiveBAM(mgr, NULL, bamFiles, bamFile, 0, NULL, &has_alignments);
             }
             else {
-                (void)(rc = VSchemaAddIncludePath(schema, G.schemaIncludePath));
-                rc = VSchemaParseFile(schema, G.schemaPath);
+                VSchema *schema;
+            
+                rc = VDBManagerMakeSchema(mgr, &schema);
                 if (rc) {
-                    (void)PLOGERR(klogErr, (klogErr, rc, "failed to parse schema file $(file)", "file=%s", G.schemaPath));
+                    (void)LOGERR (klogErr, rc, "failed to create schema");
                 }
                 else {
-                    VDatabase *db;
-                    
-                    rc = VDBManagerCreateDB(mgr, &db, schema, db_type,
-                                            kcmInit + kcmMD5, G.outpath);
-                    rc2 = VSchemaRelease(schema);
-                    if (rc2)
-                        (void)LOGERR(klogWarn, rc2, "Failed to release schema");
-                    if (rc == 0)
-                        rc = rc2;
-                    if (rc == 0) {
-                        rc = ArchiveBAM(mgr, db, bamFiles, bamFile, seqFiles, seqFile, &has_alignments);
-                        if (rc == 0 && !has_alignments) {
-                            rc = ConvertDatabaseToUnmapped(db);
-                        }
+                    (void)(rc = VSchemaAddIncludePath(schema, G.schemaIncludePath));
+                    rc = VSchemaParseFile(schema, G.schemaPath);
+                    if (rc) {
+                        (void)PLOGERR(klogErr, (klogErr, rc, "failed to parse schema file $(file)", "file=%s", G.schemaPath));
+                    }
+                    else {
+                        VDatabase *db;
                         
-                        rc2 = VDatabaseRelease(db);
+                        rc = VDBManagerCreateDB(mgr, &db, schema, db_type,
+                                                kcmInit + kcmMD5, G.outpath);
+                        rc2 = VSchemaRelease(schema);
                         if (rc2)
-                            (void)LOGERR(klogWarn, rc2, "Failed to close database");
+                            (void)LOGERR(klogWarn, rc2, "Failed to release schema");
                         if (rc == 0)
                             rc = rc2;
-                        
                         if (rc == 0) {
-                            KMetadata *meta;
-                            KDBManager *kmgr;
-                            
-                            rc = VDBManagerOpenKDBManagerUpdate(mgr, &kmgr);
-                            if (rc == 0) {
-                                KDatabase *kdb;
-                                
-                                rc = KDBManagerOpenDBUpdate(kmgr, &kdb, G.outpath);
-                                if (rc == 0) {
-                                    rc = KDatabaseOpenMetadataUpdate(kdb, &meta);
-                                    KDatabaseRelease(kdb);
-                                }
-                                KDBManagerRelease(kmgr);
+                            rc = ArchiveBAM(mgr, db, bamFiles, bamFile, seqFiles, seqFile, &has_alignments);
+                            if (rc == 0 && !has_alignments) {
+                                rc = ConvertDatabaseToUnmapped(db);
                             }
+                            
+                            rc2 = VDatabaseRelease(db);
+                            if (rc2)
+                                (void)LOGERR(klogWarn, rc2, "Failed to close database");
+                            if (rc == 0)
+                                rc = rc2;
+                            
                             if (rc == 0) {
-                                rc = WriteLoaderSignature(meta, progName);
-                                KMetadataRelease(meta);
+                                KMetadata *meta;
+                                KDBManager *kmgr;
+                                
+                                rc = VDBManagerOpenKDBManagerUpdate(mgr, &kmgr);
+                                if (rc == 0) {
+                                    KDatabase *kdb;
+                                    
+                                    rc = KDBManagerOpenDBUpdate(kmgr, &kdb, G.outpath);
+                                    if (rc == 0) {
+                                        rc = KDatabaseOpenMetadataUpdate(kdb, &meta);
+                                        KDatabaseRelease(kdb);
+                                    }
+                                    KDBManagerRelease(kmgr);
+                                }
+                                if (rc == 0) {
+                                    rc = WriteLoaderSignature(meta, progName);
+                                    KMetadataRelease(meta);
+                                }
                             }
                         }
                     }

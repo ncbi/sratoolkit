@@ -26,12 +26,15 @@
 
 #include <vfs/extern.h>
 
+#include "path-priv.h"
+
+#include <sra/srapath.h>
+
 #include <vfs/manager.h>
+#include <vfs/manager-priv.h> /* VFSManagerMakeFromKfg */
 #include <vfs/path.h>
 #include <vfs/path-priv.h>
-#include <vfs/manager-priv.h> /* VFSManagerMakeFromKfg */
-
-#include "path-priv.h"
+#include <vfs/resolver.h>
 
 #include <krypto/key.h>
 #include <krypto/encfile.h>
@@ -43,9 +46,6 @@
 #include <kfg/keystore.h>
 #include <kfg/keystore-priv.h>
 #include <kfg/kfg-priv.h>
-
-#include <vfs/resolver.h>
-#include <sra/srapath.h>
 
 #include <kfs/directory.h>
 #include <kfs/file.h>
@@ -59,12 +59,15 @@
 #include <kfs/cacheteefile.h>
 #include <kfs/lockfile.h>
 
-#include <kns/curl-file.h>
+#include <kns/manager.h>
+#include <kns/http.h>
 #include <kxml/xml.h>
-#include <klib/refcount.h>
+
+#include <klib/debug.h> /* DBGMSG */
 #include <klib/log.h>
-#include <klib/rc.h>
 #include <klib/printf.h>
+#include <klib/rc.h>
+#include <klib/refcount.h>
 
 #include <strtol.h>
 
@@ -95,8 +98,6 @@
  * be fully fleshed out here */
 struct VFSManager
 {
-    KRefcount refcount;
-
     /* the current directory in the eyes of the O/S when created */
     KDirectory * cwd;
 
@@ -109,11 +110,16 @@ struct VFSManager
     /* SRAPath will be replaced with a VResolver */
     struct VResolver * resolver;
 
+    /* network manager */
+    KNSManager * kns;
+
     /* path to a global password file */
     char *pw_env;
     
     /* encryption key storage */ 
     struct KKeyStore* keystore;
+
+    KRefcount refcount;
 };
 
 static const char kfsmanager_classname [] = "VFSManager";
@@ -129,24 +135,19 @@ static rc_t VFSManagerDestroy ( VFSManager *self )
 {
     if ( self == NULL )
         return RC ( rcVFS, rcFile, rcDestroying, rcSelf, rcNull );
-
+    
+    KKeyStoreRelease( self -> keystore );
+    free ( self -> pw_env );
+    VResolverRelease ( self -> resolver );
+    KNSManagerRelease ( self -> kns );
+    KCipherManagerRelease ( self -> cipher );
+    KConfigRelease ( self -> cfg );
+    KDirectoryRelease ( self -> cwd );
     KRefcountWhack (&self->refcount, kfsmanager_classname);
 
-    KDirectoryRelease (self->cwd);
-
-    KConfigRelease (self->cfg);
-
-    KCipherManagerRelease (self->cipher);
-
-    VResolverRelease ( self->resolver );
-
-    free ( self -> pw_env );
-    
-    KKeyStoreRelease( self->keystore );
-
     free (self);
-
     singleton = NULL;
+
     return 0;
 }
 
@@ -205,13 +206,13 @@ LIB_EXPORT rc_t CC VFSManagerRelease ( const VFSManager *self )
 
 
 /*--------------------------------------------------------------------------
- * VFSManagerMakeCurlFile
+ * VFSManagerMakeHTTPFile
  */
 static
-rc_t VFSManagerMakeCurlFile( const VFSManager * self, const KFile **cfp,
+rc_t VFSManagerMakeHTTPFile( const VFSManager * self, const KFile **cfp,
                              const char * url, const char * cache_location )
 {
-    rc_t rc = KCurlFileMake ( cfp, url, false );
+    rc_t rc = KNSManagerMakeHttpFile ( self -> kns, cfp, NULL, 0x01010000, url );
     if ( rc == 0 )
     {
         const KFile *temp_file;
@@ -500,7 +501,7 @@ static rc_t VFSManagerResolvePathResolver (const VFSManager * self,
         if (not_done && ((flags & vfsmgr_rflag_no_acc_remote) == 0))
         {
             rc = VResolverRemote (self->resolver, eProtocolHttp,
-                in_path, (const VPath **)out_path, NULL);
+                in_path, (const VPath **)out_path);
         }
     }
     return rc;
@@ -921,7 +922,7 @@ rc_t VFSManagerOpenFileReadRegularFile (char * pbuff, size_t z,
 static
 rc_t VFSManagerOpenFileReadSpecial (char * pbuff, size_t z, KFile const ** file)
 {
-    rc_t rc;
+    rc_t rc = 0;
     static const char dev [] = "/dev/";
     static const char dev_stdin [] = "/dev/stdin";
     static const char dev_null [] = "/dev/null";
@@ -1094,13 +1095,13 @@ static rc_t VFSManagerOpenCurlFile ( const VFSManager *self,
             rc = VResolverCache ( self->resolver, path, &local_cache, 0 );
             if ( rc == 0 )
                 /* we did find a place for local cache --> use it! */
-                rc = VFSManagerMakeCurlFile( self, f, uri->addr, local_cache->path.addr );
+                rc = VFSManagerMakeHTTPFile( self, f, uri->addr, local_cache->path.addr );
             else
                 /* we did NOT find a place for local cache --> we are not caching! */
-                rc = VFSManagerMakeCurlFile( self, f, uri->addr, NULL );
+                rc = VFSManagerMakeHTTPFile( self, f, uri->addr, NULL );
         }
         else
-            rc = VFSManagerMakeCurlFile( self, f, uri->addr, NULL );
+            rc = VFSManagerMakeHTTPFile( self, f, uri->addr, NULL );
         free( ( void * )uri );
     }
     return rc;
@@ -1384,7 +1385,7 @@ rc_t VFSManagerOpenDirectoryReadHttp (const VFSManager *self,
     rc = VFSManagerOpenCurlFile ( self, &file, path );
     if ( rc != 0 )
     {
-        PLOGERR ( klogErr, ( klogErr, rc, "error with curl open '$(U)'",
+        PLOGERR ( klogErr, ( klogErr, rc, "error with http open '$(U)'",
                              "U=%S:%S", & path -> scheme, & path -> path ) );
     }
     else
@@ -1397,7 +1398,7 @@ rc_t VFSManagerOpenDirectoryReadHttp (const VFSManager *self,
                                  path->path.addr, path->path.size);
         if (rc)
         {
-            PLOGERR (klogErr, (klogErr, rc, "error creating mount "
+            PLOGERR (klogInt, (klogErr, rc, "error creating mount "
                                "'$(M)' for '$(F)", "M=%s,F=%S",
                                mountpointpath, &path->path));
         }
@@ -1646,11 +1647,13 @@ rc_t VFSManagerOpenDirectoryReadDirectoryRelativeInt (const VFSManager *self,
             break;
         }
 
+#if 0
         if ((force_decrypt != false) && (force_decrypt != true))
         {
             rc = RC (rcVFS, rcDirectory, rcOpening, rcParam, rcInvalid);
             break;
         }
+#endif
 
         rc = VPathAddRef (path_);
         if ( rc )
@@ -2097,7 +2100,8 @@ LIB_EXPORT rc_t CC VFSManagerRemove ( const VFSManager *self, bool force,
 
 /* Make
  */
-LIB_EXPORT rc_t CC VFSManagerMake ( VFSManager ** pmanager ) {
+LIB_EXPORT rc_t CC VFSManagerMake ( VFSManager ** pmanager )
+{
     return VFSManagerMakeFromKfg(pmanager, NULL);
 }
 
@@ -2112,7 +2116,7 @@ LIB_EXPORT rc_t CC VFSManagerMakeFromKfg ( struct VFSManager ** pmanager,
         return RC (rcVFS, rcMgr, rcConstructing, rcParam, rcNull);
 
     *pmanager = singleton;
-    if (singleton != NULL)
+    if ( singleton != NULL )
     {
         rc = VFSManagerAddRef ( singleton );
         if ( rc != 0 )
@@ -2127,45 +2131,51 @@ LIB_EXPORT rc_t CC VFSManagerMakeFromKfg ( struct VFSManager ** pmanager,
             rc = RC (rcVFS, rcMgr, rcConstructing, rcMemory, rcExhausted);
         else
         {
-            KRefcountInit (&obj->refcount, 1, kfsmanager_classname, "init", 
-                           kfsmanager_classname);
+            KRefcountInit (& obj -> refcount, 1,
+                kfsmanager_classname, "init", "singleton" );
 
-            rc = KDirectoryNativeDir (&obj->cwd);
-            if (rc == 0)
+            rc = KDirectoryNativeDir ( & obj -> cwd );
+            if ( rc == 0 )
             {
+                if (cfg == NULL)
+                    rc = KConfigMake ( & obj -> cfg, NULL );
+                else
                 {
-                    if (cfg == NULL) {
-                        rc = KConfigMake (&obj->cfg, NULL);
-                    }
-                    else {
-                        rc = KConfigAddRef(cfg);
-                        if (rc == 0) {
-                            obj->cfg = cfg;
-                        }
-                    }
+                    rc = KConfigAddRef ( cfg );
+                    if (rc == 0)
+                        obj -> cfg = cfg;
+                }
+                if ( rc == 0 )
+                {
+                    rc = KCipherManagerMake ( & obj -> cipher );
                     if ( rc == 0 )
                     {
-                        rc = KCipherManagerMake (&obj->cipher);
+                        rc = KKeyStoreMake ( & obj -> keystore, obj -> cfg );
                         if ( rc == 0 )
                         {
-                            rc = KKeyStoreMake ( &obj->keystore, obj->cfg );
-                            if ( rc == 0 )
+                            rc = VFSManagerMakeResolver ( obj, & obj -> resolver, obj -> cfg );
+                            if ( rc != 0 )
                             {
-                                rc = VFSManagerMakeResolver ( obj, &obj->resolver, obj->cfg );
-                                if ( rc != 0 )
-                                {
-                                    LOGERR ( klogWarn, rc, "could not build vfs-resolver" );
-                                    rc = 0;
-                                }
-
-                                *pmanager = singleton = obj;
-                                return rc;
+                                LOGERR ( klogWarn, rc, "could not build vfs-resolver" );
+                                rc = 0;
                             }
+
+                            rc = KNSManagerMake ( & obj -> kns );
+                            if ( rc != 0 )
+                            {
+                                LOGERR ( klogWarn, rc, "could not build network manager" );
+                                rc = 0;
+                            }
+
+                            *pmanager = singleton = obj;
+       DBGMSG(DBG_KNS, DBG_FLAG(DBG_KNS_MGR),  ("%s(%p)\n", __FUNCTION__, cfg));
+                            return 0;
                         }
                     }
                 }
             }
         }
+
         VFSManagerDestroy (obj);
     }
     return rc;
@@ -2176,42 +2186,80 @@ LIB_EXPORT rc_t CC VFSManagerGetCWD (const VFSManager * self, KDirectory ** cwd)
 {
     rc_t rc;
 
-    if (cwd == NULL)
-        return RC (rcVFS, rcMgr, rcAccessing, rcParam, rcNull);
+    if ( cwd == NULL )
+        rc = RC (rcVFS, rcMgr, rcAccessing, rcParam, rcNull);
+    else
+    {
+        if ( self == NULL )
+            rc = RC (rcVFS, rcMgr, rcAccessing, rcSelf, rcNull);
+        else
+        {
+            rc = KDirectoryAddRef ( self -> cwd );
+            if ( rc == 0 )
+            {
+                * cwd = self -> cwd;
+                return 0;
+            }
+        }
 
-    *cwd = NULL;
+        * cwd = NULL;
+    }
 
-    if (self == NULL)
-        return RC (rcVFS, rcMgr, rcAccessing, rcSelf, rcNull);
-
-    rc = KDirectoryAddRef ( self->cwd );
-    if (rc)
-        return rc;
-
-    *cwd = self->cwd;
-
-    return 0;
+    return rc;
 }
 
 
 LIB_EXPORT rc_t CC VFSManagerGetResolver ( const VFSManager * self, struct VResolver ** resolver )
 {
+    rc_t rc;
+
     if ( resolver == NULL )
-        return RC ( rcVFS, rcMgr, rcAccessing, rcParam, rcNull );
-
-    *resolver = NULL;
-
-    if ( self == NULL )
-        return RC ( rcVFS, rcMgr, rcAccessing, rcSelf, rcNull );
-
-    if ( self->resolver )
+        rc = RC (rcVFS, rcMgr, rcAccessing, rcParam, rcNull);
+    else
     {
-        rc_t rc = VResolverAddRef ( self->resolver );
-        if ( rc != 0 )
-            return rc;
+        if ( self == NULL )
+            rc = RC (rcVFS, rcMgr, rcAccessing, rcSelf, rcNull);
+        else
+        {
+            rc = VResolverAddRef ( self -> resolver );
+            if ( rc == 0 )
+            {
+                * resolver = self -> resolver;
+                return 0;
+            }
+        }
+
+        * resolver = NULL;
     }
-    *resolver = self->resolver;
-    return 0;
+
+    return rc;
+}
+
+
+LIB_EXPORT rc_t CC VFSManagerGetKNSMgr ( const VFSManager * self, struct KNSManager ** kns )
+{
+    rc_t rc;
+
+    if ( kns == NULL )
+        rc = RC (rcVFS, rcMgr, rcAccessing, rcParam, rcNull);
+    else
+    {
+        if ( self == NULL )
+            rc = RC (rcVFS, rcMgr, rcAccessing, rcSelf, rcNull);
+        else
+        {
+            rc = KNSManagerAddRef ( self -> kns );
+            if ( rc == 0 )
+            {
+                * kns = self -> kns;
+                return 0;
+            }
+        }
+
+        * kns = NULL;
+    }
+
+    return rc;
 }
 
 
@@ -2810,7 +2858,7 @@ static rc_t VFSManagerResolveRemote( const VFSManager * self,
         rc = VPathReadPath ( *source, full_url, sizeof full_url, &num_read );
         if ( rc == 0 && num_read > 0 )
         {
-            rc = KCurlFileMake ( remote_file, full_url, false );
+            rc = KNSManagerMakeHttpFile ( self -> kns, remote_file, NULL, 0x01010000, full_url );
             if ( rc == 0 )
             {
                 uint64_t size_of_remote_file = 0;

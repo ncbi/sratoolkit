@@ -46,7 +46,7 @@
 #define RELEASE(type, obj) do { rc_t rc2 = type##Release(obj); \
     if (rc2 != 0 && rc == 0) { rc = rc2; } obj = NULL; } while (false)
 
-LIB_EXPORT rc_t CC KNSManagerNewReleaseVersion(const struct KNSManager *self,
+static rc_t CC KNSManagerNewReleaseVersionImpl(const struct KNSManager *self,
     SraReleaseVersion *newVersion)
 {
     rc_t rc = 0;
@@ -62,7 +62,7 @@ LIB_EXPORT rc_t CC KNSManagerNewReleaseVersion(const struct KNSManager *self,
     }
     memset(&result, 0, sizeof result);
     if (rc == 0) {
-        rc = KNSManagerMakeRequest(self, &req, 0x01000000, NULL,
+        rc = KNSManagerMakeRequest(self, &req, 0x01010000, NULL,
   "http://ftp-trace.ncbi.nlm.nih.gov/sra/sdk/current/sratoolkit.current.version"
         );
     }
@@ -136,5 +136,22 @@ LIB_EXPORT rc_t CC KNSManagerNewReleaseVersion(const struct KNSManager *self,
     RELEASE(KHttpResult, rslt);
     RELEASE(KHttpRequest, req);
 
+    return rc;
+}
+
+LIB_EXPORT rc_t CC KNSManagerNewReleaseVersion(const struct KNSManager *self,
+    SraReleaseVersion *newVersion)
+{
+    rc_t rc = 0;
+    int i = 0, retryOnFailure = 2;
+    for (i = 0; i < retryOnFailure; ++i) {
+        rc = KNSManagerNewReleaseVersionImpl(self, newVersion);
+        if (rc == 0) {
+            break;
+        }
+        DBGMSG(DBG_KNS, DBG_FLAG(DBG_KNS_ERR), (
+            "@@@@@@@@2: KNSManagerNewReleaseVersion %d/%d = %R"
+            "\n", i + 1, retryOnFailure, rc));
+    }
     return rc;
 }

@@ -43,11 +43,12 @@
 #include <kfg/config.h>
 
 #include <klib/container.h>
-#include <klib/printf.h> /* string_printf */
-#include <klib/text.h>
+#include <klib/debug.h> /* DBG_VDB */
 #include <klib/log.h>
 #include <klib/out.h>
+#include <klib/printf.h> /* string_printf */
 #include <klib/rc.h>
+#include <klib/text.h>
 
 #include <sysalloc.h>
 
@@ -188,6 +189,10 @@ rc_t AddColumn(rc_t rc, const VCursor* curs, Column* col)
         assert(curs && col);
 
         rc = VCursorAddColumn(curs, &col->idx, col->name);
+        if (rc != 0) {
+            DBGMSG(DBG_VDB, DBG_FLAG(DBG_VDB),
+                ("Cannot Add Column %s", col->name));
+        }
     }
 
     return rc;
@@ -528,7 +533,7 @@ static rc_t FindRef(Ctx* ctx, const char* seqId, Resolved* resolved,
         }
 
         if (rc == 0) {
-            rc = VResolverRemote(ctx->resolver, eProtocolHttp, acc, &remote, NULL);
+            rc = VResolverRemote(ctx->resolver, eProtocolHttp, acc, &remote);
             if (rc == 0) {
                 rc = VPathMakeString(remote, &resolved->remote);
                 if (rc == 0) {

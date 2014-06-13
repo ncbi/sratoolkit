@@ -77,8 +77,7 @@ $(ILIBDIR)/libvfs: $(addprefix $(ILIBDIR)/libvfs.,$(ILIBEXT))
 VFS_SRC_CMN = \
 	syspath \
 	manager  \
-	resolver \
-    
+	resolver
 
 VFS_SRC = \
 	path \
@@ -89,7 +88,6 @@ VFS_OBJ = \
 
 VFS_LIB = \
 	-lkns \
-	-lkurl \
 	-lkns \
 	-lkrypto \
 	-lkfg \
@@ -98,3 +96,28 @@ VFS_LIB = \
 
 $(ILIBDIR)/libvfs.$(LIBX): $(VFS_OBJ)
 	$(LD) --slib -o $@ $^ $(VFS_LIB)
+
+
+
+#-------------------------------------------------------------------------------
+# white-box test
+#
+
+TEST_SRC = \
+	path-test
+
+TEST_OBJ = \
+	$(addsuffix .$(OBJX),$(TEST_SRC)) \
+	$(addsuffix .$(LOBX),$(VFS_SRC_CMN))
+
+TEST_LIB = \
+	-skapp \
+	-skns \
+	-skrypto \
+	-skfg \
+	-skfs \
+	-skproc \
+	-sklib 
+
+$(TEST_BINDIR)/path-test: $(TEST_OBJ)
+	$(LD) --exe -o $@ $^ $(TEST_LIB)

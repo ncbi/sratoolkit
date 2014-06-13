@@ -379,11 +379,8 @@ rc_t PageMapProcessRequestLock(PageMapProcessRequest *self)
 {
 	rc_t rc=RC(rcVDB,rcPagemap, rcConstructing, rcSelf, rcNull);
 	if(self){
-		struct timeout_t tm;
-		TimeoutInit(&tm,0);
-		TimeoutPrepare(&tm);
-		/*** no plans to wait here the thread should be relased by now ****/
-		rc = KLockTimedAcquire(self->lock,&tm);
+		/*** no plans to wait here the thread should be released by now ****/
+		rc = KLockAcquire(self->lock);
 		if(rc == 0){
 			if(self->state != ePMPR_STATE_NONE){ /*** thread is not released yet **/
 				assert(0); /** should not happen ***/
@@ -398,8 +395,8 @@ rc_t PageMapProcessRequestLock(PageMapProcessRequest *self)
 static
 void PageMapProcessRequestLaunch(PageMapProcessRequest *self)
 {
-	KLockUnlock(self -> lock);
 	KConditionSignal ( self -> cond );
+	KLockUnlock(self -> lock);
 }
 
 rc_t PageMapProcessGetPagemap(const PageMapProcessRequest *cself,struct PageMap **pm)
@@ -425,8 +422,8 @@ CHECK_AGAIN:
 			KDataBufferWhack(&self->data);
 			self->row_count = 0;
 			self->state = ePMPR_STATE_NONE;
-			KLockUnlock(self -> lock);
 			KConditionSignal(self->cond);
+			KLockUnlock(self -> lock);
 			break;
 		case ePMPR_STATE_NONE: /* not requested */
 			KLockUnlock(self -> lock);
@@ -851,14 +848,13 @@ void VBlobPageMapOptimize ( VBlob **vblobp)
 						PageMapRelease(new_pm);
 						
 					}
-					KDataBufferWhack(&new_data);
 				} else {
 					/*printf("NO OPTIMIZATION: vocab:%d,rows:%d,data_recs:%d\n",vocab_cnt ,pm->row_count,pm->data_recs);*/
-					KDataBufferWhack(&new_data);
 				}
 				if(data_offset) free(data_offset);
 				if(vocab_key2id) KBTreeRelease  ( vocab_key2id );
 			}
+            KDataBufferWhack(&new_data);
 		}
 	}
 

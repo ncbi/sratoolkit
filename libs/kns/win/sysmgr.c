@@ -23,35 +23,43 @@
 * ===========================================================================
 *
 */
-#include "kns_mgr_priv.h"
 
 #include <klib/rc.h>
+#include <atomic32.h>
+
+#include "sysmgr.h"
 
 #include <WINDOWS.H>
 
-rc_t KNSManagerInit ( struct KNSManager *self )
-{
-    rc_t rc = 0;
-    WSADATA wsaData;
+static atomic32_t mgr_count;
 
-    if ( WSAStartup ( MAKEWORD ( 2, 2 ), &wsaData ) != 0 )
+rc_t KNSManagerInit ( void )
+{
+    if ( atomic32_test_and_inc ( & mgr_count ) )
     {
-        int lerrno;
-        switch ( lerrno = WSAGetLastError () )
+        WSADATA wsaData;
+        if ( WSAStartup ( MAKEWORD ( 2, 2 ), & wsaData ) != 0 )
         {
-        case WSASYSNOTREADY:
-        case WSAVERNOTSUPPORTED:
-        case WSAEINPROGRESS:
-        case WSAEPROCLIM:
-        case WSAEFAULT:
-        default:
-            rc = RC ( rcNS, rcNoTarg, rcInitializing, rcNoObj, rcError );
+            int lerrno = WSAGetLastError ();
+            switch ( lerrno )
+            {
+            case WSASYSNOTREADY:
+            case WSAVERNOTSUPPORTED:
+            case WSAEINPROGRESS:
+            case WSAEPROCLIM:
+            case WSAEFAULT:
+            default:
+                atomic32_dec ( & mgr_count );
+                return RC ( rcNS, rcMgr, rcInitializing, rcLibrary, rcNotAvailable );
+            }
         }
     }
-    return rc;
+
+    return 0;
 } 
 
-void KNSManagerCleanup ( struct KNSManager *self )
+void KNSManagerCleanup ( void )
 {
-    WSACleanup ();
+    if ( atomic32_dec_and_test ( & mgr_count ) )
+        WSACleanup ();
 }

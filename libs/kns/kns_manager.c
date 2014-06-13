@@ -226,6 +226,7 @@ LIB_EXPORT rc_t CC KNSManagerMake( struct KNSManager **self )
     *self = kns_mgr_singleton;
     if ( kns_mgr_singleton != NULL )
     {
+/*      fprintf(stderr, "%p KNSManagerMake(KNSManagerAddRef)\n", *self); */
         rc = KNSManagerAddRef( kns_mgr_singleton );
         if ( rc != 0 )
             *self = NULL;
@@ -248,6 +249,8 @@ LIB_EXPORT rc_t CC KNSManagerMake( struct KNSManager **self )
             {
                 tmp->create_rc = KNSManagerLoadLib( tmp );
                 KRefcountInit( &tmp->refcount, 1, "KNS", "make", knsmanager_classname );
+/*              fprintf(stderr,
+                    "%p KNSManagerLoadLib = %d\n", tmp, tmp->create_rc); */
             }
         }
         *self = tmp;
@@ -300,6 +303,8 @@ static rc_t KNSManagerDestroy( struct KNSManager *self )
     if ( self == NULL )
         return RC( rcNS, rcFile, rcDestroying, rcSelf, rcNull );
 
+/*  fprintf(stderr, "%p KNSManagerDestroy\n", self); */
+
     KDylibRelease ( lib_curl_handle );
     lib_curl_handle = NULL;
 
@@ -307,6 +312,7 @@ static rc_t KNSManagerDestroy( struct KNSManager *self )
 
     KRefcountWhack( &self->refcount, knsmanager_classname );
 
+    memset(self, 0, sizeof *self);
     free( self );
     kns_mgr_singleton = NULL;
     
@@ -323,6 +329,7 @@ LIB_EXPORT rc_t CC KNSManagerRelease( const struct KNSManager *self )
         {
         case krefOkay:
         case krefZero:
+/*        fprintf(stderr, "%p KNSManagerRelease(!KNSManagerDestroy)\n", self);*/
             break;
         case krefWhack:
             rc = KNSManagerDestroy( ( struct KNSManager * )self );

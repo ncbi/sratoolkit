@@ -158,14 +158,10 @@ VFS_EXTERN rc_t CC VResolverLocal ( const VResolver * self,
  *  Accession must be an ncbi-acc scheme or a simple name with no 
  *  directory paths.
  *
- *  "opt_file_rtn" [ OUT, NULL OKAY ] - optional return parameter for
- *   any KFile that may be opened as a result of resolution. This can
- *   happen if resolving an accession involves opening a URL to a
- *   remote server, for example, in which case the KFile can be returned.
  */
 VFS_EXTERN rc_t CC VResolverRemote ( const VResolver * self,
     VRemoteProtocols protocols, struct VPath const * accession,
-    struct VPath const ** path, struct KFile const ** opt_file_rtn );
+    struct VPath const ** path /* , struct KFile const ** opt_file_rtn */ );
 
 /* Cache - DEPRECATED
  *  Find a cache directory that might or might not contain a partially

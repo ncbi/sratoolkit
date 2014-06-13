@@ -35,9 +35,19 @@
 #include <klib/defs.h>
 #endif
 
+#ifndef _h_klib_namelist_
+#include <klib/namelist.h>
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+
+/*--------------------------------------------------------------------------
+ * forwards
+ */
+struct timeout_t;
 
 
 /*--------------------------------------------------------------------------
@@ -73,6 +83,7 @@ typedef struct KFile KFile;
 KFS_EXTERN rc_t CC KFileAddRef ( const KFile *self );
 KFS_EXTERN rc_t CC KFileRelease ( const KFile *self );
 
+
 /* RandomAccess
  *  ALMOST by definition, the file is random access
  *
@@ -84,12 +95,14 @@ KFS_EXTERN rc_t CC KFileRelease ( const KFile *self );
  */
 KFS_EXTERN rc_t CC KFileRandomAccess ( const KFile *self );
 
+
 /* Type
  *  returns a KFileDesc
  *  not intended to be a content type,
  *  but rather an implementation class
  */
 KFS_EXTERN uint32_t CC KFileType ( const KFile *self );
+
 
 /* Size
  *  returns size in bytes of file
@@ -98,6 +111,7 @@ KFS_EXTERN uint32_t CC KFileType ( const KFile *self );
  */
 KFS_EXTERN rc_t CC KFileSize ( const KFile *self, uint64_t *size );
 
+
 /* SetSize
  *  sets size in bytes of file
  *
@@ -105,7 +119,9 @@ KFS_EXTERN rc_t CC KFileSize ( const KFile *self, uint64_t *size );
  */
 KFS_EXTERN rc_t CC KFileSetSize ( KFile *self, uint64_t size );
 
+
 /* Read
+ * TimedRead
  *  read file from known position
  *
  *  "pos" [ IN ] - starting position within file
@@ -115,11 +131,21 @@ KFS_EXTERN rc_t CC KFileSetSize ( KFile *self, uint64_t size );
  *  "num_read" [ OUT ] - return parameter giving number of bytes
  *  actually read. when returned value is zero and return code is
  *  also zero, interpreted as end of file.
+ *
+ *  "tm" [ IN/OUT, NULL OKAY ] - an optional indicator of
+ *  blocking behavior. not all implementations will support
+ *  timed reads. a NULL timeout will block indefinitely,
+ *  a value of "tm->mS == 0" will have non-blocking behavior
+ *  if supported by implementation, and "tm->mS > 0" will indicate
+ *  a maximum wait timeout.
  */
 KFS_EXTERN rc_t CC KFileRead ( const KFile *self, uint64_t pos,
     void *buffer, size_t bsize, size_t *num_read );
+KFS_EXTERN rc_t CC KFileTimedRead ( const KFile *self, uint64_t pos,
+    void *buffer, size_t bsize, size_t *num_read, struct timeout_t *tm );
 
 /* ReadAll
+ * TimedReadAll
  *  read from file until "bsize" bytes have been retrieved
  *  or until end-of-input
  *
@@ -130,11 +156,42 @@ KFS_EXTERN rc_t CC KFileRead ( const KFile *self, uint64_t pos,
  *  "num_read" [ OUT ] - return parameter giving number of bytes
  *  actually read. when returned value is zero and return code is
  *  also zero, interpreted as end of file.
+ *
+ *  "tm" [ IN/OUT, NULL OKAY ] - an optional indicator of
+ *  blocking behavior. not all implementations will support
+ *  timed reads. a NULL timeout will block indefinitely,
+ *  a value of "tm->mS == 0" will have non-blocking behavior
+ *  if supported by implementation, and "tm->mS > 0" will indicate
+ *  a maximum wait timeout.
  */
 KFS_EXTERN rc_t CC KFileReadAll ( const KFile *self, uint64_t pos,
     void *buffer, size_t bsize, size_t *num_read );
+KFS_EXTERN rc_t CC KFileTimedReadAll ( const KFile *self, uint64_t pos,
+    void *buffer, size_t bsize, size_t *num_read, struct timeout_t *tm );
+
+/* ReadExactly
+ * TimedReadExactly
+ *  read from file until "bytes" have been retrieved
+ *  or return incomplete transfer error
+ *
+ *  "pos" [ IN ] - starting position within file
+ *
+ *  "buffer" [ OUT ] and "bytes" [ IN ] - return buffer for read
+ *
+ *  "tm" [ IN/OUT, NULL OKAY ] - an optional indicator of
+ *  blocking behavior. not all implementations will support
+ *  timed reads. a NULL timeout will block indefinitely,
+ *  a value of "tm->mS == 0" will have non-blocking behavior
+ *  if supported by implementation, and "tm->mS > 0" will indicate
+ *  a maximum wait timeout.
+ */
+KFS_EXTERN rc_t CC KFileReadExactly ( const KFile *self,
+    uint64_t pos, void *buffer, size_t bytes );
+KFS_EXTERN rc_t CC KFileTimedReadExactly ( const KFile *self,
+    uint64_t pos, void *buffer, size_t bytes, struct timeout_t *tm );
 
 /* Write
+ * TimedWrite
  *  write file at known position
  *
  *  "pos" [ IN ] - starting position within file
@@ -143,11 +200,21 @@ KFS_EXTERN rc_t CC KFileReadAll ( const KFile *self, uint64_t pos,
  *
  *  "num_writ" [ OUT, NULL OKAY ] - optional return parameter
  *  giving number of bytes actually written
+ *
+ *  "tm" [ IN/OUT, NULL OKAY ] - an optional indicator of
+ *  blocking behavior. not all implementations will support
+ *  timed writes. a NULL timeout will block indefinitely,
+ *  a value of "tm->mS == 0" will have non-blocking behavior
+ *  if supported by implementation, and "tm->mS > 0" will indicate
+ *  a maximum wait timeout.
  */
 KFS_EXTERN rc_t CC KFileWrite ( KFile *self, uint64_t pos,
     const void *buffer, size_t size, size_t *num_writ );
+KFS_EXTERN rc_t CC KFileTimedWrite ( KFile *self, uint64_t pos,
+    const void *buffer, size_t size, size_t *num_writ, struct timeout_t *tm );
 
 /* WriteAll
+ * TimedWriteAll
  *  write to file until "size" bytes have been transferred
  *  or until no further progress can be made
  *
@@ -157,9 +224,39 @@ KFS_EXTERN rc_t CC KFileWrite ( KFile *self, uint64_t pos,
  *
  *  "num_writ" [ OUT, NULL OKAY ] - optional return parameter
  *  giving number of bytes actually written
+ *
+ *  "tm" [ IN/OUT, NULL OKAY ] - an optional indicator of
+ *  blocking behavior. not all implementations will support
+ *  timed writes. a NULL timeout will block indefinitely,
+ *  a value of "tm->mS == 0" will have non-blocking behavior
+ *  if supported by implementation, and "tm->mS > 0" will indicate
+ *  a maximum wait timeout.
  */
 KFS_EXTERN rc_t CC KFileWriteAll ( KFile *self, uint64_t pos,
     const void *buffer, size_t size, size_t *num_writ );
+KFS_EXTERN rc_t CC KFileTimedWriteAll ( KFile *self, uint64_t pos,
+    const void *buffer, size_t size, size_t *num_writ, struct timeout_t *tm );
+
+/* WriteExactly
+ * TimedWriteExactly
+ *  write to file until "bytes" have been transferred
+ *  or return incomplete transfer error
+ *
+ *  "pos" [ IN ] - starting position within file
+ *
+ *  "buffer" [ IN ] and "bytes" [ IN ] - data to be written
+ *
+ *  "tm" [ IN/OUT, NULL OKAY ] - an optional indicator of
+ *  blocking behavior. not all implementations will support
+ *  timed writes. a NULL timeout will block indefinitely,
+ *  a value of "tm->mS == 0" will have non-blocking behavior
+ *  if supported by implementation, and "tm->mS > 0" will indicate
+ *  a maximum wait timeout.
+ */
+KFS_EXTERN rc_t CC KFileWriteExactly ( KFile *self,
+    uint64_t pos, const void *buffer, size_t bytes );
+KFS_EXTERN rc_t CC KFileTimedWriteExactly ( KFile *self,
+    uint64_t pos, const void *buffer, size_t bytes, struct timeout_t *tm );
 
 /* MakeStdIn
  *  creates a read-only file on stdin
@@ -172,6 +269,16 @@ KFS_EXTERN rc_t CC KFileMakeStdIn ( const KFile **std_in );
  */
 KFS_EXTERN rc_t CC KFileMakeStdOut ( KFile **std_out );
 KFS_EXTERN rc_t CC KFileMakeStdErr ( KFile **std_err );
+
+
+KFS_EXTERN rc_t CC LoadKFileToNameList( struct KFile const * self, struct VNamelist * namelist );
+KFS_EXTERN rc_t CC LoadFileByNameToNameList( struct VNamelist * namelist, const char * filename );
+
+KFS_EXTERN rc_t CC WriteNameListToKFile( struct KFile * self, const VNamelist * namelist, 
+                                         const char * delim );
+LIB_EXPORT rc_t CC WriteNamelistToFileByName( const VNamelist * namelist, const char * filename,
+                                            const char * delim );
+
 
 #ifdef __cplusplus
 }

@@ -3077,12 +3077,16 @@ rc_t open_file ( const KFile **f, const char *path )
     return rc;
 }
 
+/* KFS_EXTERN rc_t CC KFileMakeGzip2ForRead ( struct KFile const **gz, struct KFile const *src );
+#include <stdio.h> aprintf */
+static void aprintf(const char *a, int b) {}
 static
 rc_t decode_ncbi_gap ( KDataBuffer *mem, const KFile *orig )
 {
     char hdr [ 8 ];
     size_t num_read;
     rc_t rc = KFileReadAll ( orig, 0, hdr, sizeof hdr, & num_read );
+aprintf("decode_ncbi_gap %d\n", __LINE__);
     if ( rc == 0 && num_read == sizeof hdr )
     {
         if (memcmp(hdr, "ncbi_gap", sizeof hdr) != 0) {
@@ -3090,19 +3094,29 @@ rc_t decode_ncbi_gap ( KDataBuffer *mem, const KFile *orig )
         }
         else {
             uint64_t eof;
+aprintf("decode_ncbi_gap %d\n", __LINE__);
             rc = KFileSize ( orig, & eof );
+aprintf("decode_ncbi_gap %d\n", __LINE__);
             if ( rc == 0 )
             {
                 const KFile *sub;
+aprintf("decode_ncbi_gap %d\n", __LINE__);
                 rc = KFileMakeSubRead ( & sub, orig, sizeof hdr,
                     eof - sizeof hdr );
+aprintf("decode_ncbi_gap %d\n", __LINE__);
                 if ( rc == 0 )
                 {
                     const KFile *gzip;
+aprintf("decode_ncbi_gap %d\n", __LINE__);
+
+/* aprintf          rc = KFileMakeGzip2ForRead ( & gzip, sub ); */
                     rc = KFileMakeGzipForRead ( & gzip, sub );
+aprintf("decode_ncbi_gap %d\n", __LINE__);
                     if ( rc == 0 )
                     {
+aprintf("decode_ncbi_gap %d\n", __LINE__);
                         rc = KDataBufferMakeBytes ( mem, 0 );
+aprintf("decode_ncbi_gap %d\n", __LINE__);
                         if ( rc == 0 )
                         {
                             size_t total, to_read;
@@ -3112,16 +3126,21 @@ rc_t decode_ncbi_gap ( KDataBuffer *mem, const KFile *orig )
                             {
                                 char *buff;
 
+aprintf("decode_ncbi_gap %d\n", __LINE__);
                                 rc = KDataBufferResize ( mem,
                                     total + 32 * 1024 );
+aprintf("decode_ncbi_gap %d\n", __LINE__);
                                 if ( rc != 0 )
                                     break;
 
                                 buff = mem -> base;
+aprintf("decode_ncbi_gap %d\n", __LINE__);
                                 to_read = ( size_t ) mem -> elem_count - total;
+aprintf("decode_ncbi_gap %d\n", __LINE__);
 
                                 rc = KFileReadAll ( gzip, total,
                                     & buff [ total ], to_read, & num_read );
+aprintf("decode_ncbi_gap %d\n", __LINE__);
                                 if ( rc != 0 )
                                     break;
 
@@ -3129,22 +3148,29 @@ rc_t decode_ncbi_gap ( KDataBuffer *mem, const KFile *orig )
                                 
                                 if ( num_read < to_read )
                                 {
+aprintf("decode_ncbi_gap %d\n", __LINE__);
                                     buff [ total ] = 0;
+aprintf("decode_ncbi_gap %d\n", __LINE__);
                                     mem -> elem_count = total;
                                     break;
                                 }
                             }
                         }
 
+aprintf("decode_ncbi_gap %d\n", __LINE__);
                         KFileRelease ( gzip );
+aprintf("decode_ncbi_gap %d\n", __LINE__);
                     }
 
+aprintf("decode_ncbi_gap %d\n", __LINE__);
                     KFileRelease ( sub );
+aprintf("decode_ncbi_gap %d\n", __LINE__);
                 }
             }
         }
     }
 
+aprintf("decode_ncbi_gap %d\n", __LINE__);
     return rc;
 }
 
@@ -3513,6 +3539,7 @@ LIB_EXPORT rc_t CC KConfigImportNgc(KConfig *self,
     else {
         const KFile *orig = NULL;
         rc_t rc = open_file ( & orig, ngcPath );
+/*    DBGMSG(DBG_KFG, DBG_FLAG(DBG_KFG), ("KConfigImportNgc %d\n", __LINE__));*/
         if (rc != 0) {
             return rc;
         }
@@ -3522,23 +3549,41 @@ LIB_EXPORT rc_t CC KConfigImportNgc(KConfig *self,
             KDataBuffer mem;
             memset ( & mem, 0, sizeof mem );
 
+/*DBGMSG(DBG_KFG, DBG_FLAG(DBG_KFG), ("KConfigImportNgc %d\n", __LINE__));
+aprintf("KConfigImportNgc %d\n", __LINE__); */
             rc = decode_ncbi_gap ( & mem, orig );
+/*DBGMSG(DBG_KFG, DBG_FLAG(DBG_KFG), ("KConfigImportNgc %d\n", __LINE__));
+aprintf("KConfigImportNgc %d\n", __LINE__);*/
             KFileRelease ( orig );
             orig = NULL;
 
             if (rc == 0) {
+/*DBGMSG(DBG_KFG, DBG_FLAG(DBG_KFG), ("KConfigImportNgc %d\n", __LINE__));
+aprintf("KConfigImportNgc %d\n", __LINE__);*/
                 rc = _KConfigNncToKGapConfig(self, mem.base, &kgc);
+/*DBGMSG(DBG_KFG, DBG_FLAG(DBG_KFG), ("KConfigImportNgc %d\n", __LINE__));
+aprintf("KConfigImportNgc %d\n", __LINE__);*/
             }
 
             if (rc == 0) {
+/*DBGMSG(DBG_KFG, DBG_FLAG(DBG_KFG), ("KConfigImportNgc %d\n", __LINE__));
+aprintf("KConfigImportNgc %d\n", __LINE__);*/
                 rc = _KConfigFixResolverCgiNode(self);
+/*DBGMSG(DBG_KFG, DBG_FLAG(DBG_KFG), ("KConfigImportNgc %d\n", __LINE__));
+aprintf("KConfigImportNgc %d\n", __LINE__);*/
             }
 
             if (rc == 0) {
+/*DBGMSG(DBG_KFG, DBG_FLAG(DBG_KFG), ("KConfigImportNgc %d\n", __LINE__));
+aprintf("KConfigImportNgc %d\n", __LINE__);*/
                 rc = _KConfigAddDBGapRepository(self, &kgc, repoParentPath,
                     newRepoParentPath);
+/*DBGMSG(DBG_KFG, DBG_FLAG(DBG_KFG), ("KConfigImportNgc %d\n", __LINE__));
+aprintf("KConfigImportNgc %d\n", __LINE__);*/
             }
 
+/*DBGMSG(DBG_KFG, DBG_FLAG(DBG_KFG), ("KConfigImportNgc %d\n", __LINE__));
+aprintf("KConfigImportNgc %d\n", __LINE__);*/
             KDataBufferWhack ( & mem );
         }
 

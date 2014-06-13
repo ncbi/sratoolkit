@@ -29,6 +29,14 @@
 
 #include <stdint.h>
 
+#ifndef USE_GCC_BUILTIN
+#define USE_GCC_BUILTIN 1
+#endif
+
+#if USE_GCC_BUILTIN
+#include <strings.h>
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -37,6 +45,9 @@ static __inline__
 int16_t uint16_lsbit ( uint16_t self )
 {
     int16_t rtn;
+#if USE_GCC_BUILTIN
+    rtn = ( int16_t ) __builtin_ffs ( self ) - 1;
+#else
     __asm__ __volatile__
     (
         "bsf %%ax, %%ax;"
@@ -46,6 +57,7 @@ int16_t uint16_lsbit ( uint16_t self )
         : "=a" ( rtn )
         : "a" ( self )
     );
+#endif
     return rtn;
 }
 
@@ -53,6 +65,9 @@ static __inline__
 int32_t uint32_lsbit ( uint32_t self )
 {
     int32_t rtn;
+#if USE_GCC_BUILTIN
+    rtn = __builtin_ffs ( self ) - 1;
+#else
     __asm__ __volatile__
     (
         "bsf %%eax, %%eax;"
@@ -62,6 +77,7 @@ int32_t uint32_lsbit ( uint32_t self )
         : "=a" ( rtn )
         : "a" ( self )
     );
+#endif
     return rtn;
 }
 

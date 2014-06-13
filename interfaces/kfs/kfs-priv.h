@@ -43,13 +43,12 @@ extern "C" {
 /*--------------------------------------------------------------------------
  * struct/class forwards
  */
-struct KDirectory;
-struct KSysDir;
-struct KFile;
-struct KPath;
-struct KDlset;
 struct KArrayFile;
+struct KDirectory;
+struct KDlset;
+struct KFile;
 struct KNamelist;
+struct KPath;
 
 /* MakeFDFile
  *  creates a file from a file-descriptor
@@ -76,24 +75,18 @@ KFS_EXTERN rc_t CC KDlsetList ( struct KDlset const *self, struct KNamelist **li
 
 
 #if WINDOWS
+
 /* PosixStringToSystemString
  * converts posix path string to system path
  *  "buffer" [ OUT ] - NUL terminated system path string
  *  "bsize" [ IN ] - buffer length
  *  "path" [ IN ] - NUL terminated posix path string
  */
-KFS_EXTERN rc_t KDirectoryPosixStringToSystemString (
+KFS_EXTERN rc_t CC KDirectoryPosixStringToSystemString (
     const struct KDirectory *self,
     char *buffer, size_t bsize, const char *path, ... );
+
 #endif
-
-
-/* OSPath
- *  returns a real OS path
- */
-rc_t KSysDirOSPath ( struct KSysDir const *self,
-    wchar_t *real, size_t bsize, const char *path, va_list args );
-
 
 #ifdef __cplusplus
 }

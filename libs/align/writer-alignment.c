@@ -313,7 +313,7 @@ LIB_EXPORT rc_t CC TableWriterAlgn_TmpKeyStart(const TableWriterAlgn* cself)
             memcpy(self->cols_spotid + 1, &TableWriterAlgn_cols[ewalgn_cn_MATE_GLOBAL_REF_START], sizeof(self->cols_spotid[0]));
             memcpy(self->cols_spotid + 2, &TableWriterAlgn_cols[ewalgn_cn_MATE_REF_ID], sizeof(self->cols_spotid[0]));
             memcpy(self->cols_spotid + 3, &TableWriterAlgn_cols[ewalgn_cn_MATE_REF_START], sizeof(self->cols_spotid[0]));
-            memcpy(self->cols_spotid + 3, &TableWriterAlgn_cols[ewalgn_cn_MATE_ALIGN_ID], sizeof(self->cols_spotid[0]));
+            memcpy(self->cols_spotid + 4, &TableWriterAlgn_cols[ewalgn_cn_MATE_ALIGN_ID], sizeof(self->cols_spotid[0]));
             
             self->cols_spotid[0].flags &= ~ewcol_Ignore;
             if (self->options & ewalgn_co_MATE_POSITION) {

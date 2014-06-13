@@ -49,7 +49,8 @@ typedef enum EAbisolidReadType_enum {
     eAbisolidReadType_F5_BC = 5,
     eAbisolidReadType_F5_RNA = 6,
     eAbisolidReadType_F5_DNA = 7,
-    eAbisolidReadType_F3_DNA = 8
+    eAbisolidReadType_F3_DNA = 8,
+    eAbisolidReadType_BC = 9
 } EAbisolidReadType;
 
 extern const int AbisolidReadType2ReadNumber [];

@@ -1656,12 +1656,15 @@ rc_t KSysDirRemoveEntry ( wchar_t *path, size_t path_max, bool force )
                 }
                 else
                     rc = RC ( rcFS, rcDirectory, rcRemoving, rcDirectory, rcUnauthorized );
+                break;
 
             case ERROR_ACCESS_DENIED :
                 rc = RC ( rcFS, rcDirectory, rcRemoving, rcDirectory, rcUnauthorized );
+                break;
 
             default :
                 rc = RC ( rcFS, rcDirectory, rcCreating, rcNoObj, rcUnknown );
+                break;
             }
 
             print_error_for( path, "RemoveDirectoryW", rcRemoving, klogInfo);

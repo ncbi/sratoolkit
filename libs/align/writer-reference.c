@@ -882,6 +882,7 @@ rc_t ReferenceSeq_Attach(ReferenceMgr *const self, ReferenceSeq *const rs)
     assert(id_len != 0 || seqid_len != 0);
     
     if (seqid_len) {
+        ALIGN_CF_DBGF(("trying to open refseq: %.*s\n", seqid_len, rs->seqId));
         if (RefSeqMgr_Exists(self->rmgr, rs->seqId, seqid_len, NULL) == 0) {
             rc = RefSeqMgr_GetSeq(self->rmgr, &rs->u.refseq, rs->seqId, seqid_len);
             if (rc == 0) {
@@ -892,6 +893,7 @@ rc_t ReferenceSeq_Attach(ReferenceMgr *const self, ReferenceSeq *const rs)
         }
     }
     if (id_len) {
+        ALIGN_CF_DBGF(("trying to open refseq: %.*s\n", id_len, rs->id));
         if (RefSeqMgr_Exists(self->rmgr, rs->id, id_len, NULL) == 0) {
             rc = RefSeqMgr_GetSeq(self->rmgr, &rs->u.refseq, rs->id, id_len);
             if (rc == 0) {
@@ -902,16 +904,21 @@ rc_t ReferenceSeq_Attach(ReferenceMgr *const self, ReferenceSeq *const rs)
         }
     }
     if (id_len) {
+        ALIGN_CF_DBGF(("trying to open fasta: %.*s\n", id_len, rs->id));
         rc = OpenFastaFile(&kf, self->dir, rs->id, id_len);
-        if (rc && seqid_len)
+        if (rc && seqid_len) {
+            ALIGN_CF_DBGF(("trying to open fasta: %.*s\n", seqid_len, rs->seqId));
             rc = OpenFastaFile(&kf, self->dir, rs->seqId, seqid_len);
+        }
     }
-    else
+    else {
+        ALIGN_CF_DBGF(("trying to open fasta: %.*s\n", seqid_len, rs->seqId));
         rc = OpenFastaFile(&kf, self->dir, rs->seqId, seqid_len);
-    
+    }
     if (kf) {
         ReferenceSeq tmp;
         
+        ALIGN_CF_DBGF(("importing fasta"));
         rc = ReferenceMgr_ImportFastaFile(self, kf, &tmp);
         KFileRelease(kf);
         if (rc == 0) {
@@ -2199,13 +2206,15 @@ rc_t cigar2offset(const uint32_t options, const void* cigar, uint32_t cigar_len,
     return rc;
 }
 
-static
-void ReferenceSeq_TranslateOffset_int(ReferenceSeq const *const cself,
-                                      INSDC_coord_zero const offset,
-                                      int64_t *const ref_id,
-                                      INSDC_coord_zero *const ref_start,
-                                      uint64_t *const global_ref_start)
+LIB_EXPORT rc_t CC ReferenceSeq_TranslateOffset_int(ReferenceSeq const *const cself,
+                                                    INSDC_coord_zero const offset,
+                                                    int64_t *const ref_id,
+                                                    INSDC_coord_zero *const ref_start,
+                                                    uint64_t *const global_ref_start)
 {
+    if( cself == NULL )
+        return RC(rcAlign, rcFile, rcProcessing, rcSelf, rcNull);
+        
     if (ref_id)
         *ref_id = cself->start_rowid + offset / cself->mgr->max_seq_len;
     
@@ -2214,6 +2223,8 @@ void ReferenceSeq_TranslateOffset_int(ReferenceSeq const *const cself,
     
     if (global_ref_start)
         *global_ref_start = (cself->start_rowid - 1) * cself->mgr->max_seq_len + offset;
+        
+    return 0;
 }
 
 LIB_EXPORT rc_t CC ReferenceMgr_Compress(const ReferenceMgr* cself, uint32_t options,
@@ -2237,24 +2248,6 @@ LIB_EXPORT rc_t CC ReferenceMgr_Compress(const ReferenceMgr* cself, uint32_t opt
     }
     ALIGN_C_DBGERR(rc);
     return rc;
-}
-
-LIB_EXPORT size_t CC ReferenceMgr_CompressHelper(uint8_t cmp_rslt[],
-                                                 TableWriterAlgnData const *const data,
-                                                 uint8_t const input[])
-{
-    size_t const len = data->has_mismatch.elements;
-    bool const *const has_mismatch = data->has_mismatch.buffer;
-    size_t i;
-    size_t n;
-    
-    for (n = i = 0; i != len; ++i) {
-        if (has_mismatch[i]) {
-            cmp_rslt[n] = input[i];
-            ++n;
-        }
-    }
-    return n;
 }
 
 LIB_EXPORT rc_t CC ReferenceSeq_Compress(const ReferenceSeq* cself, uint32_t options, INSDC_coord_zero offset,
@@ -2433,7 +2426,6 @@ LIB_EXPORT rc_t CC ReferenceSeq_Compress(const ReferenceSeq* cself, uint32_t opt
                             has_mismatch[seq_pos] = false;
                         }
                     }
-                    data->mismatch.elements = ReferenceMgr_CompressHelper(mismatch, data, (uint8_t const *)seq);
                 }
             }
         }

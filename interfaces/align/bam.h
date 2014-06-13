@@ -351,6 +351,10 @@ ALIGN_EXTERN rc_t CC BAMAlignmentGetCigar ( const BAMAlignment *self,
  */
 ALIGN_EXTERN rc_t CC BAMAlignmentGetInsertSize ( const BAMAlignment *self, int64_t *size );
 
+ALIGN_EXTERN rc_t CC BAMAlignmentFormatSAM(const BAMAlignment *self,
+                                           size_t *actsize,
+                                           size_t maxsize,
+                                           char *buffer);
 
 /* OptDataForEach
  *  DANGER
@@ -371,7 +375,9 @@ enum BAMOptDataValueTypes
     dt_INT = 'i',
     dt_UINT = 'I',
     dt_FLOAT32 = 'f',
-    dt_FLOAT64 = 'd',
+#if 0
+    dt_FLOAT64 = 'd', /* removed? not in Dec 19 2013 version of SAMv1.pdf */
+#endif
     dt_ASCII = 'A',
     dt_HEXSTRING = 'H',
     dt_NUM_ARRAY = 'B'
@@ -589,6 +595,24 @@ ALIGN_EXTERN float CC BAMFileGetProportionalPosition ( const BAMFile *self );
  *  returns RC(..., ..., ..., rcRow, rcNotFound) at end
  */
 ALIGN_EXTERN rc_t CC BAMFileRead ( const BAMFile *self, const BAMAlignment **result );
+
+    
+/* Read
+ *  read an aligment
+ *
+ *  "result" [ OUT ] - return param for BAMAlignment object
+ *   must be released with BAMAlignmentRelease, is invalidated or contents
+ *   change on next call to BAMFileRead2. Unlike with BAMFileRead, no attempt is
+ *   made to preserve this object.
+ *
+ *  returns:
+ *    RC(..., ..., ..., rcRow, rcNotFound) at end
+ *    RC(..., ..., ..., rcRow, rcInvalid) and RC(..., ..., ..., rcRow, rcEmpty)
+ *      are not fatal and are resumable
+ *
+ *  tries to use static buffers and will log messages about parsing errors
+ */
+ALIGN_EXTERN rc_t CC BAMFileRead2 ( const BAMFile *self, const BAMAlignment **result );
 
 
 /* Rewind

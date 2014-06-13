@@ -27,8 +27,11 @@
 #include <kfs/extern.h>
 #include <kfs/impl.h>
 #include <klib/rc.h>
+#include <kproc/timeout.h>
+#include <os-native.h>
 #include <sysalloc.h>
 
+#include <assert.h>
 
 /*--------------------------------------------------------------------------
  * KFile
@@ -244,6 +247,38 @@ LIB_EXPORT rc_t CC KFileRead ( const KFile *self, uint64_t pos,
     return RC ( rcFS, rcFile, rcReading, rcInterface, rcBadVersion );
 }
 
+LIB_EXPORT rc_t CC KFileTimedRead ( const KFile *self, uint64_t pos,
+    void *buffer, size_t bsize, size_t *num_read, struct timeout_t *tm )
+{
+    if ( num_read == NULL )
+        return RC ( rcFS, rcFile, rcReading, rcParam, rcNull );
+
+    * num_read = 0;
+
+    if ( self == NULL )
+        return RC ( rcFS, rcFile, rcReading, rcSelf, rcNull );
+
+    if ( ! self -> read_enabled )
+        return RC ( rcFS, rcFile, rcReading, rcFile, rcNoPerm );
+
+    if ( buffer == NULL )
+        return RC ( rcFS, rcFile, rcReading, rcBuffer, rcNull );
+    if ( bsize == 0 )
+        return RC ( rcFS, rcFile, rcReading, rcBuffer, rcInsufficient );
+
+    switch ( self -> vt -> v1 . maj )
+    {
+    case 1:
+        if ( self -> vt -> v1 . min >= 2 )
+            return ( * self -> vt -> v1 . timed_read ) ( self, pos, buffer, bsize, num_read, tm );
+        if ( tm == NULL )
+            return ( * self -> vt -> v1 . read ) ( self, pos, buffer, bsize, num_read );
+        break;
+    }
+
+    return RC ( rcFS, rcFile, rcReading, rcInterface, rcBadVersion );
+}
+
 /* ReadAll
  *  read from file until "bsize" bytes have been retrieved
  *  or until end-of-input
@@ -282,14 +317,39 @@ LIB_EXPORT rc_t CC KFileReadAll ( const KFile *self, uint64_t pos,
     switch ( self -> vt -> v1 . maj )
     {
     case 1:
-        for ( rc = 0, b = buffer, total = 0; total < bsize; total += count )
+        count = 0;
+        rc = ( * self -> vt -> v1 . read ) ( self, pos, buffer, bsize, & count );
+        total = count;
+
+        if ( rc == 0 && count != 0 && count < bsize )
         {
-            count = 0;
-            rc = ( * self -> vt -> v1 . read ) ( self, pos + total, b + total, bsize - total, & count );
-            if ( rc != 0 )
-                break;
-            if ( count == 0 )
-                break;
+            if ( self -> vt -> v1 . min >= 2 )
+            {
+                timeout_t no_block;
+                TimeoutInit ( & no_block, 0 );
+
+                for ( b = buffer; total < bsize; total += count )
+                {
+                    count = 0;
+                    rc = ( * self -> vt -> v1 . timed_read ) ( self, pos + total, b + total, bsize - total, & count, & no_block );
+                    if ( rc != 0 )
+                        break;
+                    if ( count == 0 )
+                        break;
+                }
+            }
+            else
+            {
+                for ( b = buffer; total < bsize; total += count )
+                {
+                    count = 0;
+                    rc = ( * self -> vt -> v1 . read ) ( self, pos + total, b + total, bsize - total, & count );
+                    if ( rc != 0 )
+                        break;
+                    if ( count == 0 )
+                        break;
+                }
+            }
         }
         break;
     default:
@@ -305,6 +365,218 @@ LIB_EXPORT rc_t CC KFileReadAll ( const KFile *self, uint64_t pos,
     return rc;
 }
 
+LIB_EXPORT rc_t CC KFileTimedReadAll ( const KFile *self, uint64_t pos,
+    void *buffer, size_t bsize, size_t *num_read, struct timeout_t *tm )
+{
+    rc_t rc;
+    uint8_t *b;
+    size_t total, count;
+
+    if ( num_read == NULL )
+        return RC ( rcFS, rcFile, rcReading, rcParam, rcNull );
+
+    * num_read = 0;
+
+    if ( self == NULL )
+        return RC ( rcFS, rcFile, rcReading, rcSelf, rcNull );
+
+    if ( ! self -> read_enabled )
+        return RC ( rcFS, rcFile, rcReading, rcFile, rcNoPerm );
+
+    if ( buffer == NULL )
+        return RC ( rcFS, rcFile, rcReading, rcBuffer, rcNull );
+    if ( bsize == 0 )
+        return RC ( rcFS, rcFile, rcReading, rcBuffer, rcInsufficient );
+
+    switch ( self -> vt -> v1 . maj )
+    {
+    case 1:
+        if ( self -> vt -> v1 . min >= 2 )
+        {
+            count = 0;
+            rc = ( * self -> vt -> v1 . timed_read ) ( self, pos, buffer, bsize, & count, tm );
+            total = count;
+
+            if ( rc == 0 && count != 0 && count < bsize )
+            {
+                timeout_t no_block;
+                TimeoutInit ( & no_block, 0 );
+
+                for ( b = buffer; total < bsize; total += count )
+                {
+                    count = 0;
+                    rc = ( * self -> vt -> v1 . timed_read ) ( self, pos + total, b + total, bsize - total, & count, & no_block );
+                    if ( rc != 0 )
+                        break;
+                    if ( count == 0 )
+                        break;
+                }
+            }
+            break;
+        }
+
+        if ( tm == NULL )
+        {
+            for ( rc = 0, b = buffer, total = 0; total < bsize; total += count )
+            {
+                count = 0;
+                rc = ( * self -> vt -> v1 . read ) ( self, pos + total, b + total, bsize - total, & count );
+                if ( rc != 0 )
+                    break;
+                if ( count == 0 )
+                    break;
+            }
+            break;
+        }
+
+        /* no break */
+    default:
+        return RC ( rcFS, rcFile, rcReading, rcInterface, rcBadVersion );
+    }
+
+    if ( total != 0 )
+    {
+        * num_read = total;
+        return 0;
+    }
+
+    return rc;
+}
+
+/* ReadExactly
+ * TimedReadExactly
+ *  read from file until "bytes" have been retrieved
+ *  or return incomplete transfer error
+ *
+ *  "pos" [ IN ] - starting position within file
+ *
+ *  "buffer" [ OUT ] and "bytes" [ IN ] - return buffer for read
+ *
+ *  "tm" [ IN/OUT, NULL OKAY ] - an optional indicator of
+ *  blocking behavior. not all implementations will support
+ *  timed reads. a NULL timeout will block indefinitely,
+ *  a value of "tm->mS == 0" will have non-blocking behavior
+ *  if supported by implementation, and "tm->mS > 0" will indicate
+ *  a maximum wait timeout.
+ */
+LIB_EXPORT rc_t CC KFileReadExactly ( const KFile *self,
+    uint64_t pos, void *buffer, size_t bytes )
+{
+    rc_t rc;
+    uint8_t *b;
+    size_t total, count;
+
+    if ( self == NULL )
+        return RC ( rcFS, rcFile, rcReading, rcSelf, rcNull );
+
+    if ( ! self -> read_enabled )
+        return RC ( rcFS, rcFile, rcReading, rcFile, rcNoPerm );
+
+    if ( bytes == 0 )
+        return 0;
+    if ( buffer == NULL )
+        return RC ( rcFS, rcFile, rcReading, rcBuffer, rcNull );
+
+    switch ( self -> vt -> v1 . maj )
+    {
+    case 1:
+        assert ( bytes != 0 );
+        for ( b = buffer, total = 0; total < bytes; total += count )
+        {
+            count = 0;
+            rc = ( * self -> vt -> v1 . read ) ( self, pos + total, b + total, bytes - total, & count );
+            if ( rc != 0 )
+            {
+                if ( GetRCObject ( rc ) != rcTimeout || GetRCState ( rc ) != rcExhausted )
+                    break;
+            }
+            else if ( count == 0 )
+            {
+                rc = RC ( rcFS, rcFile, rcReading, rcTransfer, rcIncomplete );
+                break;
+            }
+        }
+        break;
+    default:
+        rc = RC ( rcFS, rcFile, rcReading, rcInterface, rcBadVersion );
+    }
+
+    return rc;
+}
+
+LIB_EXPORT rc_t CC KFileTimedReadExactly ( const KFile *self,
+    uint64_t pos, void *buffer, size_t bytes, struct timeout_t *tm )
+{
+    rc_t rc;
+    uint8_t *b;
+    size_t total, count;
+
+    if ( self == NULL )
+        return RC ( rcFS, rcFile, rcReading, rcSelf, rcNull );
+
+    if ( ! self -> read_enabled )
+        return RC ( rcFS, rcFile, rcReading, rcFile, rcNoPerm );
+
+    if ( bytes == 0 )
+        return 0;
+    if ( buffer == NULL )
+        return RC ( rcFS, rcFile, rcReading, rcBuffer, rcNull );
+
+    switch ( self -> vt -> v1 . maj )
+    {
+    case 1:
+        if ( self -> vt -> v1 . min >= 2 )
+        {
+            assert ( bytes != 0 );
+            for ( b = buffer, total = 0; total < bytes; total += count )
+            {
+                count = 0;
+                rc = ( * self -> vt -> v1 . timed_read ) ( self, pos + total, b + total, bytes - total, & count, tm );
+                if ( rc != 0 )
+                {
+                    if ( tm != NULL )
+                        break;
+                    if ( GetRCObject ( rc ) != rcTimeout || GetRCState ( rc ) != rcExhausted )
+                        break;
+                }
+                else if ( count == 0 )
+                {
+                    rc = RC ( rcFS, rcFile, rcReading, rcTransfer, rcIncomplete );
+                    break;
+                }
+            }
+            break;
+        }
+
+        if ( tm == NULL )
+        {
+            assert ( bytes != 0 );
+            for ( b = buffer, total = 0; total < bytes; total += count )
+            {
+                count = 0;
+                rc = ( * self -> vt -> v1 . read ) ( self, pos + total, b + total, bytes - total, & count );
+                if ( rc != 0 )
+                {
+                    if ( GetRCObject ( rc ) != rcTimeout || GetRCState ( rc ) != rcExhausted )
+                        break;
+                }
+                else if ( count == 0 )
+                {
+                    rc = RC ( rcFS, rcFile, rcReading, rcTransfer, rcIncomplete );
+                    break;
+                }
+            }
+            break;
+        }
+
+        /* no break */
+    default:
+        return RC ( rcFS, rcFile, rcReading, rcInterface, rcBadVersion );
+    }
+
+    return rc;
+}
+
 /* Write
  *  write file at known position
  *
@@ -315,7 +587,7 @@ LIB_EXPORT rc_t CC KFileReadAll ( const KFile *self, uint64_t pos,
  *  "num_writ" [ OUT ] - number of bytes actually written
  */
 LIB_EXPORT rc_t CC KFileWrite ( KFile *self, uint64_t pos,
-    const void *buffer, size_t size, size_t *num_writ)
+    const void *buffer, size_t size, size_t *num_writ )
 {
     size_t ignore;
     if ( num_writ == NULL )
@@ -338,6 +610,39 @@ LIB_EXPORT rc_t CC KFileWrite ( KFile *self, uint64_t pos,
     {
     case 1:
         return ( * self -> vt -> v1 . write ) ( self, pos, buffer, size, num_writ );
+    }
+
+    return RC ( rcFS, rcFile, rcWriting, rcInterface, rcBadVersion );
+}
+
+LIB_EXPORT rc_t CC KFileTimedWrite ( KFile *self, uint64_t pos,
+    const void *buffer, size_t size, size_t *num_writ, struct timeout_t *tm )
+{
+    size_t ignore;
+    if ( num_writ == NULL )
+        num_writ = & ignore;
+
+    * num_writ = 0;
+
+    if ( self == NULL )
+        return RC ( rcFS, rcFile, rcWriting, rcSelf, rcNull );
+
+    if ( ! self -> write_enabled )
+        return RC ( rcFS, rcFile, rcWriting, rcFile, rcNoPerm );
+
+    if ( size == 0 )
+        return 0;
+    if ( buffer == NULL )
+        return RC ( rcFS, rcFile, rcWriting, rcBuffer, rcNull );
+
+    switch ( self -> vt -> v1 . maj )
+    {
+    case 1:
+        if ( self -> vt -> v1 . min >= 2 )
+            return ( * self -> vt -> v1 . timed_write ) ( self, pos, buffer, size, num_writ, tm );
+        if ( tm == NULL )
+            return ( * self -> vt -> v1 . write ) ( self, pos, buffer, size, num_writ );
+        break;
     }
 
     return RC ( rcFS, rcFile, rcWriting, rcInterface, rcBadVersion );
@@ -381,16 +686,110 @@ LIB_EXPORT rc_t CC KFileWriteAll ( KFile *self, uint64_t pos,
     switch ( self -> vt -> v1 . maj )
     {
     case 1:
-        for ( rc = 0, b = buffer, total = 0; total < size; total += count )
+        count = 0;
+        rc = ( * self -> vt -> v1 . write ) ( self, pos, buffer, size, & count );
+        total = count;
+
+        if ( rc == 0 && count != 0 && count < size )
         {
-            count = 0;
-            rc = ( * self -> vt -> v1 . write ) ( self, pos + total, b + total, size - total, & count );
-            if ( rc != 0 )
-                break;
-            if ( count == 0 )
-                break;
+            if ( self -> vt -> v1 . min >= 2 )
+            {
+                timeout_t no_block;
+                TimeoutInit ( & no_block, 0 );
+
+                for ( b = buffer; total < size; total += count )
+                {
+                    count = 0;
+                    rc = ( * self -> vt -> v1 . timed_write ) ( self, pos + total, b + total, size - total, & count, & no_block );
+                    if ( rc != 0 )
+                        break;
+                    if ( count == 0 )
+                        break;
+                }
+            }
+            else
+            {
+                for ( b = buffer; total < size; total += count )
+                {
+                    count = 0;
+                    rc = ( * self -> vt -> v1 . write ) ( self, pos + total, b + total, size - total, & count );
+                    if ( rc != 0 )
+                        break;
+                    if ( count == 0 )
+                        break;
+                }
+            }
         }
         break;
+    default:
+        return RC ( rcFS, rcFile, rcWriting, rcInterface, rcBadVersion );
+    }
+
+    * num_writ = total;
+    if ( total == size )
+        return 0;
+    if ( rc == 0 )
+        return RC ( rcFS, rcFile, rcWriting, rcTransfer, rcIncomplete );
+    return rc;
+}
+
+LIB_EXPORT rc_t CC KFileTimedWriteAll ( KFile *self, uint64_t pos,
+    const void *buffer, size_t size, size_t *num_writ, struct timeout_t *tm )
+{
+    rc_t rc;
+    const uint8_t *b;
+    size_t total, count;
+
+    size_t ignore;
+    if ( num_writ == NULL )
+        num_writ = & ignore;
+
+    * num_writ = 0;
+
+    if ( self == NULL )
+        return RC ( rcFS, rcFile, rcWriting, rcSelf, rcNull );
+
+    if ( ! self -> write_enabled )
+        return RC ( rcFS, rcFile, rcWriting, rcFile, rcNoPerm );
+
+    if ( size == 0 )
+        return 0;
+    if ( buffer == NULL )
+        return RC ( rcFS, rcFile, rcWriting, rcBuffer, rcNull );
+
+    switch ( self -> vt -> v1 . maj )
+    {
+    case 1:
+        if ( self -> vt -> v1 . min >= 2 )
+        {
+            for ( rc = 0, b = buffer, total = 0; total < size; total += count )
+            {
+                count = 0;
+                rc = ( * self -> vt -> v1 . timed_write ) ( self, pos + total, b + total, size - total, & count, tm );
+                if ( rc != 0 )
+                    break;
+                if ( count == 0 )
+                    break;
+            }
+            break;
+        }
+
+        if ( tm == NULL )
+        {
+            for ( rc = 0, b = buffer, total = 0; total < size; total += count )
+            {
+                count = 0;
+                rc = ( * self -> vt -> v1 . write ) ( self, pos + total, b + total, size - total, & count );
+                if ( rc != 0 )
+                    break;
+                if ( count == 0 )
+                    break;
+            }
+            break;
+        }
+
+        /* no break */
+
     default:
         return RC ( rcFS, rcFile, rcWriting, rcInterface, rcBadVersion );
     }
@@ -423,6 +822,12 @@ LIB_EXPORT rc_t CC KFileInit ( KFile *self, const KFile_vt *vt,
         switch ( vt -> v1 . min )
         {
             /* ADD NEW MINOR VERSION CASES HERE */
+        case 2:
+#if _DEBUGGING
+            if ( vt -> v1 . timed_write == NULL ||
+                 vt -> v1 . timed_read == NULL )
+                return RC ( rcFS, rcFile, rcConstructing, rcInterface, rcNull );
+#endif
         case 1:
 #if _DEBUGGING
             if ( vt -> v1 . get_type == NULL )

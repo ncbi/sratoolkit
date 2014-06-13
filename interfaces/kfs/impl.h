@@ -108,6 +108,13 @@ struct KFile_vt_v1
     uint32_t ( CC * get_type ) ( const KFILE_IMPL * self );
     /* end minor version == 1 */
 
+    /* start minor version == 2 */
+    rc_t ( CC * timed_read ) ( const KFILE_IMPL *self, uint64_t pos,
+        void *buffer, size_t bsize, size_t *num_read, struct timeout_t *tm );
+    rc_t ( CC * timed_write ) ( KFILE_IMPL *self, uint64_t pos,
+        const void *buffer, size_t size, size_t *num_writ, struct timeout_t *tm );
+    /* end minor version == 2 */
+
     /* ANY NEW ENTRIES MUST BE REFLECTED IN libs/kfs/file.c
        BY BOTH THE CORRESPONDING MESSAGE DISPATCH FUNCTION(s) AND
        VTABLE VALIDITY CHECKS IN KFileInit */

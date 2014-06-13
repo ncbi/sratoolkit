@@ -55,6 +55,12 @@ struct KLock
     atomic32_t refcount;
 };
 
+struct KTimedLock
+{
+    pthread_mutex_t mutex;
+    atomic32_t refcount;
+};
+
 #ifdef __cplusplus
 }
 #endif

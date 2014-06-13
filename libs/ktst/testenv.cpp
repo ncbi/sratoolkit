@@ -57,7 +57,10 @@ TestEnv::TestEnv(int argc, char* argv[], ArgsHandler* argsHandler)
     , argc2(0)
     , argv2(NULL)
 {
-    process_args(argc, argv, argsHandler);
+    rc_t rc = process_args(argc, argv, argsHandler);
+    if (rc != 0) {
+        throw rc;
+    }
 }
 
 TestEnv::~TestEnv ()
@@ -503,3 +506,9 @@ rc_t CC TestEnv::Usage(const char *progname)
     return 0;
 }
 #endif
+
+bool TestEnv::Sleep(unsigned int seconds)
+{
+    return TestEnv::SleepMs(seconds*1000);
+}
+

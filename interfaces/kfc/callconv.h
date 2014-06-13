@@ -23,66 +23,31 @@
 * ===========================================================================
 *
 */
-#ifndef _h_entrez_fetcher_
-#define _h_entrez_fetcher_
 
-#ifndef _h_url_fetcher_
-#include <kns/url-fetcher.h>
-#endif
+#ifndef _h_kfc_callconv_
+#define _h_kfc_callconv_
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 /*--------------------------------------------------------------------------
- * KEntrezFetcher
- *  everything to fetch DNA-text from entrez - server
+ * CC
+ *  calling convention
+ *  should be declared within compiler/os-specific files
+ *  but to make external client builds work, do so here...
  */
-typedef struct KEntrezFetcher KEntrezFetcher;
+#ifndef CC
+ #if defined _MSC_VER
+  #define CC __cdecl
+ #else
+  #define CC
+ #endif
+#endif
 
-
-/* Make
- *  create a fetcher object
- */
-rc_t KEntrezFetcherMake ( KEntrezFetcher **fetcher, KUrlFetcher * url_fetcher );
-
-/* Setup
- *  prepares a fetch and indicates to caller the buffer size
- *
- *  "server" [ IN ] - NUL terminated URI, e.g.
- *     "http://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi"
- *
- *  "seq_id" [ IN ] - NUL terminated sequence identifier, e.g. "NC_000001"
- *  max_seq_len : 1024
- *  row_id      : 11
- *  row_count   : 1
- */
-rc_t KEntrezFetcherSetup ( KEntrezFetcher *self,
-    const char * server, const char * seq_id, 
-    const size_t max_seq_len, const uint64_t row_id, const size_t row_count,
-    size_t * buffsize );
-
-
-/* Setup
- *  prepares a fetch by giving it a usable url
- */
-rc_t KEntrezFetcherSetupUri ( KEntrezFetcher *self, const char * uri );
-
-
-/* AddRef
- * Release
- */
-rc_t KEntrezFetcherAddRef ( const KEntrezFetcher *self );
-rc_t KEntrezFetcherRelease ( const KEntrezFetcher *self );
-
-/* Read
- *  reads data from prepared URI
- */
-rc_t KEntrezFetcherRead ( KEntrezFetcher *self,
-                       void *dst, size_t dst_size, size_t *num_read );
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* _h_entrez_fetcher_ */
+#endif /*  _h_kfc_callconv_ */

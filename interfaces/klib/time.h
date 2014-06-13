@@ -66,7 +66,7 @@ struct KTime
     int16_t tzoff;        /* -719 .. +719 minutes from Prime Meridian */
     uint8_t hour;         /* 0 .. 23                                  */
     uint8_t minute;       /* 0 .. 59                                  */
-    uint8_t second;       /* 0 .. 60 :  60 used for leap seconds      */
+    uint8_t second;       /* 0 .. 61 :  61 used for leap seconds      */
     bool dst;             /* true if Daylight Savings Time in effect  */
 };
 
@@ -81,6 +81,12 @@ KLIB_EXTERN const KTime* CC KTimeLocal ( KTime *kt, KTime_t ts );
  *  populate "kt" from "ts" in GMT
  */
 KLIB_EXTERN const KTime* CC KTimeGlobal ( KTime *kt, KTime_t ts );
+
+
+/* MakeTime
+ *  make a KTime_t from KTime
+ */
+KLIB_EXTERN KTime_t CC KTimeMakeTime ( const KTime *self );
 
 
 #ifdef __cplusplus

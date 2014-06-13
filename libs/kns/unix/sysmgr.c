@@ -23,13 +23,15 @@
 * ===========================================================================
 *
 */
-#include "kns_mgr_priv.h"
 
-rc_t KNSManagerInit ( struct KNSManager *self )
+#include <klib/rc.h>
+#include "sysmgr.h"
+
+rc_t KNSManagerInit ( void )
 {
     return 0;
 } 
 
-void KNSManagerCleanup ( struct KNSManager *self )
+void KNSManagerCleanup ( void )
 {
 }

@@ -27,11 +27,7 @@
 #ifndef _h_klib_extern_
 #define _h_klib_extern_
 
-#ifndef _h_klib_callconv_
-#include <klib/callconv.h>
-#endif
-
-#if ! defined EXPORT_LATCH && _LIBRARY
+#if ! defined EXPORT_LATCH && defined _LIBRARY
 
 #define KLIB_EXTERN LIB_EXPORT
 #define KLIB_EXTERN_DATA extern LIB_EXPORT
@@ -48,27 +44,8 @@
 
 #endif
 
-#if defined _MSC_VER && ! _STATIC
-
-/* __declspec ( dllimport ) will cause creation of
-   function pointers rather than thunks, which makes
-   the code that imports unable to link statically
-   against a library. we leave this symbol defined as
-   "extern" to use thunks instead. as a result, all
-   function addresses resolve to the thunk and not
-   the actual function. */
-#define LIB_IMPORT extern
-#define LIB_IMPORT_DATA extern __declspec ( dllimport )
-#define LIB_EXPORT __declspec ( dllexport )
-#define LIB_EXPORT_DATA __declspec ( dllexport )
-
-#else
-
-#define LIB_IMPORT extern
-#define LIB_IMPORT_DATA extern
-#define LIB_EXPORT
-#define LIB_EXPORT_DATA
-
+#ifndef _h_kfc_extern_
+#include <kfc/extern.h>
 #endif
 
 #endif /* _h_klib_extern_ */

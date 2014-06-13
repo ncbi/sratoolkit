@@ -68,6 +68,7 @@ struct SRADumperFmt
     const SRATable* table;
     bool gzip;
     bool bzip2;
+    bool split_files; /* tell the core that the implementation splits into files... */
 };
 
 #endif /* _h_tools_dump_core */

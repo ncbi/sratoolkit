@@ -49,6 +49,17 @@ struct KLock
     KRefcount refcount;
 };
 
+/*--------------------------------------------------------------------------
+ * KTimedLock
+ *  a POSIX-style mutual exclusion lock with wupport for timed Acquire
+ */
+struct KTimedLock
+{
+    HANDLE mutex;
+    KRefcount refcount;
+};
+
+
 #ifdef __cplusplus
 }
 #endif

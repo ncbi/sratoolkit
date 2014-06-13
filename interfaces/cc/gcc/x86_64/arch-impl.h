@@ -29,6 +29,21 @@
 
 #include <stdint.h>
 
+/* Intel versions from 11.0 through 13.0 mangle certain shift
+ * statements in inline assembly. */
+#if defined(__INTEL_COMPILER)  &&  __INTEL_COMPILER_BUILD_DATE >= 20090131 \
+    &&  __INTEL_COMPILER_BUILD_DATE < 20130607 
+#  define HAVE_ICC_SHIFT_BUG 1 
+#endif
+
+#ifndef USE_GCC_BUILTIN
+#define USE_GCC_BUILTIN 1
+#endif
+
+#if USE_GCC_BUILTIN
+#include <strings.h>
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -37,6 +52,9 @@ static __inline__
 int16_t uint16_lsbit ( uint16_t self )
 {
     int16_t rtn;
+#if USE_GCC_BUILTIN
+    rtn = ( int16_t ) __builtin_ffs ( self ) - 1;
+#else
     __asm__ __volatile__
     (
         "bsf %%ax, %%ax;"
@@ -46,6 +64,7 @@ int16_t uint16_lsbit ( uint16_t self )
         : "=a" ( rtn )
         : "a" ( self )
     );
+#endif
     return rtn;
 }
 
@@ -53,6 +72,9 @@ static __inline__
 int32_t uint32_lsbit ( uint32_t self )
 {
     int32_t rtn;
+#if USE_GCC_BUILTIN
+    rtn = __builtin_ffs ( self ) - 1;
+#else
     __asm__ __volatile__
     (
         "bsf %%eax, %%eax;"
@@ -62,6 +84,7 @@ int32_t uint32_lsbit ( uint32_t self )
         : "=a" ( rtn )
         : "a" ( self )
     );
+#endif
     return rtn;
 }
 
@@ -260,6 +283,13 @@ void uint128_not ( uint128_t *self )
 static __inline__
 void uint128_shr ( uint128_t *self, uint32_t i )
 {
+#ifdef HAVE_ICC_SHIFT_BUG
+    if (i > 0) {
+        self->lo >>= i;
+        self->lo  |= self->hi << (64 - i);
+        self->hi >>= i;
+    }
+#else
     __asm__ __volatile__
     (
         "mov %%esi, %%ecx;"
@@ -271,6 +301,7 @@ void uint128_shr ( uint128_t *self, uint32_t i )
         : "D" ( self ), "S" ( i )
         : "%rax", "%rcx"
     );
+#endif
 }
 
 static __inline__

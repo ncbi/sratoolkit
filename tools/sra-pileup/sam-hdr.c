@@ -24,6 +24,7 @@
 *
 */
 
+#include <kfs/file.h>
 #include <kdb/meta.h>
 #include <kdb/namelist.h>
 #include <align/reference.h>
@@ -176,7 +177,7 @@ static rc_t add_seq_id_node( BSTree * tree, const char * seq_id, const char * na
 }
 
 
-static rc_t print_seq_id_tree( BSTree * tree, input_files * ifs )
+static rc_t build_seq_id_tree( BSTree * tree, input_files * ifs )
 {
     rc_t rc = 0;
     uint32_t i;
@@ -254,7 +255,230 @@ static void CC print_header_callback( BSTNode *n, void *data )
 }
 
 
-static rc_t extract_spotgroups( VNamelist * spotgroups, input_files * ifs )
+static rc_t extract_spotgroups_from_stats( VNamelist * spotgroups, input_database * id, const KMetadata * meta )
+{
+    const KMDataNode * node;
+    rc_t rc = KMetadataOpenNodeRead( meta, &node, "STATS/SPOT_GROUP" );
+    if ( rc != 0 )
+       (void)PLOGERR( klogErr, ( klogErr, rc, "cannot open meta-node 'STATS/SPOT_GROUP' from '$(t)'", "t=%s", id->path ) );
+    else
+    {
+        KNamelist * node_childs;
+        rc = KMDataNodeListChildren( node, &node_childs );
+        if ( rc != 0 )
+            (void)PLOGERR( klogErr, ( klogErr, rc, "cannot list children of SPOT_GROUP-node in '$(t)'", "t=%s", id->path ) );
+        else
+        {
+            uint32_t n_count;
+            rc = KNamelistCount( node_childs, &n_count );
+            if ( rc == 0 && n_count > 0 )
+            {
+                uint32_t n_idx;
+                for ( n_idx = 0; n_idx < n_count && rc == 0; ++n_idx )
+                {
+                    const char * spotgroup;
+                    rc = KNamelistGet( node_childs, n_idx, &spotgroup );
+                    if ( rc == 0 && spotgroup != NULL )
+                    {
+                        uint32_t found;
+                        rc_t rc1 = VNamelistIndexOf( spotgroups, spotgroup, &found );
+                        if ( GetRCState( rc1 ) == rcNotFound )
+                            rc = VNamelistAppend( spotgroups, spotgroup );
+                    }
+                }
+            }
+            KNamelistRelease( node_childs );
+        }
+        KMDataNodeRelease( node );
+    }
+    return rc;
+}
+
+
+#define STATE_ALPHA 0
+#define STATE_LF 1
+#define STATE_NL 2
+
+typedef struct buffer_range
+{
+    const char * start;
+    uint32_t processed, count, state;
+} buffer_range;
+
+
+static const char empty_str[ 2 ] = { ' ', 0 };
+
+
+static rc_t LoadFromBuffer( buffer_range * range,
+                            rc_t ( CC * wr ) ( void * dst, const String * S ), 
+                            void * dst )
+{
+    rc_t rc = 0;
+    uint32_t idx;
+    const char * p = range->start;
+    String S, S_empty;
+
+    S.addr = p;
+    S.len = S.size = range->processed;
+    S_empty.addr = empty_str;
+    S_empty.len = S_empty.size = 1;
+    for ( idx = range->processed; idx < range->count && rc == 0; ++idx )
+    {
+        switch( p[ idx ] )
+        {
+            case 0x0A : switch( range->state )
+                        {
+                            case STATE_ALPHA : /* ALPHA --> LF */
+                                                rc = wr ( dst, &S );
+                                                range->state = STATE_LF;
+                                                break;
+
+                            case STATE_LF : /* LF --> LF */
+                                             rc = wr ( dst, &S_empty );
+                                             break;
+
+                            case STATE_NL : /* NL --> LF */
+                                             rc = wr ( dst, &S_empty );
+                                             range->state = STATE_LF;
+                                             break;
+                        }
+                        break;
+
+            case 0x0D : switch( range->state )
+                        {
+                            case STATE_ALPHA : /* ALPHA --> NL */
+                                                rc = wr( dst, &S_empty );
+                                                range->state = STATE_NL;
+                                                break;
+
+                            case STATE_LF : /* LF --> NL */
+                                             range->state = STATE_NL;
+                                             break;
+
+                            case STATE_NL : /* NL --> NL */
+                                             rc = wr ( dst, &S_empty );
+                                             break;
+                        }
+                        break;
+
+            default   : switch( range->state )
+                        {
+                            case STATE_ALPHA : /* ALPHA --> ALPHA */
+                                                S.len++; S.size++;
+                                                break;
+
+                            case STATE_LF : /* LF --> ALPHA */
+                                             S.addr = &p[ idx ]; S.len = S.size = 1;
+                                             range->state = STATE_ALPHA;
+                                             break;
+
+                            case STATE_NL : /* NL --> ALPHA */
+                                             S.addr = &p[ idx ]; S.len = S.size = 1;
+                                             range->state = STATE_ALPHA;
+                                             break;
+                        }
+                        break;
+        }
+    }
+    if ( range->state == STATE_ALPHA )
+    {
+        range->start = S.addr;
+        range->count = S.len;
+    }
+    else
+        range->count = 0;
+    return rc;
+}
+
+
+static rc_t read_2_namelist( VNamelist * namelist, char * buffer, size_t bsize,
+                             rc_t ( CC * rd ) ( const void * src, uint64_t pos, void * buffer, size_t bsize, size_t * num_read ),
+                             rc_t ( CC * wr ) ( void * dst, const String * S ),
+                             const void * src, void * dst )
+{
+    rc_t rc = 0;
+    uint64_t pos = 0;
+    buffer_range range;
+    bool done = false;
+
+    range.start = buffer;
+    range.count = 0;
+    range.processed = 0;
+    range.state = STATE_ALPHA;
+
+    do
+    {
+        size_t num_read;
+        rc = rd ( src, pos, ( char * )( range.start + range.processed ),
+                            bsize - range.processed, &num_read );
+        if ( rc == 0 )
+        {
+            done = ( num_read == 0 );
+            if ( !done )
+            {
+                range.start = buffer;
+                range.count = range.processed + num_read;
+
+                LoadFromBuffer( &range, wr, dst );
+                if ( range.count > 0 )
+                {
+                    memmove ( buffer, range.start, range.count );
+                }
+                range.start = buffer;
+                range.processed = range.count;
+
+                pos += num_read;
+            }
+            else if ( range.state == STATE_ALPHA )
+            {
+                String S;
+                S.addr = range.start;
+                S.len = S.size = range.count;
+                rc = wr ( dst, &S );
+            }
+        }
+    } while ( rc == 0 && !done );
+
+    return rc;
+}
+
+
+static rc_t CC write_to_namelist( void * dst, const String * S )
+{
+    rc_t rc = 0;
+    VNamelist * namelist = dst;
+    if ( S->len > 3 && S->addr[ 0 ] == '@' && S->addr[ 1 ] == 'R' && S->addr[ 2 ] == 'G' )
+        rc = VNamelistAppendString ( namelist, S );
+    return rc;
+}
+
+static rc_t CC read_from_metadata_node( const void * src, uint64_t pos, void * buffer, size_t bsize, size_t * num_read )
+{
+    const KMDataNode * node = src;
+    size_t remaining;
+    return KMDataNodeRead( node, pos, buffer, bsize, num_read, &remaining );
+}
+
+
+static rc_t extract_spotgroups_from_bam_hdr( VNamelist * spotgroups, input_database * id, const KMetadata * meta )
+{
+    const KMDataNode * node;
+    rc_t rc = KMetadataOpenNodeRead( meta, &node, "BAM_HEADER" );
+    /* do not report if the node cannot be found, because this would produce an error message when a database does
+       not have this node, which can is OK */
+    if ( rc == 0 )
+    {
+        char buffer[ 4096 ];
+        rc = read_2_namelist( spotgroups, buffer, sizeof buffer, 
+                              read_from_metadata_node, write_to_namelist,
+                              node, spotgroups );
+        KMDataNodeRelease( node );
+    }
+    return rc;
+}
+
+
+static rc_t extract_spotgroups( VNamelist * spotgroups, input_files * ifs, bool from_stats )
 {
     rc_t rc = 0;
     uint32_t i;
@@ -263,55 +487,39 @@ static rc_t extract_spotgroups( VNamelist * spotgroups, input_files * ifs )
         input_database * id = VectorGet( &ifs->dbs, i );
         if ( id != NULL )
         {
-            const VTable * tab;
-            rc = VDatabaseOpenTableRead( id->db, &tab, "SEQUENCE" );
-            if ( rc != 0 )
-                (void)PLOGERR( klogErr, ( klogErr, rc, "cannot open table SEQUENCE in '$(t)'", "t=%s", id->path ) );
+            if ( from_stats )
+            {
+                const VTable * tab;
+                rc = VDatabaseOpenTableRead( id->db, &tab, "SEQUENCE" );
+                if ( rc != 0 )
+                    (void)PLOGERR( klogErr, ( klogErr, rc, "cannot open table SEQUENCE in '$(t)'", "t=%s", id->path ) );
+                else
+                {
+                    const KMetadata * meta;
+                    rc = VTableOpenMetadataRead( tab, &meta );
+                    if ( rc != 0 )
+                        (void)PLOGERR( klogErr, ( klogErr, rc, "cannot open metadata from '$(t)'", "t=%s", id->path ) );
+                    else
+                    {
+                        if ( from_stats )
+                            rc = extract_spotgroups_from_stats( spotgroups, id, meta );
+                        KMetadataRelease( meta );
+                    }
+                    VTableRelease( tab );
+                }
+            }
             else
             {
                 const KMetadata * meta;
-                rc = VTableOpenMetadataRead( tab, &meta );
-                if ( rc != 0 )
-                    (void)PLOGERR( klogErr, ( klogErr, rc, "cannot open metadata from '$(t)'", "t=%s", id->path ) );
-                else
+                rc = VDatabaseOpenMetadataRead( id->db, &meta );
+                /* do not report if metadata cannot be found, because this would produce an error message when a database has
+                   no metadata at all */
+                if ( rc == 0 )
                 {
-                    const KMDataNode * node;
-                    rc = KMetadataOpenNodeRead( meta, &node, "STATS/SPOT_GROUP" );
-                    if ( rc != 0 )
-                       (void)PLOGERR( klogErr, ( klogErr, rc, "cannot open meta-node 'STATS/SPOT_GROUP' from '$(t)'", "t=%s", id->path ) );
-                    else
-                    {
-                        KNamelist * node_childs;
-                        rc = KMDataNodeListChildren( node, &node_childs );
-                        if ( rc != 0 )
-                            (void)PLOGERR( klogErr, ( klogErr, rc, "cannot list children of SPOT_GROUP-node in '$(t)'", "t=%s", id->path ) );
-                        else
-                        {
-                            uint32_t n_count;
-                            rc = KNamelistCount( node_childs, &n_count );
-                            if ( rc == 0 && n_count > 0 )
-                            {
-                                uint32_t n_idx;
-                                for ( n_idx = 0; n_idx < n_count && rc == 0; ++n_idx )
-                                {
-                                    const char * spotgroup;
-                                    rc = KNamelistGet( node_childs, n_idx, &spotgroup );
-                                    if ( rc == 0 && spotgroup != NULL )
-                                    {
-                                        uint32_t found;
-                                        rc_t rc1 = VNamelistIndexOf( spotgroups, spotgroup, &found );
-                                        if ( GetRCState( rc1 ) == rcNotFound )
-                                            rc = VNamelistAppend( spotgroups, spotgroup );
-                                    }
-                                }
-                            }
-                            KNamelistRelease( node_childs );
-                        }
-                        KMDataNodeRelease( node );
-                    }
+                    rc = extract_spotgroups_from_bam_hdr( spotgroups, id, meta );
                     KMetadataRelease( meta );
                 }
-                VTableRelease( tab );
+
             }
         }
     }
@@ -319,7 +527,7 @@ static rc_t extract_spotgroups( VNamelist * spotgroups, input_files * ifs )
 }
 
 
-static rc_t print_spotgroups( VNamelist * spotgroups )
+static rc_t print_spotgroups( VNamelist * spotgroups, bool from_stats )
 {
     uint32_t count;
     rc_t rc = VNameListCount( spotgroups, &count );
@@ -332,8 +540,15 @@ static rc_t print_spotgroups( VNamelist * spotgroups )
             rc = VNameListGet( spotgroups, i, &s );
             if ( rc == 0 && s != NULL )
             {
-                if ( cmp_pchar( s, "default" ) != 0 )
-                    rc = KOutMsg( "@RG\tID:%s\n", s );
+                if ( from_stats )
+                {
+                    if ( cmp_pchar( s, "default" ) != 0 )
+                        rc = KOutMsg( "@RG\tID:%s\n", s );
+                }
+                else
+                {
+                    rc = KOutMsg( "%s\n", s );
+                }
             }
         }
     }
@@ -343,13 +558,14 @@ static rc_t print_spotgroups( VNamelist * spotgroups )
 
 static rc_t print_headers_by_recalculating( const samdump_opts * opts, input_files * ifs )
 {
-    BSTree tree;
     rc_t rc = KOutMsg( "@HD\tVN:1.3\n" );
     if ( rc == 0 )
     {
+        BSTree tree;
+
         /* collect sequenc-id's and names and their lengths, unique by sequence-id */
         BSTreeInit( &tree );
-        rc = print_seq_id_tree( &tree, ifs );
+        rc = build_seq_id_tree( &tree, ifs );
         if ( rc == 0 )
         {
             hdr_print_ctx hctx;
@@ -368,9 +584,12 @@ static rc_t print_headers_by_recalculating( const samdump_opts * opts, input_fil
             rc = VNamelistMake( &spotgroups, 10 );
             if ( rc == 0 )
             {
-                rc = extract_spotgroups( spotgroups, ifs );
+                bool from_stats = false;
+                rc = extract_spotgroups( spotgroups, ifs, from_stats );
                 if ( rc == 0 )
-                    rc = print_spotgroups( spotgroups );
+                    rc = print_spotgroups( spotgroups, from_stats );
+                else
+                    rc = 0; /* otherwise the tool would be not able to handle something that has no headers */
                 VNamelistRelease( spotgroups );
             }
         }
@@ -379,29 +598,100 @@ static rc_t print_headers_by_recalculating( const samdump_opts * opts, input_fil
 }
 
 
+static rc_t print_headers_from_file( const samdump_opts * opts )
+{
+    KDirectory * dir;
+    rc_t rc = KDirectoryNativeDir ( &dir );
+    if ( rc != 0 )
+    {
+        (void)PLOGERR( klogErr, ( klogErr, rc, "cant created native directory for file '$(t)'", "t=%s", opts->header_file ) );
+    }
+    else
+    {
+        const struct KFile * f;
+        rc = KDirectoryOpenFileRead ( dir, &f, "%s", opts->header_file );
+        if ( rc != 0 )
+        {
+            (void)PLOGERR( klogErr, ( klogErr, rc, "cant open file '$(t)'", "t=%s", opts->header_file ) );
+        }
+        else
+        {
+            VNamelist * headers;
+            rc = VNamelistMake ( &headers, 25 );
+            if ( rc != 0 )
+            {
+                (void)PLOGERR( klogErr, ( klogErr, rc, "cant create container for file '$(t)'", "t=%s", opts->header_file ) );
+            }
+            else
+            {
+                rc = LoadKFileToNameList( f, headers );
+                if ( rc != 0 )
+                {
+                    (void)PLOGERR( klogErr, ( klogErr, rc, "cant load file '$(t)' into container", "t=%s", opts->header_file ) );
+                }
+                else
+                {
+                    uint32_t count;
+                    rc = VNameListCount ( headers, &count );
+                    if ( rc != 0 )
+                    {
+                        (void)PLOGERR( klogErr, ( klogErr, rc, "cant get count for container of '$(t)'", "t=%s", opts->header_file ) );
+                    }
+                    else
+                    {
+                        uint32_t i;
+                        for ( i = 0; i < count && rc == 0; ++i )
+                        {
+                            const char * line;
+                            rc = VNameListGet ( headers, i, &line );
+                            if ( rc != 0 )
+                            {
+                                (void)PLOGERR( klogErr, ( klogErr, rc, "cant get line #$(t) from container", "t=%u", i ) );
+                            }
+                            else
+                            {
+                                rc = KOutMsg( "%s\n", line );
+                            }
+                        }
+                    }
+                }
+                VNamelistRelease ( headers );
+            }
+            KFileRelease ( f );
+        }
+        KDirectoryRelease ( dir );
+    }
+    return rc;
+}
+
+
+static rc_t print_org_headers( const samdump_opts * opts, input_files * ifs )
+{
+    rc_t rc = 0;
+    bool recalc = ( ifs->database_count > 1 );
+    if ( !recalc )
+    {
+        input_database * id = VectorGet( &ifs->dbs, 0 );
+        rc = print_headers_from_metadata( id->db, &recalc, id->path );
+    }
+    if ( rc == 0 && recalc )
+        rc = print_headers_by_recalculating( opts, ifs );
+    return rc;
+}
+
+
 rc_t print_headers( const samdump_opts * opts, input_files * ifs )
 {
     rc_t rc = 0;
-    if ( ifs->database_count > 1 )
-        rc = print_headers_by_recalculating( opts, ifs );
-    else
+    switch( opts->header_mode )
     {
-        bool recalc = false;
-        switch( opts->header_mode )
-        {
-        case hm_dump    :   {
-                                input_database * id = VectorGet( &ifs->dbs, 0 );
-                                rc = print_headers_from_metadata( id->db, &recalc, id->path );
-                                if ( rc == 0 && recalc )
-                                    rc = print_headers_by_recalculating( opts, ifs );
-                            }
-                            break;
+        case hm_dump    :  rc = print_org_headers( opts, ifs ); break;
 
-        case hm_recalc  :   rc = print_headers_by_recalculating( opts, ifs );
-                            break;
+        case hm_recalc  :   rc = print_headers_by_recalculating( opts, ifs ); break;
+
+        case hm_file    :   rc = print_headers_from_file( opts ); break;
 
         case hm_none    :   break; /* to not let the compiler complain about not handled enum */
-        }
     }
 
     /* attach header comments from the commandline */

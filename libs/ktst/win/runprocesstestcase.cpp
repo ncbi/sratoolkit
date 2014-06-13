@@ -34,6 +34,9 @@
 using namespace std;
 using namespace ncbi::NK;
 
+#undef REPORT_ERROR
+#define REPORT_ERROR(msg) _REPORT_CRITICAL_ERROR_(string("TestEnv::") + msg, __FILE__, __LINE__, true)
+
 /* signal handlers for a single-test case thread */
 void CC SigSubHandler(int sig)
 {
@@ -84,13 +87,10 @@ int TestEnv::RunProcessTestCase(TestCase& obj, void(TestCase::*meth)(), int time
     HANDLE thread = (HANDLE)_beginthread( ThreadProc, 0, &call );
     if (thread == NULL)
     {
-        _REPORT_CRITICAL_ERROR_("TestEnv::RunProcessTestCase: failed to start a test case thread", __FILE__, __LINE__, true);
+        REPORT_ERROR("TestEnv::RunProcessTestCase: failed to start a test case thread");
     }
 
-    // make sure to restore main process's signal handlers before throwing an exception
-#define CALL_FAILED(call)\
-    _REPORT_CRITICAL_ERROR_("TestEnv::RunProcessTestCase: " call " failed", __FILE__, __LINE__, true);
-
+    // make sure to restore main process's signal handlers before re-throwing an exception
     DWORD rc=0;
     DWORD result=WaitForSingleObject( (HANDLE)thread, timeout == 0 ? INFINITE : timeout*1000);
     try
@@ -99,24 +99,33 @@ int TestEnv::RunProcessTestCase(TestCase& obj, void(TestCase::*meth)(), int time
         {
         case WAIT_OBJECT_0:
             if (GetExitCodeThread(thread, &rc) == 0)
-            {
-                CALL_FAILED("GetExitCodeThread");
-            }
+                REPORT_ERROR("RunProcessTestCase failed");
             break;
         case WAIT_TIMEOUT:
             if (!CloseHandle(thread))
-            {
-                CALL_FAILED("GetExitCodeThread");
-            }
+                REPORT_ERROR("CloseHandle failed");
+            cerr << "child process timed out" << endl;            
             rc=TEST_CASE_TIMED_OUT;
             break;
         default:
-            CALL_FAILED("WaitForSingleObject");
+            REPORT_ERROR("WaitForSingleObject failed");
             break;
         }
     }
-    catch(...)
+    catch (const exception& ex)
     {
+        REPORT_ERROR(obj.GetName() + " threw " + ex.what());
+        rc=TEST_CASE_FAILED;
+    }
+    catch (const ncbi::NK::execution_aborted&)
+    {
+        REPORT_ERROR(obj.GetName() + " aborted ");
+        rc=TEST_CASE_FAILED;
+    }
+    catch (...)
+    {
+        REPORT_ERROR(obj.GetName() + " threw something ");
+        rc=TEST_CASE_FAILED;
         set_handlers(); 
         throw;
     }
@@ -126,10 +135,10 @@ int TestEnv::RunProcessTestCase(TestCase& obj, void(TestCase::*meth)(), int time
     return (int)rc;
 }
 
-unsigned int TestEnv::Sleep(unsigned int seconds)
+bool TestEnv::SleepMs(unsigned int milliseconds)
 {
-    ::Sleep(seconds*1000);
-    return 0;
+    ::Sleep((DWORD)milliseconds);
+    return true;
 }
 
 void TestEnv::set_handlers(void) 

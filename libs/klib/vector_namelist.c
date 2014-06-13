@@ -259,12 +259,13 @@ LIB_EXPORT rc_t CC VNamelistIndexOf( VNamelist *self, const char* s, uint32_t *f
     return rc;
 }
 
-LIB_EXPORT rc_t CC VNamelistRemove( VNamelist *self, const char* s )
-{
-    uint32_t idx;
 
-    rc_t rc = VNamelistIndexOf( self, s, &idx );
-    if ( rc == 0 )
+LIB_EXPORT rc_t CC VNamelistRemoveIdx( VNamelist *self, uint32_t idx )
+{
+    rc_t rc;
+    if ( self == NULL )
+        rc = RC ( rcCont, rcNamelist, rcSearching, rcSelf, rcNull );
+    else
     {
         char *removed;
         rc = VectorRemove ( &(self->name_vector), idx, (void **)&removed );
@@ -274,6 +275,30 @@ LIB_EXPORT rc_t CC VNamelistRemove( VNamelist *self, const char* s )
     return rc;
 }
 
+
+LIB_EXPORT rc_t CC VNamelistRemove( VNamelist *self, const char* s )
+{
+    uint32_t idx;
+
+    rc_t rc = VNamelistIndexOf( self, s, &idx );
+    if ( rc == 0 )
+        rc = VNamelistRemoveIdx( self, idx );
+    return rc;
+}
+
+
+LIB_EXPORT rc_t CC VNamelistRemoveAll( VNamelist *self )
+{
+    rc_t rc = 0;
+    uint32_t count = 1;
+    while ( count > 0 && rc == 0 )
+    {
+        rc = VNameListCount ( self, &count );
+        if ( rc == 0 && count > 0 )
+            rc = VNamelistRemoveIdx( self, count - 1 );
+    }
+    return rc;
+}
 
 
 /* Reorder
@@ -329,3 +354,4 @@ LIB_EXPORT void CC VNamelistReorder ( VNamelist *self, bool case_insensitive )
         VectorReorder ( & self -> name_vector, case_insensitive ? vect_string_cmp_case : vect_string_cmp, NULL );
     }
 }
+

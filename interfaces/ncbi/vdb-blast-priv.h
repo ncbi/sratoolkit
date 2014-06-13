@@ -23,49 +23,29 @@
 * ===========================================================================
 *
 */
-#ifndef _h_kns_mgr_priv_
-#define _h_kns_mgr_priv_
 
-#ifndef _h_klib_refcount_
-#include <klib/refcount.h>
+#ifndef _h_ncbi_vdb_blast_priv_
+#define _h_ncbi_vdb_blast_priv_
+
+#ifndef _h_vdb_extern_
+#include <vdb/extern.h>
 #endif
+
+#include <stddef.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-#include <klib/rc.h>
+struct VdbBlast2naReader;
 
-#include "curlhdr/curl.h"
-#include "curlhdr/easy.h"
-
-/* this is the hidden manager-struct: a refcount with some function-pointer's */
-struct KNSManager
-{
-    KRefcount refcount;
-
-    rc_t create_rc;
-    
-    /* curl-easy-function-pointers... */
-    CURL*    ( CC * curl_easy_init_fkt )    ( void );
-    void     ( CC * curl_easy_cleanup_fkt ) ( CURL * handle );
-    CURLcode ( CC * curl_easy_setopt_fkt )  ( CURL *handle, CURLoption option, ... );
-    CURLcode ( CC * curl_easy_perform_fkt ) ( CURL * handle );
-    CURLcode ( CC * curl_easy_getinfo_fkt ) ( CURL *curl, CURLINFO info, ... );
-    char *   ( CC * curl_version_fkt )      ( void );
-    struct curl_slist* ( CC * curl_slist_append_fkt ) ( struct curl_slist * list, const char * string );
-    void ( CC * curl_slist_free_all_fkt ) ( struct curl_slist * list );
-    
-    bool verbose;
-};
-
-
-rc_t KNSManagerInit ( struct KNSManager *self );    /* in kns/unix/sysmgr.c or kns/win/sysmgr.c */
-void KNSManagerCleanup ( struct KNSManager *self );
-
+VDB_EXTERN uint64_t CC _VdbBlast2naReaderRead(const struct VdbBlast2naReader *self,
+    uint32_t *status, uint64_t *read_id, size_t *starting_base,
+    uint8_t *buffer, size_t buffer_size);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif
+#endif /* _h_ncbi_vdb_blast_priv_ */

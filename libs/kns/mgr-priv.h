@@ -23,47 +23,35 @@
 * ===========================================================================
 *
 */
-#ifndef _h_kns_request_
-#define _h_kns_request_
+
+#ifndef _h_kns_mgr_priv_
+#define _h_kns_mgr_priv_
 
 #ifndef _h_kns_extern_
 #include <kns/extern.h>
 #endif
 
-#ifndef _h_klib_defs_
-#include <klib/defs.h>
+#ifndef _h_klib_refcount_
+#include <klib/refcount.h>
 #endif
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-
-struct String;
-struct KNSManager;
-struct KDataBuffer;
-
-struct KCurlRequest;
-
-KNS_EXTERN rc_t CC KNSManagerMakeCurlRequest( struct KNSManager const *kns_mgr, struct KCurlRequest **self, const char * url, bool verbose );
-
-KNS_EXTERN rc_t CC KCurlRequestAddRef ( const struct KCurlRequest *self );
-
-KNS_EXTERN rc_t CC KCurlRequestRelease( const struct KCurlRequest *self );
-
-KNS_EXTERN rc_t CC KCurlRequestAddFields( struct KCurlRequest *self, const char * fields );
-
-KNS_EXTERN rc_t CC KCurlRequestAddSFields( struct KCurlRequest *self, struct String const * fields );
-
-KNS_EXTERN rc_t CC KCurlRequestAddField( struct KCurlRequest *self, const char * name, const char * value );
-
-KNS_EXTERN rc_t CC KCurlRequestAddSField( struct KCurlRequest *self, struct String const * name, struct String const * value );
-
-KNS_EXTERN rc_t CC KCurlRequestPerform( struct KCurlRequest *self, struct KDataBuffer * buffer );
-
+struct KNSManager
+{
+    KRefcount refcount;
+    int32_t conn_timeout;
+    int32_t conn_read_timeout;
+    int32_t conn_write_timeout;
+    int32_t http_read_timeout;
+    int32_t http_write_timeout;
+    bool verbose;
+};
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif
+#endif /* _h_kns_mgr_priv_ */

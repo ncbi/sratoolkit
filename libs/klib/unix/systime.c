@@ -106,3 +106,34 @@ LIB_EXPORT const KTime* CC KTimeGlobal ( KTime *kt, KTime_t ts )
     }
     return kt;
 }
+
+
+/* MakeTime
+ *  make a KTime_t from KTime
+ */
+LIB_EXPORT KTime_t CC KTimeMakeTime ( const KTime *self )
+{
+    KTime_t ts = 0;
+
+    if ( self != NULL )
+    {
+        struct tm t;
+
+        assert ( self -> year >= 1900 );
+        t . tm_year = self -> year - 1900;
+        t . tm_mon = self -> month;
+        t . tm_mday = self -> day + 1;
+        t . tm_wday = self -> weekday;
+#if !defined(__SunOS)  &&  !defined(__sun__)
+        t . tm_gmtoff = self -> tzoff * 60; 
+#endif
+        t . tm_hour = self -> hour;
+        t . tm_min = self -> minute;
+        t . tm_sec = self -> second;
+        t . tm_isdst = self -> dst;
+
+        ts = mktime ( &t );
+    }
+
+    return ts;
+}

@@ -27,27 +27,8 @@
 #ifndef _h_klib_callconv_
 #define _h_klib_callconv_
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-/*--------------------------------------------------------------------------
- * CC
- *  calling convention
- *  should be declared within compiler/os-specific files
- *  but to make external client builds work, do so here...
- */
-#ifndef CC
- #if defined _MSC_VER
-  #define CC __cdecl
- #else
-  #define CC
- #endif
-#endif
-
-
-#ifdef __cplusplus
-}
+#ifndef _h_kfc_callconv_
+#include <kfc/callconv.h>
 #endif
 
 #endif /*  _h_klib_callconv_ */

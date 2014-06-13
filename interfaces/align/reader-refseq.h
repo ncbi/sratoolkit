@@ -34,14 +34,17 @@
 extern "C" {
 #endif
 
+struct VDBManager;
+struct VTable;
+
 enum ETableReaderRefSeq_Options {
     errefseq_4NA = 0x01 /* read in INSDC:4na:bin, INSDC:dna:text is default */
 };
 
 typedef struct TableReaderRefSeq TableReaderRefSeq;
 
-ALIGN_EXTERN rc_t CC TableReaderRefSeq_MakeTable(const TableReaderRefSeq** cself, const VDBManager* vmgr,
-                                                 const VTable* table, uint32_t options, size_t cache);
+ALIGN_EXTERN rc_t CC TableReaderRefSeq_MakeTable(const TableReaderRefSeq** cself, const struct VDBManager* vmgr,
+                                                 const struct VTable* table, uint32_t options, size_t cache);
 
 ALIGN_EXTERN rc_t CC TableReaderRefSeq_MakePath(const TableReaderRefSeq** cself, const VDBManager* vmgr,
                                                 const char* path, uint32_t options, size_t cache);

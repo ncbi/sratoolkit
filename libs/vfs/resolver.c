@@ -20,7 +20,7 @@
  *
  *  Please cite the author in any work or product based on this material.
  *
- * ===========================================================================
+ * =============================================================================
  *
  */
 
@@ -33,8 +33,6 @@
 #include <kns/manager.h>
 #include <kns/http.h>
 #include <kns/stream.h>
-#include <kns/curl-file.h>
-#include <kns/KCurlRequest.h>
 #include <kfs/file.h>
 #include <kfs/directory.h>
 #include <kfg/repository.h>
@@ -72,7 +70,7 @@
    unless we are expecting them for refseq */
 #define DISALLOW_FRAGMENT NO_LEGACY_WGS_REFSEQ_CGI
 
-#define USE_CURL 1
+#define USE_CURL 0
 
 #define NAME_SERVICE_MAJ_VERS 1
 #define NAME_SERVICE_MIN_VERS 1
@@ -930,9 +928,11 @@ rc_t VResolverAlgParseResolverCGIResponse_1_0 ( const char *start, size_t size,
  *  <accession>|obj-id|name|size|mod-date|md5|<download-ticket>|<url>|<result-code>|<message>
  */
 static
-rc_t VResolverAlgParseResolverCGIResponse_1_1 ( const char *start, size_t size,
-    const VPath ** path, const VPath ** mapping, const String *acc, const String *ticket )
+rc_t VResolverAlgParseResolverCGIResponse_1_1 ( const char *astart, size_t size,
+    const VPath ** path, const VPath ** mapping, const String *acc,
+    const String *ticket, bool *canRetry )
 {
+    const char *start = astart;
     rc_t rc;
     KLogLevel lvl;
     char *rslt_end;
@@ -1021,8 +1021,12 @@ rc_t VResolverAlgParseResolverCGIResponse_1_1 ( const char *start, size_t size,
     StringInit ( & msg, start, sep - start, ( uint32_t ) ( sep - start ) );
 
     /* compare acc to accession or obj_id */
-    if ( ! StringEqual ( & accession, acc ) && ! StringEqual ( & obj_id, acc ) )
+    if ( ! StringEqual ( & accession, acc ) && ! StringEqual ( & obj_id, acc ) ) {
+        DBGMSG(DBG_KNS, DBG_FLAG(DBG_KNS_ERR), (
+            "@@@@@@@@2 %%s:%s:%d: %s"
+                "\n", __FILE__, __FUNCTION__, __LINE__, astart));
         return RC ( rcVFS, rcResolver, rcResolving, rcMessage, rcCorrupt );
+    }
 
     /* compare ticket
        currently this makes sense with 1 request from a known workspace */
@@ -1129,6 +1133,8 @@ rc_t VResolverAlgParseResolverCGIResponse_1_1 ( const char *start, size_t size,
             rc = RC ( rcVFS, rcResolver, rcResolving, rcQuery, rcUnauthorized );
             break;
         case 404:
+            assert(canRetry);
+            *canRetry = false;
             return RC ( rcVFS, rcResolver, rcResolving, rcName, rcNotFound );
         case 410:
             rc = RC ( rcVFS, rcResolver, rcResolving, rcName, rcNotFound );
@@ -1172,7 +1178,8 @@ rc_t VResolverAlgParseResolverCGIResponse_1_1 ( const char *start, size_t size,
  */
 static
 rc_t VResolverAlgParseResolverCGIResponse ( const KDataBuffer *result,
-    const VPath ** path, const VPath ** mapping, const String *acc, const String *ticket )
+    const VPath ** path, const VPath ** mapping, const String *acc,
+    const String *ticket, bool * canRetry )
 {
     /* the textual response */
     const char *start = ( const void* ) result -> base;
@@ -1230,7 +1237,8 @@ rc_t VResolverAlgParseResolverCGIResponse ( const KDataBuffer *result,
                 break;
 
             /* parse 1.0 response table */
-            return VResolverAlgParseResolverCGIResponse_1_1 ( & start [ i ], size - i, path, mapping, acc, ticket );
+            return VResolverAlgParseResolverCGIResponse_1_1 ( & start [ i ],
+                size - i, path, mapping, acc, ticket, canRetry );
         }
         while ( false );
     }
@@ -1242,109 +1250,43 @@ rc_t VResolverAlgParseResolverCGIResponse ( const KDataBuffer *result,
  *  use NCBI CGI to resolve accession into URL
  */
 static
-rc_t VResolverAlgRemoteProtectedResolve ( const VResolverAlg *self,
+rc_t VResolverAlgRemoteProtectedResolveImpl ( const VResolverAlg *self,
     const KNSManager *kns, VRemoteProtocols protocols, const String *acc,
-    const VPath ** path, const VPath ** mapping, bool legacy_wgs_refseq )
+    const VPath ** path, const VPath ** mapping, bool legacy_wgs_refseq,
+    bool *canRetry )
 {
-#if USE_CURL
-    struct KCurlRequest *req;
-    rc_t rc = 0;
-    DBGMSG(DBG_VFS, DBG_FLAG(DBG_VFS), ("names.cgi = %S\n", self -> root));
-    rc = KNSManagerMakeCurlRequest ( kns, & req, self -> root -> addr, false );
-    if ( rc == 0 )
-    {
-        String name, val;
-
-        /* build up POST information: */
-        CONST_STRING ( & name, "version" );
-#if NAME_SERVICE_VERS == ONE_DOT_ONE
-        CONST_STRING (& val, "1.1" );
-#else
-        CONST_STRING (& val, "1.0" );
-#endif
-        DBGMSG(DBG_VFS, DBG_FLAG(DBG_VFS), ("  %S = %S\n", &name, &val));
-        rc = KCurlRequestAddSField ( req, & name, & val );
-        if ( rc == 0 )
-        {
-            CONST_STRING ( & name, "acc" );
-            DBGMSG(DBG_VFS, DBG_FLAG(DBG_VFS), ("  %S = %S\n", &name, acc));
-            rc = KCurlRequestAddSField ( req, & name, acc );
-        }
-        if ( rc == 0 && legacy_wgs_refseq )
-        {
-            CONST_STRING ( & name, "ctx" );
-            CONST_STRING (& val, "refseq" );
-            DBGMSG(DBG_VFS, DBG_FLAG(DBG_VFS), ("  %S = %S\n", &name, &val));
-            rc = KCurlRequestAddSField ( req, & name, & val );
-        }
-        if ( rc == 0 && self -> ticket != NULL )
-        {
-            CONST_STRING ( & name, "tic" );
-            DBGMSG(DBG_VFS, DBG_FLAG(DBG_VFS),
-                ("  %S = %S\n", &name, self->ticket));
-            rc = KCurlRequestAddSField ( req, & name, self -> ticket );
-        }
-#if NAME_SERVICE_VERS >= ONE_DOT_ONE /* SRA-1690 */
-        if ( rc == 0 )
-        {
-            CONST_STRING ( & name, "accept-proto" );
-            switch ( protocols )
-            {
-            case eProtocolHttp:
-                CONST_STRING ( & val, "http" );
-                break;
-            case eProtocolFasp:
-                CONST_STRING ( & val, "fasp" );
-                break;
-            case eProtocolFaspHttp:
-                CONST_STRING ( & val, "fasp,http" );
-                break;
-            case eProtocolHttpFasp:
-                CONST_STRING ( & val, "http,fasp" );
-                break;
-            default:
-                rc = RC ( rcVFS, rcResolver, rcResolving, rcParam, rcInvalid );
-            }
-            if ( rc == 0 )
-            {
-                DBGMSG(DBG_VFS, DBG_FLAG ( DBG_VFS ), ("  %S = %S\n", & name, & val ) );
-                rc = KCurlRequestAddSField ( req, & name, & val );
-            }
-        }
-#endif
-
-        /* execute post */
-        if ( rc == 0 )
-        {
-            KDataBuffer result;
-            memset ( & result, 0, sizeof result );
-            rc = KCurlRequestPerform ( req, & result );
-            if ( rc == 0 )
-            {
-                /* expect a table as a NUL-terminated string, but
-                   having close to the number of bytes in results */
-                rc = VResolverAlgParseResolverCGIResponse ( & result, path, mapping, acc, self -> ticket );
-                KDataBufferWhack ( & result );
-            }
-        }
-
-        KCurlRequestRelease ( req );
-    }
-#else
+    rc_t rc;
     KHttpRequest *req;
-    rc_t rc = KNSManagerMakeRequest ( kns, &req, 0x01000000, NULL, self -> root -> addr );
+
+    assert(path && canRetry);
+    *canRetry = true;
+
+    DBGMSG(DBG_VFS, DBG_FLAG(DBG_VFS), ("names.cgi = %S\n", self -> root));
+    rc = KNSManagerMakeRequest ( kns, & req, 0x01000000, NULL, self -> root -> addr );
     if ( rc == 0 )
     {
         /* build up POST information: */
+        DBGMSG(DBG_VFS, DBG_FLAG(DBG_VFS), ("  version = %u.%u\n",
+            NAME_SERVICE_MAJ_VERS, NAME_SERVICE_MIN_VERS));
         rc = KHttpRequestAddPostParam ( req, "version=%u.%u",
             NAME_SERVICE_MAJ_VERS, NAME_SERVICE_MIN_VERS );
         if ( rc == 0 )
+        {
+            DBGMSG(DBG_VFS, DBG_FLAG(DBG_VFS), ("  acc = %S\n", acc));
             rc = KHttpRequestAddPostParam ( req, "acc=%S", acc ); 
+        }
         if ( rc == 0 && legacy_wgs_refseq )
+        {
+            DBGMSG(DBG_VFS, DBG_FLAG(DBG_VFS), ("  ctx = refseq\n"));
             rc = KHttpRequestAddPostParam ( req, "ctx=refseq" );
+        }
         if ( rc == 0 && self -> ticket != NULL )
+        {
+            DBGMSG(DBG_VFS, DBG_FLAG(DBG_VFS), ("  tic = %S\n", self -> ticket));
             rc = KHttpRequestAddPostParam ( req, "tic=%S", self -> ticket );
-        if ( NAME_SERVICE_VERS >= ONE_DOT_ONE )
+        }
+#if NAME_SERVICE_VERS >= ONE_DOT_ONE /* SRA-1690 */
+        if ( rc == 0 )
         {
             const char *val;
             switch ( protocols )
@@ -1367,8 +1309,12 @@ rc_t VResolverAlgRemoteProtectedResolve ( const VResolverAlg *self,
             }
 
             if ( rc == 0 )
+            {
+                DBGMSG(DBG_VFS, DBG_FLAG ( DBG_VFS ), ("  accept-proto = %s\n", val ) );
                 rc = KHttpRequestAddPostParam ( req, "accept-proto=%s", val );
+            }
         }
+#endif
 
         if ( rc == 0 )
         {
@@ -1379,6 +1325,8 @@ rc_t VResolverAlgRemoteProtectedResolve ( const VResolverAlg *self,
             {
                 uint32_t code;
 
+                *canRetry = false;
+
                 rc = KHttpResultStatus ( rslt, &code, NULL, 0, NULL );
                 if ( code == 200 )
                 {
@@ -1387,11 +1335,11 @@ rc_t VResolverAlgRemoteProtectedResolve ( const VResolverAlg *self,
                     rc = KHttpResultGetInputStream ( rslt, &response );
                     if ( rc == 0 )
                     {
-                        KDataBuffer result;
                         size_t num_read;
                         size_t total = 0;
                         
-                        memset ( &result, 0, sizeof result );
+                        KDataBuffer result;
+                        memset ( & result, 0, sizeof result );
                         KDataBufferMakeBytes ( & result, 4096 );
 
                         while ( 1 )
@@ -1406,7 +1354,7 @@ rc_t VResolverAlgRemoteProtectedResolve ( const VResolverAlg *self,
                             }
                             
                             base = result . base;
-                            rc = KStreamRead ( response, & base [ total ], result . elem_count - total, &num_read );
+                            rc = KStreamRead ( response, & base [ total ], result . elem_count - total, & num_read );
                             if ( rc != 0 )
                             {
                                 /* TBD - look more closely at rc */
@@ -1415,8 +1363,10 @@ rc_t VResolverAlgRemoteProtectedResolve ( const VResolverAlg *self,
                                 else
                                     break;
                             }
+
                             if ( num_read == 0 )
                                 break;
+
                             total += num_read;
                         }
 
@@ -1424,7 +1374,8 @@ rc_t VResolverAlgRemoteProtectedResolve ( const VResolverAlg *self,
                         {
                             result.elem_count = total;
 
-                            rc = VResolverAlgParseResolverCGIResponse ( & result, path, mapping, acc, self -> ticket );
+                            rc = VResolverAlgParseResolverCGIResponse(&result,
+                                path, mapping, acc, self->ticket, canRetry);
                             KDataBufferWhack ( &result );
                         }
 
@@ -1436,9 +1387,48 @@ rc_t VResolverAlgRemoteProtectedResolve ( const VResolverAlg *self,
         }
         KHttpRequestRelease ( req );
     }
-#endif
-    return rc == 0 ? 0 : RC ( rcVFS, rcResolver, rcResolving, rcName, rcNotFound );
+
+    assert(*path != NULL || rc != 0);
+
+    if (rc == 0 && *path == NULL) {
+        *canRetry = true;
+        rc = RC(rcVFS, rcResolver, rcResolving, rcName, rcNull);
+    }
+
+    return rc;
 }
+
+static rc_t VResolverAlgRemoteProtectedResolve ( const VResolverAlg *self,
+    const KNSManager *kns, VRemoteProtocols protocols, const String *acc,
+    const VPath ** path, const VPath ** mapping, bool legacy_wgs_refseq )
+{
+    rc_t rc = 0;
+    int i = 0, retryOnFailure = 3;
+    for (i = 0; i < retryOnFailure; ++i) {
+        bool canRetry = false;
+        rc = VResolverAlgRemoteProtectedResolveImpl(self, kns, protocols,
+            acc, path, mapping, legacy_wgs_refseq, &canRetry);
+        if (rc == 0) {
+            break;
+        }
+        if (!canRetry) {
+            DBGMSG(DBG_KNS, DBG_FLAG(DBG_KNS_ERR), (
+"@@@@@@@@2 %s: VResolverAlgRemoteProtectedResolveImpl %d/%d = cannot retry = %R"
+                "\n", __FUNCTION__, i + 1, retryOnFailure, rc));
+            break;
+        }
+        DBGMSG(DBG_KNS, DBG_FLAG(DBG_KNS_ERR), (
+"@@@@@@@@2 %s: VResolverAlgRemoteProtectedResolveImpl %d/%d = can retry = %R"
+            "\n", __FUNCTION__, i + 1, retryOnFailure, rc));
+    }
+
+    if (rc != 0) {
+        DBGMSG(DBG_KNS, DBG_FLAG(DBG_KNS_ERR), (
+            "@@@@@@@@2 %s: returning %R\n", __FUNCTION__, rc));
+    }
+
+    return rc == 0 ? 0 : RC(rcVFS, rcResolver, rcResolving, rcName, rcNotFound);
+}    
 
 /* RemoteResolve
  *  resolve an accession into a VPath or not found
@@ -1471,27 +1461,27 @@ rc_t VResolverAlgRemoteResolve ( const VResolverAlg *self,
     {
         rc = VResolverAlgRemoteProtectedResolve ( self,
             kns, protocols, & tok -> acc, path, mapping, legacy_wgs_refseq );
+
         if (rc == 0 && path != NULL && *path != NULL &&
             opt_file_rtn != NULL && *opt_file_rtn == NULL &&
             VPathGetUri_t ( * path ) != vpuri_fasp )
         {
             const String *s = NULL;
             rc_t rc = VPathMakeString(*path, &s);
-            if (rc != 0) {
+            if (rc != 0)
+            {
                 LOGERR(klogInt, rc,
                     "failed to make string from remote protected path");
             }
-            else {
-#if USE_CURL
-                rc = KCurlFileMake(opt_file_rtn, s->addr, false);
-#else
+            else
+            {
                 rc = KNSManagerMakeHttpFile ( kns, opt_file_rtn, NULL, 0x01010000, "%S", s );
-#endif
-                if (rc != 0) {
+                if (rc != 0)
+                {
                     PLOGERR(klogInt, (klogInt, rc,
                         "failed to open file for $(path)", "path=%s", s->addr));
                 }
-                free((void*)s);
+                StringWhack ( s );
             }
         }
         return rc;
@@ -2388,6 +2378,7 @@ rc_t VResolverRemoteResolve ( const VResolver *self,
  *  Accession must be an ncbi-acc scheme or a simple name with no 
  *  directory paths.
  *
+ * REMOVED 12/23/13
  *  "opt_file_rtn" [ OUT, NULL OKAY ] - optional return parameter for
  *   any KFile that may be opened as a result of resolution. This can
  *   happen if resolving an accession involves opening a URL to a
@@ -2396,14 +2387,17 @@ rc_t VResolverRemoteResolve ( const VResolver *self,
 LIB_EXPORT
 rc_t CC VResolverRemote ( const VResolver * self,
     VRemoteProtocols protocols, const VPath * accession,
-    const VPath ** path, const KFile ** opt_file_rtn )
+    const VPath ** path /*, const KFile ** opt_file_rtn */ )
 {
     rc_t rc;
 
+#if 0
     if ( opt_file_rtn != NULL )
         * opt_file_rtn = NULL;
+#endif
 
     rc = VResolverQuery ( self, protocols, accession, NULL, path, NULL );
+#if 0
     if ( rc == 0 && opt_file_rtn != NULL &&
         VPathGetUri_t ( * path ) != vpuri_fasp )
     {
@@ -2419,10 +2413,10 @@ rc_t CC VResolverRemote ( const VResolver * self,
         }
 #endif
     }
+#endif
 
     return rc;
 }
-
 
 /* ExtractAccessionApp
  *  examine a path for accession portion,

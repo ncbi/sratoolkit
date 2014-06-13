@@ -985,7 +985,7 @@ rc_t CC flush_tbl_typespec ( void *data, const void *buffer, size_t size )
 
 LIB_EXPORT rc_t CC VTableTypespec ( const VTable *self, char *ts_buff, size_t ts_size )
 {
-    rc_t rc;
+    rc_t rc = 0;
 
     if ( ts_size == 0 )
         rc = RC ( rcVDB, rcTable, rcAccessing, rcBuffer, rcInsufficient );

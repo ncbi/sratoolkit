@@ -173,23 +173,27 @@ LIB_EXPORT rc_t CC AbsolidReaderSpotName(const AbsolidReader* self,
             } else {
                 int k = 0;
                 size_t psz = spotname_sz;
-                while( psz > 0 && k < 4 ) {
+                while( psz > 0 && k < 3 ) {
                     /* take out PLATE_X_Y and optional label _(F|R)3 */
-                    while( psz > 0 && isdigit(*(spotname + psz)) ) {
+                    while( psz > 0 && isdigit( *(spotname + psz - 1)) ) {
                         psz--;
                     }
-                    if(*(spotname + psz) == 'F' || *(spotname + psz) == 'R') {
-                        if( --psz > 0 && !isdigit(*(spotname + psz)) ) {
+
+                    if( *(spotname + psz - 1) == 'F' || *(spotname + psz - 1) == 'R') {
+                        /* Discard F|R and preceding underscore */
+                        if( --psz > 0 && !isdigit(*(spotname + psz - 1)) ) {
                             psz--;
                         }
                         continue;
                     } else if( psz > 0 ) {
+                        /* Discard underscore */
                         psz--;
                         k++;
                     }
                 }
                 if( psz > 0 ) {
-                    me->prefix_sz = psz + 2;
+                    /* Add one to restore underscore at end of prefix */
+                    me->prefix_sz = psz + 1;
                     string_copy(me->prefix_buf, sizeof(me->prefix_buf), spotname, me->prefix_sz);
                 } else {
                     me->prefix_sz = 0;

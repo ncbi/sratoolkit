@@ -688,6 +688,84 @@ LIB_EXPORT rc_t CC VDBManagerGetObjVersion ( const VDBManager *self, ver_t * ver
     return rc;
 }
 
+/* VDBManagerGetObjModDate
+ *  returns the load/modification timestamp of the given object
+ */
+LIB_EXPORT rc_t CC VDBManagerGetObjModDate ( const VDBManager *self, KTime_t *timestamp, const char *path )
+{
+    rc_t rc;
+
+    if ( timestamp == NULL )
+        rc = RC ( rcVDB, rcMgr, rcAccessing, rcParam, rcNull );
+    else
+    {
+        if ( self == NULL )
+            rc = RC ( rcVDB, rcMgr, rcAccessing, rcSelf, rcNull );
+        else if ( path == NULL )
+            rc = RC ( rcVDB, rcMgr, rcAccessing, rcPath, rcNull );
+        else if ( path [ 0 ] == 0 )
+            rc = RC ( rcVDB, rcMgr, rcAccessing, rcPath, rcEmpty );
+        else
+        {
+            const KTable *tbl;
+            const KDatabase *db;
+            const KMetadata *meta;
+
+            int path_type = KDBManagerPathType ( self -> kmgr, path ) & ~ kptAlias;
+            switch ( path_type )
+            {
+            case kptDatabase:
+                rc = KDBManagerOpenDBRead ( self -> kmgr, & db, path );
+                if ( rc == 0 )
+                {
+                    rc = KDatabaseOpenMetadataRead ( db, & meta );
+                    KDatabaseRelease ( db );
+                }
+                break;
+            case kptTable:
+                rc = KDBManagerOpenTableRead ( self -> kmgr, & tbl, path );
+                if ( rc == 0 )
+                {
+                    rc = KTableOpenMetadataRead ( tbl, & meta );
+                    KTableRelease ( tbl );
+                }
+                break;
+
+            case kptPrereleaseTbl:
+                * timestamp = 0;
+                meta = NULL;
+                break;
+
+            default:
+                rc = RC ( rcVDB, rcMgr, rcAccessing, rcPath, rcIncorrect );
+            }
+
+            if ( rc == 0 )
+            {
+                if ( meta != NULL )
+                {
+                    const KMDataNode *node;
+                    rc = KMetadataOpenNodeRead ( meta, & node, "LOAD/timestamp" );
+                    KMetadataRelease ( meta );
+                    if ( rc == 0 )
+                    {
+                        rc = KMDataNodeReadAsI64 ( node, timestamp );
+                        KMDataNodeRelease ( node );
+                        if ( rc == 0 )
+                            return 0;
+                    }
+                }
+
+                /* TBD - at this point our recourse is to check for
+                   the object's timestamp in the filesystem */
+            }
+        }
+
+        * timestamp = 0;
+    }
+
+    return rc;
+}
 
 /* ListExternalSchemaModules
  */

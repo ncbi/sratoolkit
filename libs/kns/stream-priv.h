@@ -31,6 +31,10 @@
 #define rcStream rcFile
 #endif
 
+#ifndef rcSocket
+#define rcSocket rcFile
+#endif
+
 #ifndef rcUrl
 #define rcUrl rcPath
 #endif

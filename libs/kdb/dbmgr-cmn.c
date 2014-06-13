@@ -39,6 +39,7 @@
 #include <klib/symbol.h>
 #include <klib/checksum.h>
 #include <klib/rc.h>
+#include <kproc/lock.h>
 #include <sysalloc.h>
 
 #include <limits.h>
@@ -65,6 +66,8 @@ rc_t KDBManagerWhack ( KDBManager *self )
 
     /* everything should be closed */
     assert ( self -> open_objs . root == NULL );
+
+    rc = KRWLockRelease ( self -> open_objs_lock );
 
     rc = VFSManagerRelease ( self -> vfsmgr );
 
@@ -186,15 +189,24 @@ rc_t KDBManagerMake ( KDBManager **mgrp, const KDirectory *wd, const char *op,
 
                 if ( rc == 0 )
                 {
-                    CRC32Init ();
+                    rc = KRWLockMake ( & mgr -> open_objs_lock );
 
-                    BSTreeInit ( & mgr -> open_objs );
+                    if ( rc == 0 )
+                    {
+                        CRC32Init ();
+                        
+                        BSTreeInit ( & mgr -> open_objs );
+                        
+                        KRefcountInit ( & mgr -> refcount, 1, "KDBManager", op, "kmgr" );
+                        
+                        * mgrp = mgr;
+                        return 0;
+                    }
 
-                    KRefcountInit ( & mgr -> refcount, 1, "KDBManager", op, "kmgr" );
-
-                    * mgrp = mgr;
-                    return 0;
+                    VFSManagerRelease ( mgr -> vfsmgr );
                 }
+
+                KDirectoryRelease ( mgr -> wd );
             }
 
             free ( mgr );
@@ -338,7 +350,14 @@ rc_t KDBManagerCheckOpen ( const KDBManager * self, const char *path )
 static
 KSymbol *KDBManagerOpenObjectFindInt ( const KDBManager * self, String *s )
 {
-    return ( KSymbol* ) BSTreeFind ( & self -> open_objs, s, KSymbolCmp );
+    KSymbol *sym = NULL;
+    rc_t rc = KRWLockAcquireShared ( self -> open_objs_lock );
+    if ( rc == 0 )
+    {
+        sym = ( KSymbol* ) BSTreeFind ( & self -> open_objs, s, KSymbolCmp );
+        KRWLockUnlock ( self -> open_objs_lock );
+    }
+    return sym;
 }
 
 KSymbol *KDBManagerOpenObjectFind ( const KDBManager * self, const char * path )
@@ -364,28 +383,40 @@ bool KDBManagerOpenObjectBusy ( const KDBManager *self, const char *path )
 rc_t KDBManagerOpenObjectAdd ( KDBManager *self, KSymbol *obj )
 {
     KSymbol *exists;
-    rc_t rc = BSTreeInsertUnique ( & self -> open_objs,
-        & obj -> n, ( BSTNode** ) & exists, KSymbolSort );
-
+    rc_t rc = KRWLockAcquireExcl ( self -> open_objs_lock );
     if ( rc == 0 )
-        return 0;
-
-    switch ( exists -> type )
     {
-    case kptDatabase:
-        return RC ( rcDB, rcMgr, rcInserting, rcDatabase, rcBusy );
-    case kptTable:
-    case kptPrereleaseTbl:
-        return RC ( rcDB, rcMgr, rcInserting, rcTable, rcBusy );
-    case kptColumn:
-        return RC ( rcDB, rcMgr, rcInserting, rcColumn, rcBusy );
-    case kptIndex:
-        return RC ( rcDB, rcMgr, rcInserting, rcIndex, rcBusy );
-    case kptMetadata:
-        return RC ( rcDB, rcMgr, rcInserting, rcMetadata, rcBusy );
-    }
+        rc = BSTreeInsertUnique ( & self -> open_objs,
+            & obj -> n, ( BSTNode** ) & exists, KSymbolSort );
 
-    return RC ( rcDB, rcMgr, rcInserting, rcUnknown, rcBusy );
+        KRWLockUnlock ( self -> open_objs_lock );
+
+        if ( rc != 0 )
+        {
+            switch ( exists -> type )
+            {
+            case kptDatabase:
+                rc = RC ( rcDB, rcMgr, rcInserting, rcDatabase, rcBusy );
+                break;
+            case kptTable:
+            case kptPrereleaseTbl:
+                rc = RC ( rcDB, rcMgr, rcInserting, rcTable, rcBusy );
+                break;
+            case kptColumn:
+                rc = RC ( rcDB, rcMgr, rcInserting, rcColumn, rcBusy );
+                break;
+            case kptIndex:
+                rc = RC ( rcDB, rcMgr, rcInserting, rcIndex, rcBusy );
+                break;
+            case kptMetadata:
+                rc = RC ( rcDB, rcMgr, rcInserting, rcMetadata, rcBusy );
+                break;
+            default:
+                rc = RC ( rcDB, rcMgr, rcInserting, rcUnknown, rcBusy );
+            }
+        }
+    }
+    return rc;
 }
 
 
@@ -394,20 +425,27 @@ rc_t KDBManagerOpenObjectAdd ( KDBManager *self, KSymbol *obj )
  */
 rc_t KDBManagerOpenObjectDelete ( KDBManager *self, KSymbol *obj )
 {
+    rc_t rc = 0;
     if ( obj != NULL )
     {
-        /* we can expect that the only valid reason for
-           "obj" not being unlinked is that it was not in
-           the tree. other reasons would be that "obj" was
-           corrupt, but in any event, it's not in the tree */
-        if ( ! BSTreeUnlink ( & self -> open_objs, & obj -> n ) )
+        rc = KRWLockAcquireExcl ( self -> open_objs_lock );
+        if ( rc == 0 )
+        {
+            /* we can expect that the only valid reason for
+               "obj" not being unlinked is that it was not in
+               the tree. other reasons would be that "obj" was
+               corrupt, but in any event, it's not in the tree */
+            if ( ! BSTreeUnlink ( & self -> open_objs, & obj -> n ) )
 
-            /* to be truly weird, we could tell what kind of node
-               it was that we didn't find */
-            return RC ( rcDB, rcMgr, rcRemoving, rcNode, rcNotFound );
+                /* to be truly weird, we could tell what kind of node
+                   it was that we didn't find */
+                rc = RC ( rcDB, rcMgr, rcRemoving, rcNode, rcNotFound );
+
+            KRWLockUnlock ( self -> open_objs_lock );
+        }
     }
 
-    return 0;
+    return rc;
 }
 
 

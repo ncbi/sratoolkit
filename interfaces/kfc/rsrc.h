@@ -24,23 +24,57 @@
  *
  */
 
-#ifndef _h_keyring_priv_
-#define _h_keyring_priv_
+#ifndef _h_kfc_rsrc_
+#define _h_kfc_rsrc_
 
-#ifndef _h_klib_defs_
-#include <klib/defs.h>
+#ifndef _h_kfc_defs_
+#include <kfc/defs.h>
 #endif
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+/*--------------------------------------------------------------------------
+ * forwards
+ */
+struct KMemMgr;
+struct KConfig;
+struct KDBManager;
+struct VDBManager;
 
-struct KStream;
 
-extern rc_t StartKeyRing(struct KStream** ipc);
+/*--------------------------------------------------------------------------
+ * KRsrc
+ *  a very watered-down version of vdb-3 resource capabilities
+ */
+typedef struct KRsrc KRsrc;
+struct KRsrc
+{
+    struct KMemMgr * mem;
+    struct KConfig * cfg;
+    struct KDBManager * kdb;
+    struct VDBManager * vdb;
+};
 
-#ifdef __cplusplus
-}
-#endif
 
-#endif /* _h_keyring_priv_ */
+/* Init
+ *  initialize a local block from another
+ */
+void KRsrcInit ( KRsrc *rsrc, ctx_t ctx );
+
+
+/* Whack
+ *  release references
+ */
+void KRsrcWhack ( KRsrc *self, ctx_t ctx );
+
+
+/*--------------------------------------------------------------------------
+ * KRsrcBits
+ *  bitfield definitions for optional resources
+ *  for use in hybrid approach of VDB-2
+ */
+enum KRsrcBits
+{
+    rbKDBManager = ( 1 << 0 ),
+    rbVDBManager = ( 1 << 1 )
+};
+
+#endif /* _h_kfc_rsrc_ */

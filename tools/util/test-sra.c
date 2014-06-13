@@ -46,22 +46,24 @@
 #include <vdb/table.h> /* VDBManagerOpenTableRead */
 
 #include <kns/ascp.h> /* ascp_locate */
-#include <kns/curl-file.h> /* KCurlFileMake */
-#include <kns/KCurlRequest.h> /* KCurlRequestRelease */
+#include <kns/http.h>
+#include <kns/manager.h>
 #include <kns/manager-ext.h> /* KNSManagerNewReleaseVersion */
+#include <kns/stream.h>
 
 #include <kdb/manager.h> /* kptDatabase */
 
 #include <kfs/directory.h> /* KDirectory */
 #include <kfs/file.h> /* KFile */
 
-#include <klib/sra-release-version.h>
 #include <klib/data-buffer.h> /* KDataBuffer */
+#include <klib/debug.h> /* DBGMSG */
 #include <klib/log.h> /* KLogHandlerSet */
 #include <klib/out.h> /* KOutMsg */
 #include <klib/printf.h> /* string_vprintf */
 #include <klib/rc.h>
 #include <klib/report.h> /* ReportForceFinalize */
+#include <klib/sra-release-version.h>
 #include <klib/text.h> /* String */
 
 #include <sysalloc.h>
@@ -87,7 +89,7 @@ typedef enum {
     eResolve = 2,
     eDependMissing = 4,
     eDependAll = 8,
-    eCurl = 16,
+/*  eCurl = 16, */
     eVersion = 32,
     eNewVersion = 64,
     eOpenTable = 128,
@@ -294,7 +296,9 @@ static TTest processTests(TTest testsOn, TTest testsOff) {
 
 static void MainMakeQuick(Main *self) {
     assert(self);
+#if 0
     self->tests = eCurl;
+#endif
 }
 
 static void MainAddTest(Main *self, Type type) {
@@ -327,9 +331,11 @@ static void MainPrint(const Main *self) {
         KOutMsg("eDependAll\n");
     }
 
+#if 0
     if (MainHasTest(self, eCurl)) {
         KOutMsg("eCurl\n");
     }
+#endif
 
     if (MainHasTest(self, eVersion)) {
         KOutMsg("eVersion\n");
@@ -383,10 +389,6 @@ static rc_t MainInitObjects(Main *self) {
     }
 
     if (rc == 0) {
-        rc = KNSManagerMake(&self->knsMgr);
-    }
-
-    if (rc == 0) {
         rc = KConfigMakeRepositoryMgrRead(self->cfg, &self->repoMgr);
     }
 
@@ -396,6 +398,10 @@ static rc_t MainInitObjects(Main *self) {
 
     if (rc == 0) {
         rc = VFSManagerGetResolver(self->vMgr, &resolver);
+    }
+
+    if (rc == 0) {
+        rc = VFSManagerGetKNSMgr(self->vMgr, &self->knsMgr);
     }
 
     if (rc == 0) {
@@ -464,12 +470,12 @@ static char** MainInit(Main *self, int argc, char *argv[], int *argi) {
     return argv2;
 }
 
-static rc_t MainCallCgi(const Main *self,
+static rc_t MainCallCgiImpl(const Main *self,
     const KConfigNode *node, const char *acc)
 {
     rc_t rc = 0;
     String *url = NULL;
-    struct KCurlRequest *req = NULL;
+    KHttpRequest *req = NULL;
     KDataBuffer result;
     memset(&result, 0, sizeof result);
     assert(self && node && acc);
@@ -480,18 +486,64 @@ static rc_t MainCallCgi(const Main *self,
         }
     }
     if (rc == 0) {
-        rc = KNSManagerMakeCurlRequest(self->knsMgr, &req, url->addr, false);
+        rc = KNSManagerMakeRequest(self->knsMgr,
+            &req, 0x01000000, NULL, url->addr);
     }
     if (rc == 0) {
-        size_t s = string_size(acc);
-        String name;
-        String value;
-        CONST_STRING(&name, "acc");
-        StringInit(&value, acc, s, (uint32_t)s);
-        rc = KCurlRequestAddSField(req, &name, &value);
+        rc = KHttpRequestAddPostParam ( req, "acc=%s", acc );
     }
     if (rc == 0) {
-        rc = KCurlRequestPerform(req, &result);
+        KHttpResult *rslt;
+        rc = KHttpRequestPOST ( req, & rslt );
+        if ( rc == 0 )
+        {
+            uint32_t code;
+            size_t msg_size;
+            char msg_buff [ 256 ];
+            rc = KHttpResultStatus(rslt,
+                & code, msg_buff, sizeof msg_buff, & msg_size);
+            if ( rc == 0 && code == 200 )
+            {
+                KStream * response;
+                rc = KHttpResultGetInputStream ( rslt, & response );
+                if ( rc == 0 )
+                {
+                    size_t num_read;
+                    size_t total = 0;
+                    KDataBufferMakeBytes ( & result, 4096 );
+                    while ( 1 )
+                    {
+                        uint8_t *base;
+                        uint64_t avail = result . elem_count - total;
+                        if ( avail < 256 )
+                        {
+                            rc = KDataBufferResize ( & result, result . elem_count + 4096 );
+                            if ( rc != 0 )
+                                break;
+                        }
+
+                        base = result . base;
+                        rc = KStreamRead ( response, & base [ total ], result . elem_count - total, & num_read );
+                        if ( rc != 0 )
+                        {
+                            if ( num_read > 0 )
+                                rc = 0;
+                            else
+                                break;
+                        }
+
+                        if ( num_read == 0 )
+                            break;
+
+                        total += num_read;
+                    }
+
+                    KStreamRelease ( response );
+                }
+            }
+
+            KHttpResultRelease ( rslt );
+        }
     }
     if (rc == 0) {
         const char *start = (const void*)(result.base);
@@ -504,13 +556,29 @@ static rc_t MainCallCgi(const Main *self,
         }
     }
     KDataBufferWhack(&result);
-    RELEASE(KCurlRequest, req);
+    RELEASE(KHttpRequest, req);
     free(url);
     if (rc == 0) {
         OUTMSG(("NCBI access: ok\n"));
     }
     else {
         OUTMSG(("ERROR: cannot access NCBI Website\n"));
+    }
+    return rc;
+}
+
+static rc_t MainCallCgi(const Main *self,
+    const KConfigNode *node, const char *acc)
+{
+    rc_t rc = 0;
+    int i = 0, retryOnFailure = 2;
+    for (i = 0; i < retryOnFailure; ++i) {
+        rc = MainCallCgiImpl(self, node, acc);
+        if (rc == 0) {
+            break;
+        }
+        DBGMSG(DBG_KNS, DBG_FLAG(DBG_KNS_ERR), (
+            "@@@@@@@@2: MainCallCgi %d/%d = %R\n", i + 1, retryOnFailure, rc));
     }
     return rc;
 }
@@ -1064,14 +1132,40 @@ static rc_t MainResolveRemote(const Main *self, VResolver *resolver,
 
     const KFile* f = NULL;
 
-    assert(self && size);
+    assert(self && size && remote);
 
     if (resolver == NULL) {
         resolver = self->resolver;
     }
 
     rc = VResolverRemote(resolver,
-        fasp ? eProtocolFaspHttp : eProtocolHttp, acc, remote, &f);
+        fasp ? eProtocolFaspHttp : eProtocolHttp, acc, remote);
+
+    if (rc == 0) {
+        rc_t rc = 0;
+        String str;
+        memset(&str, 0, sizeof str);
+        rc = VPathGetScheme(*remote, &str);
+        if (rc != 0) {
+            OUTMSG(("VPathGetScheme(%S) = %R\n", *remote, rc));
+        }
+        else {
+            String fasp;
+            CONST_STRING(&fasp, "fasp");
+            if (StringCompare(&str, &fasp) != 0) {
+                char path_str[8192];
+                rc = VPathReadUri(*remote, path_str, sizeof path_str, NULL);
+                if (rc != 0) {
+                    OUTMSG(("VPathReadUri(%S) = %R\n", *remote, rc));
+                }
+                else {
+                    rc = KNSManagerMakeHttpFile
+                        (self->knsMgr, &f, NULL, 0x01010000, path_str);
+                }
+            }
+        }
+    }
+        
     rc = MainPathReport(self,
         rc, *remote, ePathRemote, name, NULL, size, fasp, f);
     RELEASE(KFile, f);
@@ -1092,8 +1186,6 @@ static rc_t MainResolveCache(const Main *self, const VResolver *resolver,
             rc, cache, ePathCache, name, remote, NULL, fasp, NULL);
     }
     else {
-        uint64_t file_size = 0;
-
         if (resolver == NULL) {
             resolver = self->resolver;
         }
@@ -1101,7 +1193,8 @@ static rc_t MainResolveCache(const Main *self, const VResolver *resolver,
         if (!self->allowCaching) {
             VResolverCacheEnable(resolver, self->cacheState);
         }
-        rc = VResolverCache(resolver, remote, &cache, file_size);
+        rc = VResolverQuery(resolver, fasp ? eProtocolFasp : eProtocolHttp,
+            remote, NULL, NULL, &cache);
         rc = MainPathReport(self,
             rc, cache, ePathCache, name, remote, NULL, fasp, NULL);
 
@@ -1126,7 +1219,7 @@ static rc_t VResolverQueryByType(const Main *self, const VResolver *resolver,
     const char *eol = "\n";
 
     rc_t rc = 0;
-    rc_t rc2 = 0;
+
     const VPath *local = NULL;
     const VPath *remote = NULL;
     const VPath *cache = NULL;
@@ -1166,15 +1259,15 @@ static rc_t VResolverQueryByType(const Main *self, const VResolver *resolver,
         pCache == NULL ? "=NULL" : "", rc, eol));
     if (rc == 0) {
         if (local != NULL) {
-            rc2 = MainPathReport(self,
+/*          rc2 =*/ MainPathReport(self,
                 rc, local, ePathLocal, name, NULL, NULL, false, NULL);
         }
         if (remote != NULL) {
-            rc2 = MainPathReport(self,
+/*          rc2 =*/ MainPathReport(self,
                 rc, remote, ePathRemote, name, NULL, NULL, fasp, NULL);
         }
         if (cache != NULL) {
-            rc2 = MainPathReport(self,
+/*          rc2 =*/ MainPathReport(self,
                 rc, cache, ePathCache, name, remote, NULL, fasp, NULL);
         }
     }
@@ -1508,9 +1601,9 @@ rc_t MainDepend(const Main *self, const char *name, bool missing)
                     OUTMSG(("%s\tpathRemote: %s ", eol, s));
                     if (!self->noRfs) {
                         const KFile *f = NULL;
-                        rc2 = KCurlFileMake(&f, s, false);
+                        rc2 = KNSManagerMakeHttpFile ( self->knsMgr, & f, NULL, 0x01010000, s );
                         if (rc2 != 0) {
-                            OUTMSG(("KCurlFileMake=%R", rc2));
+                            OUTMSG(("KNSManagerMakeHttpFile=%R", rc2));
                             if (rc == 0) {
                                 rc = rc2;
                             }
@@ -1675,6 +1768,7 @@ static rc_t MainPrintAscp(const Main *self) {
     return 0;
 }
 
+#if 0
 static rc_t PrintCurl(bool full, bool xml) {
     const char *b = xml ? "  <Curl>"  : "";
     const char *e = xml ? "</Curl>" : "";
@@ -1716,6 +1810,7 @@ static rc_t PrintCurl(bool full, bool xml) {
 
     return rc;
 }
+#endif
 
 #define kptKartITEM (kptAlias - 1)
 
@@ -1932,13 +2027,18 @@ rc_t _SraReleaseVersionPrint(const SraReleaseVersion *self, rc_t rc, bool xml,
 
 static rc_t MainPrintVersion(Main *self) {
     const char root[] = "Version";
+
     rc_t rc = 0;
+
     SraReleaseVersion version;
     SraReleaseVersion newVersion;
+
     assert(self);
+
     if (MainHasTest(self, eNewVersion)) {
         MainAddTest(self, eVersion);
     }
+
     if (!MainHasTest(self, eVersion)) {
         return 0;
     }
@@ -1978,6 +2078,7 @@ static rc_t MainPrintVersion(Main *self) {
             }
         }
     }
+
     if (self->xml) {
         OUTMSG(("</%s>\n", root));
     }
@@ -2152,9 +2253,11 @@ rc_t CC KMain(int argc, char *argv[]) {
             MainPrintAscp(&prms);
         }
 
+#if 0
         if (MainHasTest(&prms, eCurl)) {
             PrintCurl(prms.full, prms.xml);
         }
+#endif
 
         if (!prms.full) {
             rc_t rc2 = MainQuickCheck(&prms);

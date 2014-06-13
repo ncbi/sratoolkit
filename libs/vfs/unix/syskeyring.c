@@ -24,12 +24,14 @@
  *
  */
 
-#include "keyring-priv.h"
+#include <vfs/keyring-priv.h>
 
 #include <kfg/config.h>
 
 #include <klib/text.h>
 #include <klib/rc.h>
+#include <klib/log.h>
+#include <klib/printf.h>
 
 #include <kfs/file.h>
 #include <kfs/directory.h>
@@ -41,105 +43,90 @@
 #include <stdlib.h>
 #include <sys/wait.h>
 
-static const char LockFileName[] = "/home/boshkina/.ncbi/keyring_lock";
-static const char KeyRingServerExeName[] = "keyring-srv";
+#include <stdio.h>
 
-LIB_EXPORT bool CC KKeyRingIsServerRunning()
+#ifndef MAX_PATH
+#define MAX_PATH 4096
+#endif
+
+const char* KeyRingDefaultDataDir = "~/.ncbi";
+
+/*TODO: move to ../keyring.c */
+LIB_EXPORT bool CC KKeyRingIsServerRunning(const char* dataDir)
 {   
     KDirectory* wd;
     rc_t rc = KDirectoryNativeDir (&wd);
     if (rc == 0)
     {
-        KFile* lockedFile;
-        rc = KDirectoryCreateExclusiveAccessFile(wd, &lockedFile, true, 0600, kcmOpen, LockFileName);
+        char lockFileName[MAX_PATH];
+        if (dataDir == NULL)
+            dataDir = KeyRingDefaultDataDir;
+        rc = string_printf(lockFileName, sizeof(lockFileName)-1, NULL, "%s/keyring_lock", dataDir);
+        
         if (rc == 0)
-            KFileRelease(lockedFile);
+        {
+            KFile* lockedFile;
+            rc = KDirectoryCreateExclusiveAccessFile(wd, &lockedFile, true, 0600, kcmOpen, lockFileName);
+            if (rc == 0)
+                KFileRelease(lockedFile);
+        }
         KDirectoryRelease(wd);
     }
-    return rc == 0;
+    return rc != 0;
 }
 
-static
-int StartServer()
-{   /* create a child process that will become the server */
-    char* const argv[] = {(char*)KeyRingServerExeName, NULL};
+rc_t StartKeyRing(const char* dataDir)
+{
+    rc_t rc = 0;
+    
     pid_t child = fork();
     switch (child)
     {
-    case 0: /* child */
-        if (execvp(KeyRingServerExeName, argv) == -1)
-        {   /* look around:
-                - same dir as the current executable (kfg/APPPATH)
-                - current dir
-            */
-            return -1;
-        }
-        /* no return if successful */
-        return -1;
-    case -1:
-        return -1;
-    default: /* parent */
-        return 0;
-    }
-}
+        case 0: /* child */
+        {   /* become the server */
+        
+/*TODO: calculate based on $(APPPATH) in kfg */
+const char* KeyRingServerExeName = "/home/boshkina/internal/asm-trace/centos/gcc/stat/x86_64/dbg/bin/keyring-srv";
 
-rc_t StartKeyRing(struct KStream** ipc)
-{
-/*
-    1. Lock the lock file
-    2. If failed, create the ipc object, connect to the server and exit (success)
-    3. If succeeded, fork
-        In the child:
-        - execvp(kr-server) (if not in PATH, try locate and execv in fixed places (kfg:$APPPATH, ./)
-        In the parent:
-        - wait for the server connection to come up (= keyring server ready).
-        - close the lock file (do not unlock)
-        - connect to the server and exit (success)
-*/
-    KDirectory* wd;
-    rc_t rc = KDirectoryNativeDir (&wd);
-    if (rc == 0)
-    {
-        KFile* lockedFile;
-        rc = KDirectoryCreateExclusiveAccessFile(wd, &lockedFile, true, 0600, kcmOpen, LockFileName);
-        if (rc == 0)
-        {   /* start the server */
-            pid_t child = fork();
-            switch (child)
-            {
-                case 0: /* child */
-                {   /* fork a grandchild that will become the server */
-                    exit(StartServer());
-                    break;
-                }
-                case -1: /* error */
-                {
-                    rc_t rc;
-                    switch (errno)
-                    {
-                    case EAGAIN:
-                    case ENOMEM:
-                        rc = RC (rcVFS, rcProcess, rcProcess, rcMemory, rcInsufficient);
-                        break;
-                    case ENOSYS:
-                        rc = RC (rcVFS, rcProcess, rcProcess, rcInterface, rcUnsupported);
-                        break;
-                    default:
-                        rc = RC (rcVFS, rcProcess, rcProcess, rcError, rcUnknown);
-                        break;
-                    }
-                    break;
-                }
-                default: /* parent */
-                {
-                    waitpid(child, 0, 0);
-                    break;
-                }
+            if (dataDir == NULL)
+                dataDir = "~/.ncbi";
+            LogMsg(klogInfo, "Keyring: execl...");
+
+            if (execl(KeyRingServerExeName, KeyRingServerExeName, dataDir, NULL) == -1)
+            {   /* TODO: look around:
+                    - same dir as the current executable (kfg/APPPATH)
+                    - current dir
+                    - etc.
+                */
             }
-            KFileRelease(lockedFile); /* if successfully started, the grandchild will hold the lock until its exit */
+            pLogMsg(klogErr, 
+                    "Keyring: execl($(exe)) failed ($(errno)=$(perrno))", 
+                    "exe=%s,errno=%d,perrno=%!", 
+                    KeyRingServerExeName, errno, errno);
+            exit(1);
+            break;
         }
-        KDirectoryRelease(wd);
+        case -1: /* error */
+        {
+            switch (errno)
+            {
+            case EAGAIN:
+            case ENOMEM:
+                rc = RC (rcVFS, rcProcess, rcProcess, rcMemory, rcInsufficient);
+                break;
+            case ENOSYS:
+                rc = RC (rcVFS, rcProcess, rcProcess, rcInterface, rcUnsupported);
+                break;
+            default:
+                rc = RC (rcVFS, rcProcess, rcProcess, rcError, rcUnknown);
+                break;
+            }
+            break;
+        }
+        default: /* parent */
+            break;
     }
+        
     return rc;
 }
 

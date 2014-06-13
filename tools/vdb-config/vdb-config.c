@@ -40,6 +40,7 @@
 #include <kfs/kfs-priv.h> /* KSysDirOSPath */
 
 #include <klib/log.h> /* LOGERR */
+#include <klib/misc.h> /* is_iser_an_admin */
 #include <klib/namelist.h>
 #include <klib/out.h> /* OUTMSG */
 #include <klib/printf.h> /* string_printf */
@@ -54,7 +55,6 @@
 #include <stdio.h> /* scanf */
 #include <stdlib.h> /* getenv */
 #include <string.h> /* memset */
-/* #include <unistd.h> access */
 
 #include <limits.h> /* PATH_MAX */
 
@@ -106,6 +106,11 @@ static const char* USAGE_OUT[] = { "output type: one of (x n), "
 #define OPTION_CFG   "cfg"
 static const char* USAGE_CFG[] = { "print current configuration", NULL };
 
+#define ALIAS_ROOT   NULL
+#define OPTION_ROOT  "root"
+static const char* USAGE_ROOT[] =
+    { "enforce configuration update while being run by superuser", NULL };
+
 #define ALIAS_SET    "s"
 #define OPTION_SET   "set"
 static const char* USAGE_SET[] = { "set configuration node value", NULL };
@@ -122,6 +127,7 @@ OptDef Options[] =
     , { OPTION_NEW, ALIAS_NEW, NULL, USAGE_NEW, 1, false, false }
     , { OPTION_OUT, ALIAS_OUT, NULL, USAGE_OUT, 1, true , false }
     , { OPTION_SET, ALIAS_SET, NULL, USAGE_SET, 1, true , false }
+    , { OPTION_ROOT,ALIAS_ROOT,NULL, USAGE_ROOT,1, false, false }
 };
 
 rc_t CC UsageSummary (const char * progname) {
@@ -151,7 +157,6 @@ rc_t CC Usage(const Args* args) {
 
     HelpOptionLine (ALIAS_ALL, OPTION_ALL, NULL, USAGE_ALL);
     HelpOptionLine (ALIAS_CFG, OPTION_CFG, NULL, USAGE_CFG);
-/*  HelpOptionLine (ALIAS_NEW, OPTION_MOD, NULL, USAGE_NEW); */
     HelpOptionLine (ALIAS_FIL, OPTION_FIL, NULL, USAGE_FIL);
     HelpOptionLine (ALIAS_ENV, OPTION_ENV, NULL, USAGE_ENV);
     HelpOptionLine (ALIAS_MOD, OPTION_MOD, NULL, USAGE_MOD);
@@ -161,6 +166,8 @@ rc_t CC Usage(const Args* args) {
     HelpOptionLine (ALIAS_IMP, OPTION_IMP, "ngc-file", USAGE_IMP);
     KOutMsg ("\n");
     HelpOptionLine (ALIAS_OUT, OPTION_OUT, "x | n", USAGE_OUT);
+    KOutMsg ("\n");
+    HelpOptionLine (ALIAS_ROOT,OPTION_ROOT,NULL, USAGE_ROOT);
 
     KOutMsg ("\n");
 
@@ -194,7 +201,7 @@ static rc_t KConfigNodeReadData(const KConfigNode* self,
     return rc;
 }
 
-static rc_t _printNodeData(const char *name, const char *data, uint32_t dlen) {
+static rc_t _printNodeData(const char *name, const char *data, size_t dlen) {
     const char ticket[] = "download-ticket";
     size_t l = sizeof ticket - 1;
     if (string_cmp(name, string_measure(name, NULL),
@@ -207,7 +214,7 @@ static rc_t _printNodeData(const char *name, const char *data, uint32_t dlen) {
             dlen = 70;
             ellipsis = "...";
         }
-        return OUTMSG(("%.*s%s", dlen, replace, ellipsis));
+        return OUTMSG(("%.*s%s", (uint32_t)dlen, replace, ellipsis));
     }
     else {
         return OUTMSG(("%.*s", dlen, data));
@@ -233,7 +240,7 @@ static rc_t KConfigNodePrintChildNames(bool xml, const KConfigNode* self,
     {   rc = KConfigNodeOpenNodeRead(self, &node, name);  }
     if (rc == 0) {
         rc = KConfigNodeReadData(node, buffer, sizeof buffer, &num_read);
-        hasData = num_read;
+        hasData = num_read > 0;
         if (hasData) {
  /* VDB_CONGIG_OUTMSG(("\n%s = \"%.*s\"\n\n", aFullpath, num_read, buffer)); */
         }
@@ -265,18 +272,20 @@ static rc_t KConfigNodePrintChildNames(bool xml, const KConfigNode* self,
     {   VDB_CONGIG_OUTMSG(("\n"));}
 
     if (hasChildren) {
-        for (i = 0; i < count && rc == 0; ++i) {
+        for (i = 0; i < (int)count && rc == 0; ++i) {
             char* fullpath = NULL;
             const char* name = NULL;
             rc = KNamelistGet(names, i, &name);
             if (rc == 0) {
-                fullpath = malloc(strlen(aFullpath) + 1 + strlen(name) + 1);
+                size_t bsize = strlen(aFullpath) + 1 + strlen(name);
+                fullpath = malloc(bsize + 1);
                 if (fullpath == NULL) {
                     rc = RC
                         (rcExe, rcStorage, rcAllocating, rcMemory, rcExhausted);
                 }
                 else {
-                    sprintf(fullpath, "%s/%s", aFullpath, name);
+                    string_printf(fullpath, bsize, NULL,
+                        "%s/%s", aFullpath, name);
                 }
             }
             if (rc == 0) {
@@ -315,6 +324,7 @@ typedef struct Params {
     bool modeShowFiles;
     bool modeShowLoadPath;
     bool modeShowModules;
+    bool modeRoot;
 
     bool showMultiple;
 } Params;
@@ -444,8 +454,17 @@ static rc_t ParamsConstruct(int argc, char* argv[], Params* prm) {
             ++count;
         }
 
+        rc = ArgsOptionCount(args, OPTION_ROOT, &pcount);
+        if (rc != 0) {
+            LOGERR(klogErr, rc, "Failure to get '" OPTION_ROOT "' argument");
+            break;
+        }
+        if (pcount) {
+            prm->modeRoot = true;
+        }
+
         rc = ArgsOptionCount(args, OPTION_SET, &pcount);
-        if (rc) {
+        if (rc != 0) {
             LOGERR(klogErr, rc, "Failure to get '" OPTION_SET "' argument");
             break;
         }
@@ -577,8 +596,9 @@ static rc_t In(const char* prompt, const char* def, char** read) {
                 else
                 {   break; }
             }
-            if (buf[0] == '\0' && def)
-            {   strcpy(buf, def); }
+            if (buf[0] == '\0' && def != NULL) {
+                string_copy_measure(buf, sizeof buf, def);
+            }
             if (buf[0]) {
                 *read = strdup(buf);
                 if (*read == NULL) {
@@ -601,7 +621,8 @@ static rc_t CC scan_config_dir(const KDirectory* dir,
         case kptFile | kptAlias: {
             size_t sz = strlen(name);
             if (sz >= 5 && strcase_cmp(&name[sz - 4], 4, ".kfg", 4, 4) == 0) {
-                strcpy(data, name);
+                string_copy_measure(data, PATH_MAX + 1, name);
+                                  /* from CreateConfig..KDirectoryVVisit call */
                 rc = RC(rcExe, rcDirectory, rcListing, rcFile, rcExists);
             }
             break;
@@ -802,6 +823,12 @@ static rc_t SetNode(KConfig* cfg, const Params* prm) {
 
     assert(cfg && prm && prm->setValue);
 
+    if (is_iser_an_admin() && !prm->modeRoot) {
+        rc = RC(rcExe, rcNode, rcUpdating, rcCondition, rcViolated);
+        LOGERR(klogErr, rc, "Warning: "
+            "normally this application should not be run as root/superuser");
+    }
+
     name = strdup(prm->setValue);
     if (name == NULL)
     {   return RC(rcExe, rcStorage, rcAllocating, rcMemory, rcExhausted); }
@@ -949,12 +976,13 @@ static rc_t ShowConfig(const KConfig* cfg, Params* prm) {
                 if (rc == 0) {
                     char* fullname = NULL;
                     if (strcmp(root, "/") == 0) {
-                        fullname = malloc(strlen(name) + 2);
+                        size_t bsize = strlen(name) + 2;
+                        fullname = malloc(bsize);
                         if (fullname == NULL) {
                             rc = RC(rcExe,
                                 rcStorage, rcAllocating, rcMemory, rcExhausted);
                         }
-                        sprintf(fullname, "/%s", name);
+                        string_printf(fullname, bsize, NULL, "/%s", name);
                     }
                     else {
                         size_t sz = strlen(root) + 2 + strlen(name);

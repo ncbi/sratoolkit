@@ -88,7 +88,7 @@ NENCTOOL_OBJ = \
 NENCTOOL_LIB = \
 	-lkapp \
 	-lvfs \
-	-lkurl \
+	-lkns \
 	-lkrypto \
 	-lkfg \
 	-lkfs \
@@ -112,7 +112,7 @@ NENCTEST_OBJ = \
 NENCTEST_LIB = \
 	-lkapp \
 	-lvfs \
-	-lkurl \
+	-lkns \
 	-lkryptotest \
 	-lkfg \
 	-lkfs \

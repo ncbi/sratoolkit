@@ -23,27 +23,46 @@
 * ===========================================================================
 *
 */
-#ifndef _h_curl_file_
-#define _h_curl_file_
 
-#ifndef _h_kns_extern_
-#include <kns/extern.h>
+#ifndef _h_kfc_extern_
+#define _h_kfc_extern_
+
+#ifndef _h_kfc_callconv_
+#include <kfc/callconv.h>
 #endif
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+#if ! defined EXPORT_LATCH && _LIBRARY
 
+#define KFC_EXTERN LIB_EXPORT
+#define EXPORT_LATCH 1
 
-/*--------------------------------------------------------------------------
- * KCurlFile
- *  a remote file, fetched (in parts) via http using libcurl
- */
-KNS_EXTERN rc_t CC KCurlFileMake ( struct KFile const **self, const char * url, bool verbose );
+#else
 
-
-#ifdef __cplusplus
-}
-#endif
+#define KFC_EXTERN LIB_IMPORT
 
 #endif
+
+#if defined _MSC_VER && ! _STATIC
+
+/* __declspec ( dllimport ) will cause creation of
+   function pointers rather than thunks, which makes
+   the code that imports unable to link statically
+   against a library. we leave this symbol defined as
+   "extern" to use thunks instead. as a result, all
+   function addresses resolve to the thunk and not
+   the actual function. */
+#define LIB_IMPORT extern
+#define LIB_IMPORT_DATA extern __declspec ( dllimport )
+#define LIB_EXPORT __declspec ( dllexport )
+#define LIB_EXPORT_DATA __declspec ( dllexport )
+
+#else
+
+#define LIB_IMPORT extern
+#define LIB_IMPORT_DATA extern
+#define LIB_EXPORT
+#define LIB_EXPORT_DATA
+
+#endif
+
+#endif /* _h_kfc_extern_ */

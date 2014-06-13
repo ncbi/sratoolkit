@@ -169,6 +169,18 @@ VDB_EXTERN rc_t CC VDBManagerGetObjVersion ( const VDBManager *self,
     ver_t * version, const char *path );
 
 
+/* GetObjModDate
+ *  returns the load/modification timestamp of the given object
+ *
+ *  "ts" [ OUT ] - discovered modification timestamp written in object,
+ *  or from filesystem
+ *
+ *  "path"    [ IN ] - path to the object to be examined ( database or table )
+ */
+VDB_EXTERN rc_t CC VDBManagerGetObjModDate ( const VDBManager *self,
+    KTime_t * ts, const char *path );
+
+
 /* PathType
  *  check the path type of an object/directory path.
  *

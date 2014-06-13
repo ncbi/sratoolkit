@@ -96,7 +96,7 @@ VDB_LIB_CMN = \
 	krypto \
 	ksrch \
 	$(LIBKXML) \
-	kurl \
+	kns \
 	vfs \
 	z
 

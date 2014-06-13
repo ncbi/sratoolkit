@@ -71,6 +71,9 @@ char const *sd_CG_mappings[]          = { "Output CG sequences aligned to refere
 char const *sd_header_usage[]         = { "Always reconstruct header",
                                        NULL };
 
+char const *sd_header_file_usage[]    = { "take all headers from this file",
+                                       NULL };
+
 char const *sd_noheader_usage[]       = { "Do not output headers",
                                        NULL };
 
@@ -160,6 +163,7 @@ OptDef SamDumpArgs[] =
     { OPT_CIGAR_LONG,    "c", NULL, sd_cigartype_usage,      0, false, false },  /* use long cigar-string instead of short */
     { OPT_CIGAR_CG,     NULL, NULL, sd_cigarCG_usage,        0, false, false },  /* transform cigar into cg-style ( has B/N ) */
     { OPT_RECAL_HDR,     "r", NULL, sd_header_usage,         0, false, false },  /* recalculate header */
+    { OPT_HDR_FILE,     NULL, NULL, sd_header_file_usage,    0, true, false },  /* take headers from file */
     { OPT_NO_HDR,        "n", NULL, sd_noheader_usage,       0, false, false },  /* do not print header */
     { OPT_HDR_COMMENT,  NULL, NULL, sd_comment_usage,        0, true,  false },  /* insert this comment into header */
     { OPT_REGION,       NULL, NULL, sd_region_usage,         0, true,  false },  /* filter by region */
@@ -206,6 +210,7 @@ char const *sd_usage_params[] =
     NULL,                       /* cigartype */
     NULL,                       /* cigarCG */
     NULL,                       /* recalc header */
+    "filename",                 /* take headers from file */
     NULL,                       /* no-header */
     "text",                     /* hdr-comment */
     "name[:from-to]",           /* region */
@@ -475,7 +480,7 @@ static rc_t samdump_main( Args * args, const samdump_opts * const opts )
         {
             if ( opts->input_file_count < 1 )
             {
-                rc = RC( rcExe, rcNoTarg, rcConstructing, rcParam, rcInvalid );
+                rc = RC( rcExe, rcArgv, rcParsing, rcParam, rcInvalid );
                 (void)LOGERR( klogErr, rc, "no inputfiles given at commandline" );
                 Usage( args );
             }

@@ -65,30 +65,28 @@ KNS_EXTERN rc_t CC KNSManagerAddRef ( const KNSManager *self );
 KNS_EXTERN rc_t CC KNSManagerRelease ( const KNSManager *self );
 
 
-/* Avail - DEPRECATED
- *  indicate to caller whether networking services are available
- *  mainly here to support libcurl
- */
-KNS_EXTERN rc_t CC KNSManagerAvail ( const KNSManager *self );
-
-/* CurlVersion - DEPRECATED
- *  indicate which version of curl is available
- *  return this as a string, because this is how libcurl does it
- */
-KNS_EXTERN rc_t CC KNSManagerCurlVersion ( const KNSManager *self, const char ** version_string );
-
-
 /* SetVerbose
  *  set/clear verbosity flag of manager ( dflt is false )...
  *  the network-code has to request it
  */
-KNS_EXTERN void CC KNSManagerSetVerbose ( struct KNSManager *self, bool verbosity );
+KNS_EXTERN void CC KNSManagerSetVerbose ( KNSManager *self, bool verbosity );
 
 
 /* IsVerbose
  *  request the verbosity flag of manager ( dflt is false )...
  */
 KNS_EXTERN bool CC KNSManagerIsVerbose ( const KNSManager *self );
+
+
+/* SetConnectionTimeouts
+ *  sets default connect/read/write timeouts to supply to sockets
+ *
+ *  "connectMillis", "readMillis", "writeMillis" [ IN ] - when negative, infinite timeout
+ *  when 0, return immediately, positive gives maximum wait time in sec/mS
+ *  for connects, reads and writes respectively.
+ */
+KNS_EXTERN rc_t CC KNSManagerSetConnectionTimeouts ( KNSManager *self,
+    int32_t connectSecs, int32_t readMillis, int32_t writeMillis );
 
 
 #ifdef __cplusplus

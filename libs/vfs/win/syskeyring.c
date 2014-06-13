@@ -24,12 +24,14 @@
  *
  */
 
-#include "keyring-priv.h"
+#include <vfs/keyring-priv.h>
 
 #include <kfg/config.h>
 #include <klib/text.h>
 
-rc_t StartKeyRing(struct KStream** ipc)
+const char* KeyRingDefaultDataDir = "%USERPROFILE%\\.ncbi";
+
+rc_t StartKeyRing(const char* dataDir)
 {
     KConfig* kfg;
     rc_t rc = KConfigMake(&kfg, NULL);
@@ -46,7 +48,7 @@ rc_t StartKeyRing(struct KStream** ipc)
             rc = KConfigNodeRead(node, 0, buf, sizeof(buf), &num_read, NULL);
             if (rc == 0)
             {
-printf("apppath='%s'\n", buf);        
+/*printf("apppath='%s'\n", buf);        */
             }
             KConfigNodeRelease(node);
         }

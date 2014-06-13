@@ -38,7 +38,7 @@ extern "C" {
 
 /* values used in validating quality lines */
 #define MIN_PHRED_33 33
-#define MAX_PHRED_33 74
+#define MAX_PHRED_33 126
 #define MIN_PHRED_64 64
 #define MAX_PHRED_64 127
 
@@ -60,7 +60,9 @@ struct FastqSequence
     int32_t coords[16];
 #endif
 
-    char* read;
+    /* read bases */
+    String read; 
+
     bool is_colorspace;
     
     String  quality;
@@ -80,11 +82,15 @@ struct FastqRecord
 
 typedef struct FASTQToken
 { 
-    const char* tokenText;
+    size_t tokenStart;  /* offset into FASTQParseBlock.record->source */
     size_t tokenLength;
     size_t line_no;
     size_t column_no;
 } FASTQToken;
+
+/* obtain a pointer to the token's text */
+#define TokenTextPtr(pb, token) ((const char*)((pb)->record->source.base) + (token)->tokenStart)
+
 
 typedef struct FASTQParseBlock
 {
@@ -99,40 +105,52 @@ typedef struct FASTQParseBlock
     struct FastqRecord* record;
     size_t column;
 
-    /* temporaries for bison: */
-    KDataBuffer tagLine;
-
-    size_t spotNameLength;
+    /* temporaries for bison */
+    /* all offsets are into record->source */
+    size_t spotNameOffset; 
+    size_t spotNameLength; 
     bool spotNameDone;
     size_t spotGroupOffset;
     size_t spotGroupLength;
+    size_t readOffset;
+    size_t readLength;
+    size_t qualityOffset;
+    size_t qualityLength;
 
-    KDataBuffer quality;
     size_t expectedQualityLines;
     
     int8_t defaultReadNumber; /* -1: never assign read numbers */
+
+    /*  Secondary (>1) read number observed previously (usually 2, sometimes 3). 
+        Once one is seen, do not allow any other values in the same input file. 
+        0 = has not seen one yet in this input. 
+        Always record as 2 */
+    uint8_t secondaryReadNumber; 
     
     bool fatalError;
 } FASTQParseBlock;
 
-extern rc_t CC FASTQScan_yylex_init(FASTQParseBlock* context, bool debug);
-extern void CC FASTQScan_yylex_destroy(FASTQParseBlock* context);
+extern rc_t FASTQScan_yylex_init(FASTQParseBlock* context, bool debug);
+extern void FASTQScan_yylex_destroy(FASTQParseBlock* context);
 
 /* explicit FLEX state control for bison*/
-extern void CC FASTQScan_inline_sequence(FASTQParseBlock* pb);
-extern void CC FASTQScan_inline_quality(FASTQParseBlock* pb);
+extern void FASTQScan_inline_sequence(FASTQParseBlock* pb);
+extern void FASTQScan_inline_quality(FASTQParseBlock* pb);
 
-extern void CC FASTQ_set_lineno (int line_number, void* scanner);
+extern void FASTQ_set_lineno (int line_number, void* scanner);
 
-extern int CC FASTQ_lex(FASTQToken* pb, void * scanner);
-extern void CC FASTQ_unlex(FASTQParseBlock* pb, FASTQToken* token);
-extern void CC FASTQ_qualityContext(FASTQParseBlock* pb);
+extern int FASTQ_lex(FASTQToken* pb, void * scanner);
+extern void FASTQ_unlex(FASTQParseBlock* pb, FASTQToken* token);
+extern void FASTQ_qualityContext(FASTQParseBlock* pb);
 
 extern int FASTQ_debug; /* set to 1 to print Bison trace */ 
 
-extern int CC FASTQ_parse(FASTQParseBlock* pb); /* 0 = end of input, 1 = success, a new record is in context->record, 2 - syntax error */
+extern int FASTQ_parse(FASTQParseBlock* pb); /* 0 = end of input, 1 = success, a new record is in context->record, 2 - syntax error */
 
-extern void CC FASTQ_error(FASTQParseBlock* pb, const char* msg);
+/* call before parsing every record (FASTQ_parse does so internally; this is for testing the parser) */
+extern void FASTQ_ParseBlockInit(FASTQParseBlock* pb); 
+
+extern void FASTQ_error(FASTQParseBlock* pb, const char* msg);
 
 #ifdef __cplusplus
 }
