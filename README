@@ -1,9 +1,9 @@
 THIS REPOSITORY IS DEPRECATED.
 
 It has been broken into three separate repositories:
-  git://github.com/ncbi/ngs.git
-  git://github.com/ncbi/ncbi-vdb.git
-  git://github.com/ncbi/sra-tools.git
+  git://github.com/ncbi/ngs.git [link](http://github.com/ncbi/ngs)
+  git://github.com/ncbi/ncbi-vdb.git [link](http://github.com/ncbi/ncbi-vdb)
+  git://github.com/ncbi/sra-tools.git [link](http://github.com/ncbi/sra-tools)
 
 You should clone all three of the repositories above.
 
